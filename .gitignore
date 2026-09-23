@@ -1,0 +1,47 @@
+# =====================
+# Python / Django
+# =====================
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+db.sqlite3
+staticfiles/
+
+# =====================
+# Environment secrets
+# =====================
+.env
+.env.*
+!.env.example
+
+# =====================
+# IDE
+# =====================
+.vscode/
+.idea/
+
+# Local analyzer config — encodes each dev's private venv path
+pyrightconfig.json
+
+# =====================
+# OS
+# =====================
+.DS_Store
+Thumbs.db
+
+# =====================
+# Capstone personal notes — do not commit
+# =====================
+.capstone_files/
+
+# =====================
+# Agent skills (local AI tooling — do not commit)
+# =====================
+.agents/
+skills-lock.json
