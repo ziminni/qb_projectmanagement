@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: cpms_db
+    environment:
+      POSTGRES_DB: buildpro_cpms
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+    ports:
+      - "5434:5432" # Host 5434 -> container 5432 (POS owns 5433, keeps both DBs running side by side)
+    volumes:
+      - cpms_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d buildpro_cpms"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: cpms_backend
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8001"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - path: ./backend/.env
+        required: false
+    ports:
+      - "8001:8001"
+    # Lets the CPMS container reach the POS API published on the host at :8000
+    # (http://host.docker.internal:8000) — used for requisition / release-token / collectibles sync.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cpms_postgres_data:
