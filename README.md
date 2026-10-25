@@ -23,7 +23,7 @@ flutter pub get
 flutter run
 ```
 
-To run the web app in Chrome, use `flutter run -d chrome`.
+The app targets desktop: run `flutter run -d macos` on a Mac or `flutter run -d windows` on Windows (needs Visual Studio with the "Desktop development with C++" workload). It also runs in Chrome with `flutter run -d chrome`.
 
 Validate the frontend with:
 

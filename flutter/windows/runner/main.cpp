@@ -1,6 +1,9 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter_windows.h>
 #include <windows.h>
+
+#include <algorithm>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -25,9 +28,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
-  if (!window.Create(L"buildpro_frontend", origin, size)) {
+  // Open centered on the primary monitor's work area. Create() takes
+  // logical pixels, so convert the work area out of physical pixels.
+  Win32Window::Size size(1360, 860);
+  RECT work_area;
+  ::SystemParametersInfo(SPI_GETWORKAREA, 0, &work_area, 0);
+  const double scale =
+      FlutterDesktopGetDpiForMonitor(
+          ::MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY)) /
+      96.0;
+  const int work_width = static_cast<int>((work_area.right - work_area.left) / scale);
+  const int work_height = static_cast<int>((work_area.bottom - work_area.top) / scale);
+  Win32Window::Point origin(
+      static_cast<unsigned int>((std::max)(0, (work_width - static_cast<int>(size.width)) / 2)),
+      static_cast<unsigned int>((std::max)(0, (work_height - static_cast<int>(size.height)) / 2)));
+  if (!window.Create(L"BuildPro", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
