@@ -33,4 +33,6 @@ flutter analyze
 flutter test
 ```
 
-The frontend currently contains the generated Flutter starter app; API integration is not configured yet.
+The frontend runs on mock repositories (`flutter/lib/data/repositories/mock_*.dart`); API integration is not configured yet. Sign in with any demo account listed on the login screen (password `password123`), e.g. `jose@example.ph` (PM), `ana@example.ph` (site engineer), `ramon@example.ph` (owner) or `mark@example.ph` (client).
+
+Feature modules live in `flutter/lib/features/` (auth, user_management, projects, schedule, dashboard, daily_reports, procurement, labor, billing, documents, client_portal). Project progress is computed in one place, `flutter/lib/data/services/progress_calculator.dart`, and every progress figure in the app reads from it.
