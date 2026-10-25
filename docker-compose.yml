@@ -17,15 +17,15 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build: ./django-backend
     container_name: cpms_backend
     command: >
       sh -c "python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8001"
     volumes:
-      - ./backend:/app
+      - ./django-backend:/app
     env_file:
-      - path: ./backend/.env
+      - path: ./django-backend/.env
         required: false
     ports:
       - "8001:8001"

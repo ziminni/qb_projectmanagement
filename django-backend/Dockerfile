@@ -1,4 +1,4 @@
-# backend/Dockerfile — BuildPro CPMS (Repo #2)
+# django-backend/Dockerfile — BuildPro CPMS (Repo #2)
 FROM python:3.12-slim
 
 # Prevent Python from writing .pyc files and buffering stdout
