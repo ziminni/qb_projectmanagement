@@ -42,7 +42,10 @@ class ProjectDocumentsPage extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: FilledButton.icon(
                   onPressed: () async {
-                    final input = await DocumentsUploadDialog.show(context);
+                    final input = await DocumentsUploadDialog.show(
+                      context,
+                      types: vm.uploadTypes,
+                    );
                     if (input != null && context.mounted) {
                       await reportAction(
                         context,

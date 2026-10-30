@@ -61,7 +61,6 @@ void main() {
     final billing = getIt<BillingRepository>();
     final b = await billing.createBilling(1, DateTime.now(), userId: 3);
     await billing.submitBilling(b.id, userId: 3);
-    await billing.ownerApprove(b.id, userId: 2);
 
     await pumpApp(tester);
     await signInAs(tester, 'mark@example.ph');
@@ -79,7 +78,6 @@ void main() {
     expect(find.text('You disputed this billing'), findsOneWidget);
 
     await billing.submitBilling(b.id, userId: 3);
-    await billing.ownerApprove(b.id, userId: 2);
     await goTo(tester, '/client/billings');
     await tester.tap(find.textContaining('Billing #2'));
     await tester.pumpAndSettle();

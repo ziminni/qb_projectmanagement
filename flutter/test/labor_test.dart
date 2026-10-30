@@ -119,7 +119,7 @@ void main() {
       );
     });
 
-    test('verify after cut-off by the PM, then process', () async {
+    test('verify after cut-off by the owner, then process', () async {
       // Period 2 ends Oct 31; the clock is Oct 26.
       expect(repo.verifyPeriod(2, userId: 3), throwsRule('cut-off'));
       expect(repo.processPeriod(3, userId: 6), throwsRule('verify'));
@@ -165,7 +165,7 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/approvals');
     expect(find.text('Attendance verification (1)'), findsWidgets);
     await tester.tap(find.text('Attendance · QB-2026-018'));

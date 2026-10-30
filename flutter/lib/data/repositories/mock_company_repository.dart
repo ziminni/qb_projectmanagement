@@ -31,12 +31,6 @@ class MockCompanyRepository implements CompanyRepository {
 
   @override
   Future<CompanySettings> saveSettings(CompanySettings settings) async {
-    MasterDataRules.enforce(
-      MasterDataRules.validateAmount(
-        settings.poApprovalThreshold,
-        'approval threshold',
-      ),
-    );
     for (final (value, label) in [
       (settings.defaultRetentionPct, 'retention'),
       (settings.defaultDownPaymentPct, 'down payment'),

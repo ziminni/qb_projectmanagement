@@ -13,7 +13,6 @@ class AppBillingStatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final (fg, bg) = switch (status) {
       BillingStatus.draft => (AppColors.textSecondary, AppColors.surfaceMuted),
-      BillingStatus.pendingOwner ||
       BillingStatus.pendingClient => (AppColors.info, AppColors.infoContainer),
       BillingStatus.disputed => (AppColors.warning, AppColors.warningContainer),
       BillingStatus.approved => (AppColors.primary, AppColors.primaryContainer),

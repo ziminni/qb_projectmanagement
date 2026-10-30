@@ -2,7 +2,7 @@ import 'json_utils.dart';
 
 enum PayrollStatus implements JsonEnum {
   open('open', 'Open'),
-  verified('verified', 'Verified by PM'),
+  verified('verified', 'Verified by owner'),
   processed('processed', 'Processed');
 
   const PayrollStatus(this.apiValue, this.label);

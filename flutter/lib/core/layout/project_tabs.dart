@@ -1,25 +1,20 @@
 import '../../data/models/app_role.dart';
 
-/// Project detail tabs from the design document, each shown only to the
-/// roles the permission matrix lets see that data.
+/// Project detail tabs, each shown only to the roles whose job needs it.
+/// The site team works the site; the accountant sees only the money side.
 enum ProjectTab {
   overview('Overview', 'overview', _internal),
   schedule('Categories and to-dos', 'schedule', _siteTeam),
   gantt('Gantt', 'gantt', _siteTeam),
   dailyReports('Daily reports', 'daily-reports', _siteTeam),
-  materials('Materials', 'materials', _internal),
+  materials('Materials', 'materials', _siteTeam),
   labor('Labor', 'labor', [
     AppRole.owner,
-    AppRole.pm,
     AppRole.siteEngineer,
     AppRole.accountant,
   ]),
-  financials('Financials', 'financials', [
-    AppRole.owner,
-    AppRole.pm,
-    AppRole.accountant,
-  ]),
-  documents('Documents', 'documents', _internal);
+  financials('Financials', 'financials', [AppRole.owner, AppRole.accountant]),
+  documents('Documents', 'documents', _siteTeam);
 
   const ProjectTab(this.label, this.segment, this.roles);
 
@@ -38,12 +33,6 @@ enum ProjectTab {
   }
 }
 
-const _internal = [
-  AppRole.owner,
-  AppRole.pm,
-  AppRole.siteEngineer,
-  AppRole.purchasing,
-  AppRole.accountant,
-];
+const _internal = [AppRole.owner, AppRole.siteEngineer, AppRole.accountant];
 
-const _siteTeam = [AppRole.owner, AppRole.pm, AppRole.siteEngineer];
+const _siteTeam = [AppRole.owner, AppRole.siteEngineer];

@@ -50,13 +50,13 @@ class BillingFormViewModel extends ChangeNotifier with ActionRunner {
 
   Future<void> load() async {
     try {
-      if (_session.activeRole != AppRole.pm) {
-        _error = 'Progress billings are prepared by the PM.';
+      if (_session.activeRole != AppRole.owner) {
+        _error = 'Progress billings are prepared by the owner.';
         return;
       }
       _options = (await _projects.getProjectsFor(
         _session.user!.id,
-        AppRole.pm,
+        AppRole.owner,
       )).where((p) => BillingRules.requireBillable(p) == null).toList();
       if (_options.isEmpty) {
         _error = 'None of your projects can be billed yet.';

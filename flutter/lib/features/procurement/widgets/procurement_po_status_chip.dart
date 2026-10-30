@@ -12,10 +12,6 @@ class ProcurementPoStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (fg, bg) = switch (status) {
-      PurchaseOrderStatus.pendingOwner => (
-        AppColors.warning,
-        AppColors.warningContainer,
-      ),
       PurchaseOrderStatus.released => (AppColors.info, AppColors.infoContainer),
       PurchaseOrderStatus.partiallyDelivered => (
         AppColors.info,

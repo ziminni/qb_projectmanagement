@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../shared/widgets/app_action_bar.dart';
 
 import '../../../core/constants/app_spacing.dart';
@@ -70,7 +71,7 @@ class _VariationOrderFormPageState extends State<VariationOrderFormPage> {
       context,
       _vm.save(
         description: _description.text,
-        amount: InputParsers.amount(_amount.text)!,
+        amount: canSeeFinance() ? InputParsers.amount(_amount.text)! : 0,
         daysImpact: InputParsers.integer(_days.text) ?? 0,
       ),
       success: 'Variation order saved.',
@@ -84,6 +85,7 @@ class _VariationOrderFormPageState extends State<VariationOrderFormPage> {
       value: _vm,
       child: Consumer<VariationOrderFormViewModel>(
         builder: (context, vm, _) {
+          final finance = canSeeFinance();
           if (vm.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -141,32 +143,34 @@ class _VariationOrderFormPageState extends State<VariationOrderFormPage> {
                             const SizedBox(height: AppSpacing.md),
                             Row(
                               children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _amount,
-                                    decoration: InputDecoration(
-                                      labelText:
-                                          vm.type == VariationOrderType.change
-                                          ? 'Cost impact (− for savings)'
-                                          : vm.type ==
-                                                VariationOrderType.deductive
-                                          ? 'Amount deducted'
-                                          : 'Amount added',
-                                      prefixText: '₱ ',
+                                if (finance) ...[
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _amount,
+                                      decoration: InputDecoration(
+                                        labelText:
+                                            vm.type == VariationOrderType.change
+                                            ? 'Cost impact (− for savings)'
+                                            : vm.type ==
+                                                  VariationOrderType.deductive
+                                            ? 'Amount deducted'
+                                            : 'Amount added',
+                                        prefixText: '₱ ',
+                                      ),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                            signed: true,
+                                          ),
+                                      validator: (v) =>
+                                          BillingRules.validateVoAmount(
+                                            vm.type,
+                                            InputParsers.amount(v),
+                                          ),
                                     ),
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
-                                          signed: true,
-                                        ),
-                                    validator: (v) =>
-                                        BillingRules.validateVoAmount(
-                                          vm.type,
-                                          InputParsers.amount(v),
-                                        ),
                                   ),
-                                ),
-                                const SizedBox(width: AppSpacing.md),
+                                  const SizedBox(width: AppSpacing.md),
+                                ],
                                 Expanded(
                                   child: TextFormField(
                                     controller: _days,
@@ -192,8 +196,9 @@ class _VariationOrderFormPageState extends State<VariationOrderFormPage> {
                   ),
                 ),
                 AppActionBar(
-                  hint:
-                      'The PM submits the VO to the owner, then the client approves.',
+                  hint: finance
+                      ? 'You send the VO to the client for approval.'
+                      : 'The owner prices the change and sends it to the client.',
                   children: [
                     FilledButton(
                       onPressed: vm.isBusy ? null : _save,

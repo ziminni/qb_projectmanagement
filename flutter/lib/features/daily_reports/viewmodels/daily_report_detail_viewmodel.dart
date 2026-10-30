@@ -70,11 +70,11 @@ class DailyReportDetailViewModel extends ChangeNotifier with ActionRunner {
         return;
       }
       _isPm =
-          role == AppRole.pm &&
+          role == AppRole.owner &&
           await _projects.isAssigned(
             _project!.id,
             _session.user!.id,
-            AppRole.pm,
+            AppRole.owner,
           );
       for (final m in await _masterData.getMaterials()) {
         _materialNames[m.id] = '${m.name} (${m.unit})';

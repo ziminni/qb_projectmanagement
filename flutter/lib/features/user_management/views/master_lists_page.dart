@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
@@ -67,7 +68,7 @@ class MasterListsPage extends StatelessWidget {
                           ListTile(
                             title: Text(m.name),
                             subtitle: Text(
-                              '${Formatters.peso(m.defaultUnitCost)} per ${m.unit}'
+                              '${canSeeFinance() ? '${Formatters.peso(m.defaultUnitCost)} per ' : 'Unit: '}${m.unit}'
                               '${m.storeSku == null ? '' : ' · SKU ${m.storeSku}'}',
                             ),
                             trailing: const Icon(Icons.edit_outlined),
@@ -230,8 +231,8 @@ class MasterListsPage extends StatelessWidget {
                           ListTile(
                             title: Text(e.name),
                             subtitle: Text(
-                              '${e.ownership.label} · '
-                              '${Formatters.peso(e.rate)} ${e.rateUnit.label}',
+                              '${e.ownership.label}'
+                              '${canSeeFinance() ? ' · ${Formatters.peso(e.rate)} ${e.rateUnit.label}' : ''}',
                             ),
                             trailing: const Icon(Icons.edit_outlined),
                             onTap: () async {

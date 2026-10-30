@@ -18,7 +18,6 @@ enum VariationOrderType implements JsonEnum {
 
 enum VariationOrderStatus implements JsonEnum {
   proposed('proposed', 'Proposed'),
-  pendingOwner('pending_owner', 'Waiting for owner'),
   pendingClient('pending_client', 'Waiting for client'),
   approved('approved', 'Approved'),
   rejected('rejected', 'Rejected');

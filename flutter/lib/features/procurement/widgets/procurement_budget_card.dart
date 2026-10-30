@@ -53,8 +53,8 @@ class ProcurementBudgetCard extends StatelessWidget {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'This exceeds the remaining category budget. After the '
-                      'PM approves, it also needs owner approval.',
+                      'This exceeds the remaining category budget. Check it '
+                      'before approving.',
                     ),
                   ),
                 ],

@@ -72,29 +72,16 @@ class VariationOrderDetailPage extends StatelessWidget {
                         : () => reportAction(
                             context,
                             vm.submit(),
-                            success: 'Sent to the owner.',
+                            success: 'Sent to the client.',
                           ),
                     icon: const Icon(Icons.send),
-                    label: const Text('Submit to owner'),
+                    label: const Text('Send to client'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () =>
                         context.go('${AppRoutes.variationOrders}/${v.id}/edit'),
                     icon: const Icon(Icons.edit_outlined),
                     label: const Text('Edit'),
-                  ),
-                ],
-                if (vm.canOwnerReview) ...[
-                  FilledButton.icon(
-                    onPressed: vm.isBusy
-                        ? null
-                        : () => reportAction(
-                            context,
-                            vm.approve(),
-                            success: 'Approved and sent to the client.',
-                          ),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Approve and send to client'),
                   ),
                   OutlinedButton.icon(
                     onPressed: vm.isBusy
@@ -114,7 +101,7 @@ class VariationOrderDetailPage extends StatelessWidget {
                   ),
                 ],
                 if (v.status == VariationOrderStatus.approved &&
-                    vm.role == AppRole.pm)
+                    vm.role == AppRole.owner)
                   OutlinedButton.icon(
                     onPressed: () => context.go(
                       AppRoutes.projectTab(v.projectId, ProjectTab.schedule),
@@ -131,17 +118,18 @@ class VariationOrderDetailPage extends StatelessWidget {
                 children: [
                   AppInfoRow(label: 'Type', value: v.type.label),
                   AppInfoRow(label: 'Description', value: v.description),
-                  AppInfoRow(
-                    label: 'Cost impact',
-                    value:
-                        '${v.amount >= 0 ? '+' : '−'}${Formatters.peso(v.amount.abs())}',
-                  ),
+                  if (vm.role.seesFinance)
+                    AppInfoRow(
+                      label: 'Cost impact',
+                      value:
+                          '${v.amount >= 0 ? '+' : '−'}${Formatters.peso(v.amount.abs())}',
+                    ),
                   AppInfoRow(
                     label: 'Time impact',
                     value: '${v.daysImpact} day(s)',
                   ),
                   AppInfoRow(
-                    label: 'Owner approval',
+                    label: 'Sent to client by',
                     value: v.approvedByOwner == null
                         ? 'Pending'
                         : vm.userName(v.approvedByOwner!),

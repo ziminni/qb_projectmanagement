@@ -28,9 +28,9 @@ void main() {
             id: 0,
             companyId: 1,
             fullName: 'X',
-            email: 'JOSE@example.ph',
+            email: 'RAMON@example.ph',
           ),
-          [AppRole.pm],
+          [AppRole.owner],
         ),
         throwsRule,
       );
@@ -53,7 +53,7 @@ void main() {
       );
       // Ana is a site engineer only.
       expect(
-        projects.setUserAssignments(4, [(projectId: 2, role: AppRole.pm)]),
+        projects.setUserAssignments(4, [(projectId: 2, role: AppRole.owner)]),
         throwsRule,
       );
       await projects.setUserAssignments(4, [

@@ -32,7 +32,7 @@ class MaterialRequestDraft {
   final List<({int materialId, double quantity})> items;
 }
 
-/// Purchasing's choice for one request item.
+/// The owner's choice for one request item.
 class OrderLine {
   const OrderLine({
     required this.requestItemId,
@@ -128,8 +128,8 @@ abstract interface class ProcurementRepository {
     required String reason,
   });
 
-  /// Turns an approved request into one PO per supplier. POs above the
-  /// approval threshold wait for the owner.
+  /// Owner turns an approved request into one PO per supplier, released to
+  /// the supplier right away.
   Future<List<PurchaseOrder>> createPurchaseOrders(
     int requestId,
     List<OrderLine> lines, {
@@ -142,8 +142,6 @@ abstract interface class ProcurementRepository {
   });
 
   Future<PurchaseOrderDetail?> getPurchaseOrder(int id);
-
-  Future<PurchaseOrder> approvePurchaseOrder(int id, {required int userId});
 
   Future<PurchaseOrder> cancelPurchaseOrder(int id, {required int userId});
 

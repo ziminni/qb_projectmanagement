@@ -46,48 +46,42 @@ class DashboardPage extends StatelessWidget {
           child: ListView(
             padding: pagePadding(context),
             children: [
-              Text(
-                vm.isOwner ? 'Company overview' : 'Good day, ${vm.firstName}',
-                style: textTheme.headlineSmall,
-              ),
+              Text('Good day, ${vm.firstName}', style: textTheme.headlineSmall),
               const SizedBox(height: AppSpacing.sm),
               Wrap(
                 spacing: AppSpacing.sm,
                 runSpacing: AppSpacing.sm,
                 children: [
-                  if (vm.isOwner) ...[
-                    _action(
-                      context,
-                      Icons.add,
-                      'New project',
-                      AppRoutes.projectNew,
-                    ),
-                    _action(
-                      context,
-                      Icons.summarize_outlined,
-                      'Expense reports',
-                      AppRoutes.expenseReports,
-                    ),
-                  ] else ...[
-                    _action(
-                      context,
-                      Icons.fact_check_outlined,
-                      'Verify to-dos',
-                      AppRoutes.todoVerification,
-                    ),
-                    _action(
-                      context,
-                      Icons.receipt_long_outlined,
-                      'New billing',
-                      AppRoutes.billingNew,
-                    ),
-                    _action(
-                      context,
-                      Icons.difference_outlined,
-                      'Raise a VO',
-                      AppRoutes.variationOrderNew,
-                    ),
-                  ],
+                  _action(
+                    context,
+                    Icons.add,
+                    'New project',
+                    AppRoutes.projectNew,
+                  ),
+                  _action(
+                    context,
+                    Icons.fact_check_outlined,
+                    'Verify to-dos',
+                    AppRoutes.todoVerification,
+                  ),
+                  _action(
+                    context,
+                    Icons.receipt_long_outlined,
+                    'New billing',
+                    AppRoutes.billingNew,
+                  ),
+                  _action(
+                    context,
+                    Icons.difference_outlined,
+                    'Raise a VO',
+                    AppRoutes.variationOrderNew,
+                  ),
+                  _action(
+                    context,
+                    Icons.summarize_outlined,
+                    'Expense reports',
+                    AppRoutes.expenseReports,
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -96,9 +90,7 @@ class DashboardPage extends StatelessWidget {
                 runSpacing: AppSpacing.md,
                 children: [
                   DashboardStatTile(
-                    label: vm.isOwner
-                        ? 'Active projects'
-                        : 'My active projects',
+                    label: 'Active projects',
                     value: '${vm.active.length}',
                     detail: '${vm.projects.length} in total',
                     icon: Icons.apartment_outlined,
@@ -174,7 +166,7 @@ class DashboardPage extends StatelessWidget {
                 const SizedBox(height: AppSpacing.lg),
               ],
               AppSectionCard(
-                title: vm.isOwner ? 'All projects' : 'My projects',
+                title: 'My projects',
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [

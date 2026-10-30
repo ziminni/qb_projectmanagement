@@ -31,7 +31,7 @@ class VariationOrdersViewModel extends ChangeNotifier {
 
   /// Site engineers propose; PMs prepare.
   bool get canCreate =>
-      _session.activeRole == AppRole.pm ||
+      _session.activeRole == AppRole.owner ||
       _session.activeRole == AppRole.siteEngineer;
 
   Future<void> load() async {

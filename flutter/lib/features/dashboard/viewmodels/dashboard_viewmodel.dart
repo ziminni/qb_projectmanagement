@@ -50,7 +50,6 @@ class DashboardViewModel extends ChangeNotifier {
   bool get isLoading => _loading;
   String? get error => _error;
   AppRole get role => _session.activeRole!;
-  bool get isOwner => role == AppRole.owner;
   String get firstName => _session.user!.fullName.split(' ').first;
 
   /// Ongoing projects first, then the rest of the pipeline.

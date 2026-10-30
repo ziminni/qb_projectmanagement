@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/formatters.dart';
@@ -47,24 +48,30 @@ class ProjectMaterialsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
-            AppSectionCard(
-              title: 'Ordered cost by source',
-              child: Wrap(
-                spacing: AppSpacing.xl,
-                runSpacing: AppSpacing.md,
-                children: [
-                  AppFigure(
-                    label: 'Own store',
-                    value: Formatters.peso(vm.costFor(MaterialSource.ownStore)),
-                  ),
-                  AppFigure(
-                    label: 'Other suppliers',
-                    value: Formatters.peso(vm.costFor(MaterialSource.external)),
-                  ),
-                ],
+            if (canSeeFinance()) ...[
+              AppSectionCard(
+                title: 'Ordered cost by source',
+                child: Wrap(
+                  spacing: AppSpacing.xl,
+                  runSpacing: AppSpacing.md,
+                  children: [
+                    AppFigure(
+                      label: 'Own store',
+                      value: Formatters.peso(
+                        vm.costFor(MaterialSource.ownStore),
+                      ),
+                    ),
+                    AppFigure(
+                      label: 'Other suppliers',
+                      value: Formatters.peso(
+                        vm.costFor(MaterialSource.external),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            gap,
+              gap,
+            ],
             AppSectionCard(
               title: 'Requests (${vm.requests.length})',
               padding: EdgeInsets.zero,

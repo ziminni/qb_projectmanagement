@@ -37,12 +37,7 @@ class MockProjectRepository implements ProjectRepository {
 
   @override
   Future<List<Project>> getProjectsFor(int userId, AppRole role) async {
-    if (const [
-      AppRole.owner,
-      AppRole.admin,
-      AppRole.purchasing,
-      AppRole.accountant,
-    ].contains(role)) {
+    if (const [AppRole.admin, AppRole.accountant].contains(role)) {
       return List.unmodifiable(_projects);
     }
     final ids = {

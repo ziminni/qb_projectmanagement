@@ -11,7 +11,7 @@ void main() {
   setUp(resetServices);
 
   late MockDocumentRepository repo;
-  setUp(() => repo = MockDocumentRepository(projects: getIt(), users: getIt()));
+  setUp(() => repo = MockDocumentRepository(projects: getIt()));
 
   Matcher throwsRule(String fragment) => throwsA(
     isA<BusinessRuleException>().having(
@@ -22,16 +22,16 @@ void main() {
   );
 
   test('upload rules: who, file type and duplicate names', () async {
-    // Carlo (purchasing) is not on the site team.
+    // Liza (accountant) is not on the site team.
     expect(
       repo.upload(
         projectId: 1,
         name: 'X',
         type: DocumentType.plan,
         fileName: 'x.pdf',
-        userId: 5,
+        userId: 6,
       ),
-      throwsRule('Only the owner'),
+      throwsRule('Only the project'),
     );
     expect(
       repo.upload(
@@ -63,16 +63,16 @@ void main() {
     expect(doc.fileName, 'asbuilt-e.pdf');
   });
 
-  test('only the uploader, PM or owner can delete', () async {
-    // Doc 4 was uploaded by the PM; Ana is the site engineer.
+  test('only the uploader or the owner can delete', () async {
+    // Doc 4 was uploaded by the owner; Ana is the site engineer.
     expect(repo.delete(4, userId: 4), throwsRule('Only the uploader'));
-    await repo.delete(4, userId: 2);
+    await repo.delete(4, userId: 3);
     expect((await repo.getDocuments(1)).any((d) => d.id == 4), isFalse);
   });
 
   testWidgets('documents tab groups by type and uploads', (tester) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/projects/1/documents');
     expect(find.text('Plans (2)'), findsOneWidget);
     expect(find.text('Permits (1)'), findsOneWidget);

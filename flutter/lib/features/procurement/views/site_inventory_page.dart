@@ -9,7 +9,7 @@ import '../viewmodels/procurement_lookups.dart';
 import '../viewmodels/site_inventory_viewmodel.dart';
 import '../widgets/procurement_inventory_table.dart';
 
-/// Site inventory per project (purchasing).
+/// Site inventory per project (owner).
 class SiteInventoryPage extends StatelessWidget {
   const SiteInventoryPage({super.key});
 

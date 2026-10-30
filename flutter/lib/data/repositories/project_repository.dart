@@ -8,7 +8,7 @@ abstract interface class ProjectRepository {
   Future<List<Project>> getProjects();
 
   /// Projects visible to [userId] acting as [role]: owner and admin see all,
-  /// purchasing and accountant see all for their work queues, everyone else
+  /// accountant sees all for their work queues, everyone else
   /// sees only projects they are assigned to.
   Future<List<Project>> getProjectsFor(int userId, AppRole role);
 

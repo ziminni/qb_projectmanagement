@@ -43,8 +43,6 @@ class VariationOrderDetailViewModel extends ChangeNotifier with ActionRunner {
   AppRole get role => _session.activeRole!;
 
   bool get canPrepare => _isPm && vo?.status == VariationOrderStatus.proposed;
-  bool get canOwnerReview =>
-      role == AppRole.owner && vo?.status == VariationOrderStatus.pendingOwner;
 
   Future<void> load() async {
     try {
@@ -60,11 +58,11 @@ class VariationOrderDetailViewModel extends ChangeNotifier with ActionRunner {
         return;
       }
       _isPm =
-          role == AppRole.pm &&
+          role == AppRole.owner &&
           await _projects.isAssigned(
             _project!.id,
             _session.user!.id,
-            AppRole.pm,
+            AppRole.owner,
           );
       _userNames = {for (final u in await _users.getUsers()) u.id: u.fullName};
     } catch (e) {
@@ -85,9 +83,6 @@ class VariationOrderDetailViewModel extends ChangeNotifier with ActionRunner {
 
   Future<String?> submit() =>
       _act(() => _billing.submitVariationOrder(voId, userId: _me));
-
-  Future<String?> approve() =>
-      _act(() => _billing.ownerApproveVo(voId, userId: _me));
 
   Future<String?> reject(String reason) =>
       _act(() => _billing.ownerRejectVo(voId, userId: _me, reason: reason));

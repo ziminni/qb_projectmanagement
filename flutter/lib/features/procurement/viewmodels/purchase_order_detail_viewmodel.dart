@@ -34,12 +34,8 @@ class PurchaseOrderDetailViewModel extends ChangeNotifier with ActionRunner {
   double get paid =>
       _detail?.payments.fold<double>(0, (s, p) => s + p.amount) ?? 0;
 
-  bool get canApprove =>
-      role == AppRole.owner &&
-      order?.status == PurchaseOrderStatus.pendingOwner;
-
   bool get canCancel =>
-      role == AppRole.purchasing &&
+      role == AppRole.owner &&
       _detail != null &&
       _detail!.deliveries.isEmpty &&
       order!.status != PurchaseOrderStatus.cancelled;
@@ -63,11 +59,6 @@ class PurchaseOrderDetailViewModel extends ChangeNotifier with ActionRunner {
       notifyListeners();
     }
   }
-
-  Future<String?> approve() => runAction(() async {
-    await _procurement.approvePurchaseOrder(orderId, userId: _session.user!.id);
-    _detail = await _procurement.getPurchaseOrder(orderId);
-  });
 
   Future<String?> cancel() => runAction(() async {
     await _procurement.cancelPurchaseOrder(orderId, userId: _session.user!.id);

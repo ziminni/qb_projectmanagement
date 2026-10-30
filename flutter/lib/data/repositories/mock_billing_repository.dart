@@ -129,7 +129,7 @@ class MockBillingRepository implements BillingRepository {
   }) async {
     final project = await _project(projectId);
     BillingRules.enforce(BillingRules.requireBillable(project));
-    await _requireRole(projectId, userId, AppRole.pm);
+    await _requireRole(projectId, userId, AppRole.owner);
     if (_billings.any((b) => b.projectId == projectId && b.status.inProgress)) {
       throw const BusinessRuleException(
         'This project already has a billing in progress. It must be paid or '
@@ -178,38 +178,7 @@ class MockBillingRepository implements BillingRepository {
         'Only draft or disputed billings can be submitted.',
       );
     }
-    await _requireRole(b.projectId, userId, AppRole.pm);
-    final project = await _project(b.projectId);
-    await _notifyRole(
-      AppRole.owner,
-      'billing',
-      'Progress billing #${b.billingNo} for ${project.code} needs your approval.',
-      AppRoutes.billing(id),
-    );
-    return _setStatus(
-      id,
-      BillingStatus.pendingOwner,
-      userId,
-      'billing_submitted',
-    );
-  }
-
-  @override
-  Future<ProgressBilling> cancelBilling(int id, {required int userId}) async {
-    final b = _billing(id);
-    if (b.status != BillingStatus.draft && b.status != BillingStatus.disputed) {
-      throw const BusinessRuleException(
-        'Only draft or disputed billings can be withdrawn.',
-      );
-    }
-    await _requireRole(b.projectId, userId, AppRole.pm);
-    return _setStatus(id, BillingStatus.rejected, userId, 'billing_withdrawn');
-  }
-
-  @override
-  Future<ProgressBilling> ownerApprove(int id, {required int userId}) async {
-    final b = _billing(id);
-    _expect(b.status, BillingStatus.pendingOwner);
+    await _requireRole(b.projectId, userId, AppRole.owner);
     final project = await _project(b.projectId);
     await _notifications?.notifyProjectRole(
       b.projectId,
@@ -224,33 +193,20 @@ class MockBillingRepository implements BillingRepository {
       id,
       BillingStatus.pendingClient,
       userId,
-      'billing_owner_approved',
+      'billing_submitted',
     );
   }
 
   @override
-  Future<ProgressBilling> ownerReject(
-    int id, {
-    required int userId,
-    required String reason,
-  }) async {
+  Future<ProgressBilling> cancelBilling(int id, {required int userId}) async {
     final b = _billing(id);
-    _expect(b.status, BillingStatus.pendingOwner);
-    _requireReason(reason);
-    await _notifications?.notifyProjectRole(
-      b.projectId,
-      AppRole.pm,
-      type: 'billing',
-      message: 'Billing #${b.billingNo} was rejected by the owner: $reason',
-      link: AppRoutes.billing(id),
-    );
-    return _setStatus(
-      id,
-      BillingStatus.rejected,
-      userId,
-      'billing_owner_rejected',
-      reason: reason,
-    );
+    if (b.status != BillingStatus.draft && b.status != BillingStatus.disputed) {
+      throw const BusinessRuleException(
+        'Only draft or disputed billings can be withdrawn.',
+      );
+    }
+    await _requireRole(b.projectId, userId, AppRole.owner);
+    return _setStatus(id, BillingStatus.rejected, userId, 'billing_withdrawn');
   }
 
   @override
@@ -284,7 +240,7 @@ class MockBillingRepository implements BillingRepository {
     _requireReason(reason);
     await _notifications?.notifyProjectRole(
       b.projectId,
-      AppRole.pm,
+      AppRole.owner,
       type: 'billing',
       message: 'The client disputed billing #${b.billingNo}: $reason',
       link: AppRoutes.billing(id),
@@ -398,7 +354,11 @@ class MockBillingRepository implements BillingRepository {
     required int userId,
   }) async {
     final project = await _project(vo.projectId);
-    final isPm = await _projects.isAssigned(vo.projectId, userId, AppRole.pm);
+    final isPm = await _projects.isAssigned(
+      vo.projectId,
+      userId,
+      AppRole.owner,
+    );
     final isSite = await _projects.isAssigned(
       vo.projectId,
       userId,
@@ -406,12 +366,16 @@ class MockBillingRepository implements BillingRepository {
     );
     if (!isPm && !isSite) {
       throw const BusinessRuleException(
-        'Only the PM or site engineer of this project can raise a VO.',
+        'Only the owner or site engineer of this project can raise a VO.',
       );
     }
     BillingRules.enforce(BillingRules.validateVoDescription(vo.description));
-    BillingRules.enforce(BillingRules.validateVoAmount(vo.type, vo.amount));
-    final amount = BillingRules.signedAmount(vo.type, vo.amount);
+    // Site engineers describe the change; costs are confidential, so the
+    // owner prices it before sending it to the client.
+    if (isPm) {
+      BillingRules.enforce(BillingRules.validateVoAmount(vo.type, vo.amount));
+    }
+    final amount = isPm ? BillingRules.signedAmount(vo.type, vo.amount) : 0.0;
     BillingRules.enforce(
       BillingRules.validateContractAfterVo(
         contractAmount: project.contractAmount,
@@ -433,7 +397,7 @@ class MockBillingRepository implements BillingRepository {
       if (!isPm) {
         await _notifications?.notifyProjectRole(
           vo.projectId,
-          AppRole.pm,
+          AppRole.owner,
           type: 'variation_order',
           message:
               '${created.voNo} was proposed for ${project.code}. Prepare it.',
@@ -449,7 +413,7 @@ class MockBillingRepository implements BillingRepository {
     final updated = _vos[i].copyWith(
       type: vo.type,
       description: vo.description.trim(),
-      amount: amount,
+      amount: isPm ? amount : _vos[i].amount,
       daysImpact: vo.daysImpact,
     );
     _vos[i] = updated;
@@ -466,32 +430,17 @@ class MockBillingRepository implements BillingRepository {
     if (vo.status != VariationOrderStatus.proposed) {
       throw const BusinessRuleException('Only proposed VOs can be submitted.');
     }
-    await _requireRole(vo.projectId, userId, AppRole.pm);
-    _vos[i] = vo.copyWith(status: VariationOrderStatus.pendingOwner);
-    await _logVo(userId, 'vo_submitted', id);
-    await _notifyRole(
-      AppRole.owner,
-      'variation_order',
-      '${vo.voNo} needs your approval.',
-      AppRoutes.variationOrder(id),
-    );
-    return _vos[i];
-  }
-
-  @override
-  Future<VariationOrder> ownerApproveVo(int id, {required int userId}) async {
-    final i = _voIndex(id);
-    final vo = _vos[i];
-    if (vo.status != VariationOrderStatus.pendingOwner) {
+    await _requireRole(vo.projectId, userId, AppRole.owner);
+    if (BillingRules.validateVoAmount(vo.type, vo.amount.abs()) != null) {
       throw const BusinessRuleException(
-        'This VO is not waiting for the owner.',
+        'Enter the cost impact before sending the VO to the client.',
       );
     }
     _vos[i] = vo.copyWith(
       status: VariationOrderStatus.pendingClient,
       approvedByOwner: () => userId,
     );
-    await _logVo(userId, 'vo_owner_approved', id);
+    await _logVo(userId, 'vo_submitted', id);
     await _notifications?.notifyProjectRole(
       vo.projectId,
       AppRole.client,
@@ -509,13 +458,13 @@ class MockBillingRepository implements BillingRepository {
     required String reason,
   }) async {
     final i = _voIndex(id);
-    if (_vos[i].status != VariationOrderStatus.pendingOwner) {
-      throw const BusinessRuleException(
-        'This VO is not waiting for the owner.',
-      );
+    final vo = _vos[i];
+    if (vo.status != VariationOrderStatus.proposed) {
+      throw const BusinessRuleException('Only proposed VOs can be rejected.');
     }
+    await _requireRole(vo.projectId, userId, AppRole.owner);
     _requireReason(reason);
-    _vos[i] = _vos[i].copyWith(status: VariationOrderStatus.rejected);
+    _vos[i] = vo.copyWith(status: VariationOrderStatus.rejected);
     await _logVo(userId, 'vo_owner_rejected', id, reason: reason);
     return _vos[i];
   }
@@ -550,7 +499,7 @@ class MockBillingRepository implements BillingRepository {
     await _logVo(userId, 'vo_client_approved', id);
     await _notifications?.notifyProjectRole(
       vo.projectId,
-      AppRole.pm,
+      AppRole.owner,
       type: 'variation_order',
       message:
           '${vo.voNo} is approved. The contract amount and target end date '

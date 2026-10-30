@@ -10,54 +10,45 @@ import 'app_status_steps.dart';
 abstract final class AppWorkflowSteps {
   static AppStatusSteps billing(BillingStatus status) {
     const steps = [
-      AppStep('Prepared', who: 'PM'),
-      AppStep('Internal approval', who: 'Owner'),
+      AppStep('Prepared', who: 'Owner'),
       AppStep('Client approval', who: 'Client'),
       AppStep('Payment', who: 'Accountant'),
     ];
     return switch (status) {
       BillingStatus.draft => const AppStatusSteps(steps: steps, current: 0),
-      BillingStatus.pendingOwner => const AppStatusSteps(
+      BillingStatus.pendingClient => const AppStatusSteps(
         steps: steps,
         current: 1,
       ),
-      BillingStatus.pendingClient => const AppStatusSteps(
-        steps: steps,
-        current: 2,
-      ),
       BillingStatus.disputed => const AppStatusSteps(
         steps: steps,
-        current: 2,
+        current: 1,
         stoppedLabel: 'Disputed',
       ),
-      BillingStatus.approved => const AppStatusSteps(steps: steps, current: 3),
+      BillingStatus.approved => const AppStatusSteps(steps: steps, current: 2),
       BillingStatus.paid => const AppStatusSteps(
         steps: steps,
-        current: 3,
+        current: 2,
         allDone: true,
       ),
       BillingStatus.rejected => const AppStatusSteps(
         steps: steps,
-        current: 1,
-        stoppedLabel: 'Rejected',
+        current: 0,
+        stoppedLabel: 'Withdrawn',
       ),
     };
   }
 
   static AppStatusSteps variationOrder(VariationOrder vo) {
     const steps = [
-      AppStep('Proposed', who: 'Site engineer / PM'),
-      AppStep('Internal approval', who: 'Owner'),
+      AppStep('Proposed', who: 'Site engineer / owner'),
+      AppStep('Sent to client', who: 'Owner'),
       AppStep('Client approval', who: 'Client'),
     ];
     return switch (vo.status) {
       VariationOrderStatus.proposed => const AppStatusSteps(
         steps: steps,
         current: 0,
-      ),
-      VariationOrderStatus.pendingOwner => const AppStatusSteps(
-        steps: steps,
-        current: 1,
       ),
       VariationOrderStatus.pendingClient => const AppStatusSteps(
         steps: steps,
@@ -79,26 +70,21 @@ abstract final class AppWorkflowSteps {
   static AppStatusSteps materialRequest(MaterialRequestStatus status) {
     const steps = [
       AppStep('Requested', who: 'Site engineer'),
-      AppStep('Approval', who: 'PM'),
-      AppStep('Over-budget approval', who: 'Owner, if needed'),
-      AppStep('Purchase orders', who: 'Purchasing'),
+      AppStep('Approval', who: 'Owner'),
+      AppStep('Purchase orders', who: 'Owner'),
     ];
     return switch (status) {
       MaterialRequestStatus.pending => const AppStatusSteps(
         steps: steps,
         current: 1,
       ),
-      MaterialRequestStatus.pendingOwner => const AppStatusSteps(
+      MaterialRequestStatus.approved => const AppStatusSteps(
         steps: steps,
         current: 2,
       ),
-      MaterialRequestStatus.approved => const AppStatusSteps(
-        steps: steps,
-        current: 3,
-      ),
       MaterialRequestStatus.ordered => const AppStatusSteps(
         steps: steps,
-        current: 3,
+        current: 2,
         allDone: true,
       ),
       MaterialRequestStatus.rejected => const AppStatusSteps(
@@ -112,7 +98,7 @@ abstract final class AppWorkflowSteps {
   static AppStatusSteps dailyReport(DailyReportStatus status) {
     const steps = [
       AppStep('Draft', who: 'Site engineer'),
-      AppStep('Review', who: 'PM'),
+      AppStep('Review', who: 'Owner'),
       AppStep('Approved'),
     ];
     return switch (status) {
@@ -137,7 +123,7 @@ abstract final class AppWorkflowSteps {
   static AppStatusSteps payroll(PayrollStatus status) {
     const steps = [
       AppStep('Attendance', who: 'Site engineer'),
-      AppStep('Verify at cut-off', who: 'PM'),
+      AppStep('Verify at cut-off', who: 'Owner'),
       AppStep('Process pay', who: 'Accountant'),
     ];
     return switch (status) {

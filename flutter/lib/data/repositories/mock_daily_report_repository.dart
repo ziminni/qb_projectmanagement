@@ -277,7 +277,7 @@ class MockDailyReportRepository implements DailyReportRepository {
     final project = await _projects.getProject(report.projectId);
     await _notifications?.notifyProjectRole(
       report.projectId,
-      AppRole.pm,
+      AppRole.owner,
       type: 'report_submitted',
       message:
           'Daily report for ${project?.code} on ${_fmt(report.reportDate)} '
@@ -398,9 +398,9 @@ class MockDailyReportRepository implements DailyReportRepository {
   }
 
   Future<void> _requirePm(int projectId, int userId) async {
-    if (!await _projects.isAssigned(projectId, userId, AppRole.pm)) {
+    if (!await _projects.isAssigned(projectId, userId, AppRole.owner)) {
       throw const BusinessRuleException(
-        'Only the PM of this project can review its reports.',
+        'Only the owner of this project can review its reports.',
       );
     }
   }

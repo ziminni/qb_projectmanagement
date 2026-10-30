@@ -56,12 +56,12 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   ProjectProgress? get progress => _progress;
   AppRole get role => _session.activeRole!;
 
-  bool get canView => role == AppRole.owner || _assigned;
-  bool get canEdit => role == AppRole.pm && _assigned;
-  bool get canVerify => role == AppRole.pm && _assigned;
+  bool get canView => _assigned;
+  bool get canEdit => role == AppRole.owner && _assigned;
+  bool get canVerify => role == AppRole.owner && _assigned;
   bool get canMarkDone =>
-      _assigned && (role == AppRole.siteEngineer || role == AppRole.pm);
-  bool get showCosts => role != AppRole.client;
+      _assigned && (role == AppRole.siteEngineer || role == AppRole.owner);
+  bool get showCosts => role.seesFinance;
 
   String? userName(int? id) => id == null ? null : _userNames[id];
 

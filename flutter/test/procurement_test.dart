@@ -22,7 +22,6 @@ void main() {
       projects: getIt(),
       schedule: getIt(),
       masterData: getIt(),
-      company: getIt(),
       reports: getIt(),
       users: getIt(),
       auditLog: MockAuditLogRepository(),
@@ -67,46 +66,40 @@ void main() {
       );
     });
 
-    test('within budget: PM approval approves', () async {
-      final r = await repo.approveRequest(3, userId: 3, role: AppRole.pm);
+    test('within budget: owner approval approves', () async {
+      final r = await repo.approveRequest(3, userId: 3, role: AppRole.owner);
       expect(r.status, MaterialRequestStatus.approved);
     });
 
-    test('over budget: PM approval escalates to the owner', () async {
+    test('over budget: flagged, and the owner can still approve', () async {
       // 2,000 bags × ₱260 = ₱520,000 against Pillars' remaining ~₱306,150.
       final created = await repo.createRequest(draft(qty: 2000), userId: 4);
       final check = await repo.checkBudget(2, [
         (materialId: 1, quantity: 2000),
       ]);
       expect(check.exceedsBudget, isTrue);
-      final afterPm = await repo.approveRequest(
+      final approved = await repo.approveRequest(
         created.id,
         userId: 3,
-        role: AppRole.pm,
-      );
-      expect(afterPm.status, MaterialRequestStatus.pendingOwner);
-      expect(
-        repo.approveRequest(created.id, userId: 3, role: AppRole.pm),
-        throwsRule('cannot be approved'),
-      );
-      final afterOwner = await repo.approveRequest(
-        created.id,
-        userId: 2,
         role: AppRole.owner,
       );
-      expect(afterOwner.status, MaterialRequestStatus.approved);
+      expect(approved.status, MaterialRequestStatus.approved);
+      expect(
+        repo.approveRequest(created.id, userId: 3, role: AppRole.owner),
+        throwsRule('cannot be approved'),
+      );
     });
 
     test('rejecting needs a reason', () {
       expect(
-        repo.rejectRequest(3, userId: 3, role: AppRole.pm, reason: ''),
+        repo.rejectRequest(3, userId: 3, role: AppRole.owner, reason: ''),
         throwsRule('reason'),
       );
     });
   });
 
   group('purchase orders', () {
-    test('one PO per supplier; large ones wait for the owner', () async {
+    test('owner places one PO per supplier, released right away', () async {
       final detail = (await repo.getRequest(4))!;
       final sheets = detail.items.firstWhere((i) => i.materialId == 10);
       final wire = detail.items.firstWhere((i) => i.materialId == 9);
@@ -123,22 +116,34 @@ void main() {
           supplierId: 1,
           unitPrice: 95,
         ),
-      ], userId: 5);
+      ], userId: 3);
       expect(orders, hasLength(2));
       final roofing = orders.firstWhere((o) => o.supplierId == 4);
       expect(roofing.totalAmount, 99000);
-      expect(roofing.status, PurchaseOrderStatus.pendingOwner);
       expect(
-        orders.firstWhere((o) => o.supplierId == 1).status,
-        PurchaseOrderStatus.released,
+        orders.map((o) => o.status),
+        everyElement(PurchaseOrderStatus.released),
       );
+      expect(roofing.approvedBy, 3);
       expect(
         (await repo.getRequest(4))!.request.status,
         MaterialRequestStatus.ordered,
       );
+    });
 
-      final released = await repo.approvePurchaseOrder(roofing.id, userId: 2);
-      expect(released.status, PurchaseOrderStatus.released);
+    test('only the project owner places orders', () async {
+      final item = (await repo.getRequest(4))!.items.first;
+      expect(
+        repo.createPurchaseOrders(4, [
+          OrderLine(
+            requestItemId: item.id,
+            source: MaterialSource.external,
+            supplierId: 4,
+            unitPrice: 450,
+          ),
+        ], userId: 4),
+        throwsRule('Only the owner'),
+      );
     });
 
     test('source must match the supplier', () async {
@@ -151,7 +156,7 @@ void main() {
             supplierId: 4,
             unitPrice: 1,
           ),
-        ], userId: 5),
+        ], userId: 3),
         throwsRule('own store'),
       );
     });
@@ -165,8 +170,8 @@ void main() {
           supplierId: 4,
           unitPrice: 450,
         ),
-      ], userId: 5);
-      await repo.cancelPurchaseOrder(orders.single.id, userId: 5);
+      ], userId: 3);
+      await repo.cancelPurchaseOrder(orders.single.id, userId: 3);
       final again = (await repo.getRequest(4))!;
       expect(again.request.status, MaterialRequestStatus.approved);
       expect(again.items.every((i) => i.status.name == 'pending'), isTrue);
@@ -245,7 +250,7 @@ void main() {
     });
   });
 
-  testWidgets('site engineer requests materials with a budget check', (
+  testWidgets('site engineer requests materials without seeing costs', (
     tester,
   ) async {
     await pumpApp(tester);
@@ -266,21 +271,23 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Portland cement 40 kg (bag)').last);
     await tester.pumpAndSettle();
-    expect(find.text('Budget check'), findsOneWidget);
+    expect(find.text('Budget check'), findsNothing);
+    expect(find.textContaining('₱'), findsNothing);
     await tester.scrollUntilVisible(
-      find.text('Send to PM'),
+      find.text('Send to owner'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Send to PM'));
+    await tester.tap(find.text('Send to owner'));
     await tester.pumpAndSettle();
-    expect(find.text('Request sent to the PM.'), findsOneWidget);
-    expect(find.text('Waiting for PM'), findsOneWidget);
+    expect(find.text('Request sent to the owner.'), findsOneWidget);
+    expect(find.text('Waiting for owner'), findsOneWidget);
   });
 
-  testWidgets('purchasing orders an approved request', (tester) async {
+  testWidgets('owner orders an approved request', (tester) async {
     await pumpApp(tester);
-    await signInAs(tester, 'carlo@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
+    await goTo(tester, '/purchasing/requests');
     expect(find.textContaining('MR-0004'), findsOneWidget);
     await tester.tap(find.textContaining('MR-0004'));
     await tester.pumpAndSettle();
@@ -295,7 +302,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Southern Roofing Corp.').last);
     await tester.pumpAndSettle();
-    expect(find.textContaining('goes to the owner first'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.widgetWithText(FilledButton, 'Create purchase orders'),
       300,

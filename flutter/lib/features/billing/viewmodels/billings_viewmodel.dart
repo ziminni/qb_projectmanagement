@@ -32,7 +32,7 @@ class BillingsViewModel extends ChangeNotifier {
   List<ProgressBilling> get items => _items;
   BillingStatus? get statusFilter => _status;
   BilledSummary? get summary => _summary;
-  bool get canCreate => _session.activeRole == AppRole.pm;
+  bool get canCreate => _session.activeRole == AppRole.owner;
 
   Future<void> load() async {
     _loading = true;

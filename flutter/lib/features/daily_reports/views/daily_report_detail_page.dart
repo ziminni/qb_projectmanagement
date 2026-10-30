@@ -20,7 +20,7 @@ import '../widgets/daily_reports_return_dialog.dart';
 import '../widgets/daily_reports_status_chip.dart';
 
 /// A daily report with its review actions: the site engineer edits and
-/// submits; the PM approves or returns it with remarks.
+/// submits; the owner approves or returns it with remarks.
 class DailyReportDetailPage extends StatelessWidget {
   const DailyReportDetailPage({super.key, required this.reportId});
 
@@ -77,7 +77,7 @@ class DailyReportDetailPage extends StatelessWidget {
                 child: ListTile(
                   leading: const Icon(Icons.undo, color: AppColors.warning),
                   title: Text(
-                    'Returned by ${vm.userName(r.reviewedBy) ?? 'the PM'}',
+                    'Returned by ${vm.userName(r.reviewedBy) ?? 'the owner'}',
                   ),
                   subtitle: Text(r.remarks!),
                 ),
@@ -96,10 +96,10 @@ class DailyReportDetailPage extends StatelessWidget {
                           : () => reportAction(
                               context,
                               vm.submit(),
-                              success: 'Report submitted to the PM.',
+                              success: 'Report submitted to the owner.',
                             ),
                       icon: const Icon(Icons.send),
-                      label: const Text('Submit to PM'),
+                      label: const Text('Submit to owner'),
                     ),
                     OutlinedButton.icon(
                       onPressed: () =>

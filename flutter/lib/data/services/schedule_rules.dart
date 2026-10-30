@@ -79,7 +79,7 @@ abstract final class ScheduleRules {
       : null;
 
   static String? canSetDone(Todo todo, bool done) => (!done && todo.isVerified)
-      ? 'This to-do is verified. The PM must un-verify it first.'
+      ? 'This to-do is verified. The owner must un-verify it first.'
       : null;
 
   static String? canVerify(Todo todo) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/material_item.dart';
@@ -51,7 +52,9 @@ class _UserManagementMaterialDialogState
       base.copyWith(
         name: _name.text.trim(),
         unit: _unit.text.trim(),
-        defaultUnitCost: InputParsers.amount(_cost.text),
+        defaultUnitCost: canSeeFinance()
+            ? InputParsers.amount(_cost.text)
+            : base.defaultUnitCost,
         storeSku: () => InputParsers.optional(_sku.text),
       ),
     );
@@ -87,23 +90,25 @@ class _UserManagementMaterialDialogState
                       validator: (v) => MasterDataRules.required(v, 'unit'),
                     ),
                   ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _cost,
-                      decoration: const InputDecoration(
-                        labelText: 'Unit cost',
-                        prefixText: '₱ ',
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      validator: (v) => MasterDataRules.validateAmount(
-                        InputParsers.amount(v),
-                        'unit cost',
+                  if (canSeeFinance()) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _cost,
+                        decoration: const InputDecoration(
+                          labelText: 'Unit cost',
+                          prefixText: '₱ ',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        validator: (v) => MasterDataRules.validateAmount(
+                          InputParsers.amount(v),
+                          'unit cost',
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: AppSpacing.md),

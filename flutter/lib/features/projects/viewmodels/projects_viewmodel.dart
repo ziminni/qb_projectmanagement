@@ -16,8 +16,8 @@ class ProjectSummary {
   final bool isBehind;
 }
 
-/// Project list for the owner (all), PMs and site engineers (assigned), and
-/// purchasing and accountants (all, read-only).
+/// Project list for owners and site engineers (assigned) and accountants
+/// (all, read-only).
 class ProjectsViewModel extends ChangeNotifier {
   ProjectsViewModel({
     required SessionService session,
@@ -43,7 +43,7 @@ class ProjectsViewModel extends ChangeNotifier {
   bool get isLoading => _loading;
   String? get error => _error;
   AppRole get role => _session.activeRole!;
-  bool get canCreate => role == AppRole.owner || role == AppRole.pm;
+  bool get canCreate => role == AppRole.owner;
   bool get isSiteEngineer => role == AppRole.siteEngineer;
   ProjectStatus? get statusFilter => _status;
 

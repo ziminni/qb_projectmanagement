@@ -11,7 +11,6 @@ import '../../../shared/widgets/app_billing_status_chip.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_history_list.dart';
 import '../../../shared/widgets/app_payment_dialog.dart';
-import '../../../shared/widgets/app_reason_dialog.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
 import '../viewmodels/billing_detail_viewmodel.dart';
@@ -70,10 +69,10 @@ class BillingDetailPage extends StatelessWidget {
                         : () => reportAction(
                             context,
                             vm.submit(),
-                            success: 'Sent to the owner for approval.',
+                            success: 'Sent to the client for approval.',
                           ),
                     icon: const Icon(Icons.send),
-                    label: const Text('Submit to owner'),
+                    label: const Text('Send to client'),
                   ),
                 if (vm.canCancel)
                   OutlinedButton(
@@ -86,35 +85,6 @@ class BillingDetailPage extends StatelessWidget {
                           ),
                     child: const Text('Withdraw'),
                   ),
-                if (vm.canOwnerReview) ...[
-                  FilledButton.icon(
-                    onPressed: vm.isBusy
-                        ? null
-                        : () => reportAction(
-                            context,
-                            vm.approve(),
-                            success: 'Approved and sent to the client.',
-                          ),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Approve and send to client'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: vm.isBusy
-                        ? null
-                        : () async {
-                            final reason = await AppReasonDialog.show(
-                              context,
-                              title: 'Reject billing',
-                              confirmLabel: 'Reject',
-                            );
-                            if (reason != null && context.mounted) {
-                              await reportAction(context, vm.reject(reason));
-                            }
-                          },
-                    icon: const Icon(Icons.close),
-                    label: const Text('Reject'),
-                  ),
-                ],
                 if (vm.canRecordPayment)
                   FilledButton.icon(
                     onPressed: vm.isBusy

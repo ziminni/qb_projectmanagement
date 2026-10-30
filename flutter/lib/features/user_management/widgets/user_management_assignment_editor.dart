@@ -40,8 +40,8 @@ class _UserManagementAssignmentEditorState
     final textTheme = Theme.of(context).textTheme;
     if (widget.roles.isEmpty) {
       return Text(
-        'Project assignments apply to PMs, site engineers and clients. '
-        'Owners, purchasing and accountants see every project.',
+        'Project assignments apply to owners, site engineers and clients. '
+        'Accountants see every project.',
         style: textTheme.bodySmall,
       );
     }

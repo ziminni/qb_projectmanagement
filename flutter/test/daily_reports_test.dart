@@ -87,7 +87,7 @@ void main() {
       // Done but unverified: progress unchanged.
       expect(await progress(), closeTo(0.37, 1e-9));
 
-      expect(repo.approve(saved.id, userId: 4), throwsRule('PM'));
+      expect(repo.approve(saved.id, userId: 4), throwsRule('owner'));
       await repo.approve(saved.id, userId: 3);
       // Pillars 4 of 5 → 80% × 20% weight: +4 points.
       expect(await progress(), closeTo(0.41, 1e-9));
@@ -155,13 +155,13 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('Submit to PM'),
+      find.text('Submit to owner'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Submit to PM'));
+    await tester.tap(find.text('Submit to owner'));
     await tester.pumpAndSettle();
-    expect(find.text('Report submitted to the PM.'), findsOneWidget);
+    expect(find.text('Report submitted to the owner.'), findsOneWidget);
     expect(statusChip('Submitted'), findsOneWidget);
     expect(find.text('Mason'), findsOneWidget);
   });
@@ -170,7 +170,7 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/approvals');
     expect(find.text('Daily reports (1)'), findsWidgets);
     await tester.tap(find.text('Daily report · QB-2026-014'));

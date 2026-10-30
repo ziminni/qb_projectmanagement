@@ -23,17 +23,10 @@ abstract final class MockData {
       phone: '0917 555 0101',
     ),
     User(
-      id: 2,
+      id: 3,
       companyId: companyId,
       fullName: 'Ramon Dela Cruz',
       email: 'ramon@example.ph',
-      phone: '0917 555 0102',
-    ),
-    User(
-      id: 3,
-      companyId: companyId,
-      fullName: 'Jose Reyes',
-      email: 'jose@example.ph',
       phone: '0917 555 0103',
     ),
     User(
@@ -42,13 +35,6 @@ abstract final class MockData {
       fullName: 'Ana Bautista',
       email: 'ana@example.ph',
       phone: '0917 555 0104',
-    ),
-    User(
-      id: 5,
-      companyId: companyId,
-      fullName: 'Carlo Mendoza',
-      email: 'carlo@example.ph',
-      phone: '0917 555 0105',
     ),
     User(
       id: 6,
@@ -75,14 +61,12 @@ abstract final class MockData {
 
   static const userRoles = [
     UserRole(id: 1, userId: 1, role: AppRole.admin),
-    UserRole(id: 2, userId: 2, role: AppRole.owner),
-    UserRole(id: 3, userId: 3, role: AppRole.pm),
+    UserRole(id: 3, userId: 3, role: AppRole.owner),
     UserRole(id: 4, userId: 4, role: AppRole.siteEngineer),
-    UserRole(id: 5, userId: 5, role: AppRole.purchasing),
     UserRole(id: 6, userId: 6, role: AppRole.accountant),
     UserRole(id: 7, userId: 7, role: AppRole.client),
-    // A small-firm user who wears two hats.
-    UserRole(id: 8, userId: 8, role: AppRole.pm),
+    // A partner who runs a project and also works its site.
+    UserRole(id: 8, userId: 8, role: AppRole.owner),
     UserRole(id: 9, userId: 8, role: AppRole.siteEngineer),
   ];
 
@@ -148,13 +132,13 @@ abstract final class MockData {
       id: 1,
       projectId: 1,
       userId: 3,
-      roleOnProject: AppRole.pm,
+      roleOnProject: AppRole.owner,
     ),
     ProjectAssignment(
       id: 2,
       projectId: 2,
       userId: 3,
-      roleOnProject: AppRole.pm,
+      roleOnProject: AppRole.owner,
     ),
     ProjectAssignment(
       id: 3,
@@ -172,7 +156,7 @@ abstract final class MockData {
       id: 5,
       projectId: 3,
       userId: 8,
-      roleOnProject: AppRole.pm,
+      roleOnProject: AppRole.owner,
     ),
     ProjectAssignment(
       id: 6,
@@ -184,7 +168,7 @@ abstract final class MockData {
       id: 8,
       projectId: 4,
       userId: 3,
-      roleOnProject: AppRole.pm,
+      roleOnProject: AppRole.owner,
     ),
     ProjectAssignment(
       id: 7,

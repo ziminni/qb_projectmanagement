@@ -5,13 +5,12 @@ import '../../../data/models/app_role.dart';
 import '../../../data/models/material_request_item.dart';
 import '../../../data/models/material_source.dart';
 import '../../../data/models/supplier.dart';
-import '../../../data/repositories/company_repository.dart';
 import '../../../data/repositories/procurement_repository.dart';
 import '../../../data/services/business_rule_exception.dart';
 import '../../../data/services/session_service.dart';
 import 'procurement_lookups.dart';
 
-/// Purchasing's choice for one request item.
+/// The owner's choice for one request item.
 class OrderLineDraft {
   OrderLineDraft(this.item, {required this.unitPrice});
 
@@ -24,36 +23,31 @@ class OrderLineDraft {
   double get amount => item.quantity * unitPrice;
 }
 
-/// Turns an approved request into POs: purchasing picks Own store or Other
+/// Turns an approved request into POs: the owner picks Own store or Other
 /// supplier per item, and each supplier becomes one PO.
 class PurchaseOrderCreateViewModel extends ChangeNotifier with ActionRunner {
   PurchaseOrderCreateViewModel({
     required this.requestId,
     required SessionService session,
     required ProcurementRepository procurement,
-    required CompanyRepository company,
     required this.lookups,
   }) : _session = session,
-       _procurement = procurement,
-       _company = company;
+       _procurement = procurement;
 
   final int requestId;
   final SessionService _session;
   final ProcurementRepository _procurement;
-  final CompanyRepository _company;
   final ProcurementLookups lookups;
 
   bool _loading = true;
   String? _error;
   MaterialRequestDetail? _detail;
-  double _threshold = 0;
   List<OrderLineDraft> lines = const [];
   int _created = 0;
 
   bool get isLoading => _loading;
   String? get error => _error;
   MaterialRequestDetail? get detail => _detail;
-  double get threshold => _threshold;
   int get createdCount => _created;
 
   Supplier? get ownStore =>
@@ -73,12 +67,11 @@ class PurchaseOrderCreateViewModel extends ChangeNotifier with ActionRunner {
 
   Future<void> load() async {
     try {
-      if (_session.activeRole != AppRole.purchasing) {
-        _error = 'Only purchasing creates purchase orders.';
+      if (_session.activeRole != AppRole.owner) {
+        _error = 'Only the owner places purchase orders.';
         return;
       }
-      await lookups.load(_session.user!.id, AppRole.purchasing);
-      _threshold = (await _company.getSettings()).poApprovalThreshold;
+      await lookups.load(_session.user!.id, AppRole.owner);
       _detail = await _procurement.getRequest(requestId);
       if (_detail == null) {
         _error = 'Request not found.';

@@ -37,7 +37,7 @@ class ProjectDetailController extends ChangeNotifier {
       final role = _session.activeRole!;
       if (project == null) {
         error = 'Project not found.';
-      } else if ((role == AppRole.pm || role == AppRole.siteEngineer) &&
+      } else if ((role == AppRole.owner || role == AppRole.siteEngineer) &&
           !await _projects.isAssigned(projectId, _session.user!.id, role)) {
         error = 'You are not assigned to this project.';
       } else {

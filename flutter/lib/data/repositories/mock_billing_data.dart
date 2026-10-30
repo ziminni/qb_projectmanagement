@@ -34,7 +34,7 @@ abstract final class MockBillingData {
       lessDpRecoupment: 233333.33,
       lessRetention: 116666.67,
       netDue: 816666.67,
-      status: BillingStatus.pendingOwner,
+      status: BillingStatus.draft,
       createdAt: DateTime(2026, 10, 16),
     ),
   ];
@@ -60,7 +60,7 @@ abstract final class MockBillingData {
       amount: 85000,
       daysImpact: 5,
       status: VariationOrderStatus.pendingClient,
-      approvedByOwner: 2,
+      approvedByOwner: 3,
       createdAt: DateTime(2026, 10, 14),
     ),
     VariationOrder(
@@ -82,7 +82,7 @@ abstract final class MockBillingData {
       description: 'Change roof sheets from 0.4 mm to 0.5 mm gauge.',
       amount: 62000,
       daysImpact: 0,
-      status: VariationOrderStatus.pendingOwner,
+      status: VariationOrderStatus.proposed,
       createdAt: DateTime(2026, 10, 20),
     ),
   ];

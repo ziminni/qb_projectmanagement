@@ -48,7 +48,7 @@ class _MaterialRequestFormPageState extends State<MaterialRequestFormPage> {
     final ok = await reportAction(
       context,
       _vm.submit(),
-      success: 'Request sent to the PM.',
+      success: 'Request sent to the owner.',
     );
     if (ok && mounted) context.go(AppRoutes.materialRequest(_vm.savedId!));
   }
@@ -159,13 +159,13 @@ class _MaterialRequestFormPageState extends State<MaterialRequestFormPage> {
                 ),
                 AppActionBar(
                   hint: vm.budget?.exceedsBudget == true
-                      ? 'Over the category budget: the owner approves after the PM.'
-                      : 'The PM reviews the request before purchasing orders it.',
+                      ? 'Over the category budget: the owner will see a warning.'
+                      : 'The owner reviews the request, then orders it from a supplier.',
                   children: [
                     FilledButton.icon(
                       onPressed: vm.isBusy ? null : _submit,
                       icon: const Icon(Icons.send),
-                      label: const Text('Send to PM'),
+                      label: const Text('Send to owner'),
                     ),
                   ],
                 ),

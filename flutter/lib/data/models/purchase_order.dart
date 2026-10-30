@@ -2,7 +2,6 @@ import 'json_utils.dart';
 import 'material_source.dart';
 
 enum PurchaseOrderStatus implements JsonEnum {
-  pendingOwner('pending_owner', 'Waiting for owner'),
   released('released', 'Released'),
   partiallyDelivered('partially_delivered', 'Partially delivered'),
   delivered('delivered', 'Delivered'),
@@ -47,7 +46,7 @@ class PurchaseOrder {
   final PurchaseOrderStatus status;
   final double totalAmount;
 
-  /// The owner, for POs above the approval threshold.
+  /// The owner who placed the order.
   final int? approvedBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;

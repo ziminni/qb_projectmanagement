@@ -179,7 +179,7 @@ class MockScheduleRepository implements ScheduleRepository {
       final project = await _projects.getProject(category.projectId);
       await _notifications?.notifyProjectRole(
         category.projectId,
-        AppRole.pm,
+        AppRole.owner,
         type: 'todo_done',
         message:
             '"${todo.title}" was marked done on ${project?.code ?? 'a project'}. '

@@ -16,7 +16,6 @@ import '../services/notification_service.dart';
 import '../services/procurement_rules.dart';
 import '../services/project_rules.dart';
 import 'audit_log_repository.dart';
-import 'company_repository.dart';
 import 'daily_report_repository.dart';
 import 'master_data_repository.dart';
 import 'mock_procurement_data.dart';
@@ -30,7 +29,6 @@ class MockProcurementRepository implements ProcurementRepository {
     required ProjectRepository projects,
     required ScheduleRepository schedule,
     required MasterDataRepository masterData,
-    required CompanyRepository company,
     required DailyReportRepository reports,
     required UserRepository users,
     required AuditLogRepository auditLog,
@@ -39,7 +37,6 @@ class MockProcurementRepository implements ProcurementRepository {
   }) : _projects = projects,
        _schedule = schedule,
        _masterData = masterData,
-       _company = company,
        _reports = reports,
        _users = users,
        _auditLog = auditLog,
@@ -49,7 +46,6 @@ class MockProcurementRepository implements ProcurementRepository {
   final ProjectRepository _projects;
   final ScheduleRepository _schedule;
   final MasterDataRepository _masterData;
-  final CompanyRepository _company;
   final DailyReportRepository _reports;
   final UserRepository _users;
   final AuditLogRepository _auditLog;
@@ -221,7 +217,7 @@ class MockProcurementRepository implements ProcurementRepository {
     }
     await _notifications?.notifyProjectRole(
       draft.projectId,
-      AppRole.pm,
+      AppRole.owner,
       type: 'material_request',
       message: '${request.number} for ${project.code} needs your approval.',
       link: AppRoutes.materialRequest(request.id),
@@ -237,63 +233,31 @@ class MockProcurementRepository implements ProcurementRepository {
   }) async {
     final i = _requestIndex(id);
     final r = _requests[i];
-    late MaterialRequest updated;
-    if (r.status == MaterialRequestStatus.pending && role == AppRole.pm) {
-      await _requirePm(r.projectId, userId);
-      final items = _requestItems.where((x) => x.materialRequestId == id);
-      final check = await checkBudget(r.categoryId, [
-        for (final x in items) (materialId: x.materialId, quantity: x.quantity),
-      ], excludingRequestId: id);
-      updated = r.copyWith(
-        status: check.exceedsBudget
-            ? MaterialRequestStatus.pendingOwner
-            : MaterialRequestStatus.approved,
-        approvedBy: () => userId,
-        updatedAt: _clock(),
-      );
-    } else if (r.status == MaterialRequestStatus.pendingOwner &&
-        role == AppRole.owner) {
-      updated = r.copyWith(
-        status: MaterialRequestStatus.approved,
-        approvedBy: () => userId,
-        updatedAt: _clock(),
-      );
-    } else {
+    if (r.status != MaterialRequestStatus.pending || role != AppRole.owner) {
       throw BusinessRuleException(
         'This request is ${r.status.label.toLowerCase()} and cannot be '
         'approved by a ${role.label.toLowerCase()}.',
       );
     }
+    await _requirePm(r.projectId, userId);
+    final updated = r.copyWith(
+      status: MaterialRequestStatus.approved,
+      approvedBy: () => userId,
+      updatedAt: _clock(),
+    );
     _requests[i] = updated;
     await _auditLog.record(
       userId: userId,
-      action: updated.status == MaterialRequestStatus.pendingOwner
-          ? 'material_request_escalated'
-          : 'material_request_approved',
+      action: 'material_request_approved',
       entity: 'material_request',
       entityId: id,
     );
-    if (updated.status == MaterialRequestStatus.pendingOwner) {
-      await _notifyRole(
-        AppRole.owner,
-        'material_request',
-        '${r.number} exceeds its category budget and needs your approval.',
-        AppRoutes.materialRequest(id),
-      );
-    } else {
-      await _notifyRole(
-        AppRole.purchasing,
-        'material_request',
-        '${r.number} is approved and ready for purchase orders.',
-        AppRoutes.materialRequest(id),
-      );
-      await _notifications?.notify(
-        [r.requestedBy],
-        type: 'material_request',
-        message: 'Your ${r.number} was approved.',
-        link: AppRoutes.materialRequest(id),
-      );
-    }
+    await _notifications?.notify(
+      [r.requestedBy],
+      type: 'material_request',
+      message: 'Your ${r.number} was approved.',
+      link: AppRoutes.materialRequest(id),
+    );
     return updated;
   }
 
@@ -309,17 +273,13 @@ class MockProcurementRepository implements ProcurementRepository {
     }
     final i = _requestIndex(id);
     final r = _requests[i];
-    final allowed =
-        (r.status == MaterialRequestStatus.pending && role == AppRole.pm) ||
-        (r.status == MaterialRequestStatus.pendingOwner &&
-            role == AppRole.owner);
-    if (!allowed) {
+    if (r.status != MaterialRequestStatus.pending || role != AppRole.owner) {
       throw BusinessRuleException(
         'This request is ${r.status.label.toLowerCase()} and cannot be '
         'rejected by a ${role.label.toLowerCase()}.',
       );
     }
-    if (role == AppRole.pm) await _requirePm(r.projectId, userId);
+    await _requirePm(r.projectId, userId);
     final updated = r.copyWith(
       status: MaterialRequestStatus.rejected,
       updatedAt: _clock(),
@@ -356,6 +316,7 @@ class MockProcurementRepository implements ProcurementRepository {
         'Only approved requests can be turned into purchase orders.',
       );
     }
+    await _requirePm(request.projectId, userId);
     final suppliers = {
       for (final s in await _masterData.getSuppliers()) s.id: s,
     };
@@ -387,7 +348,6 @@ class MockProcurementRepository implements ProcurementRepository {
       ProcurementRules.enforce(ProcurementRules.validateUnitPrice(l.unitPrice));
     }
 
-    final threshold = (await _company.getSettings()).poApprovalThreshold;
     final now = _clock();
     final created = <PurchaseOrder>[];
     final bySupplier = <int, List<OrderLine>>{};
@@ -406,10 +366,9 @@ class MockProcurementRepository implements ProcurementRepository {
         projectId: request.projectId,
         supplierId: entry.key,
         source: entry.value.first.source,
-        status: total > threshold
-            ? PurchaseOrderStatus.pendingOwner
-            : PurchaseOrderStatus.released,
+        status: PurchaseOrderStatus.released,
         totalAmount: total,
+        approvedBy: userId,
         createdAt: now,
         updatedAt: now,
       );
@@ -440,17 +399,7 @@ class MockProcurementRepository implements ProcurementRepository {
         entityId: id,
         details: {'request_id': requestId, 'total': total},
       );
-      if (order.status == PurchaseOrderStatus.pendingOwner) {
-        await _notifyRole(
-          AppRole.owner,
-          'purchase_order',
-          '${order.poNo} (₱${total.toStringAsFixed(2)}) is above the approval '
-              'threshold and needs your approval.',
-          AppRoutes.purchaseOrder(id),
-        );
-      } else {
-        await _notifyDelivery(order);
-      }
+      await _notifyDelivery(order);
     }
     if (!_requestItems.any(
       (x) =>
@@ -503,31 +452,6 @@ class MockProcurementRepository implements ProcurementRepository {
       payments: _payments.where((p) => p.purchaseOrderId == id).toList(),
       requestId: requestId,
     );
-  }
-
-  @override
-  Future<PurchaseOrder> approvePurchaseOrder(
-    int id, {
-    required int userId,
-  }) async {
-    final i = _orderIndex(id);
-    final o = _orders[i];
-    if (o.status != PurchaseOrderStatus.pendingOwner) {
-      throw const BusinessRuleException('This PO is not waiting for approval.');
-    }
-    final updated = o.copyWith(
-      status: PurchaseOrderStatus.released,
-      approvedBy: () => userId,
-    );
-    _orders[i] = updated;
-    await _auditLog.record(
-      userId: userId,
-      action: 'purchase_order_approved',
-      entity: 'purchase_order',
-      entityId: id,
-    );
-    await _notifyDelivery(updated);
-    return updated;
   }
 
   @override
@@ -653,15 +577,22 @@ class MockProcurementRepository implements ProcurementRepository {
       details: {'delivery_id': delivery.id},
     );
     final damaged = lines.any((l) => l.damaged > 0);
-    for (final role in [AppRole.purchasing, AppRole.accountant]) {
-      await _notifyRole(
-        role,
-        'delivery',
+    final message =
         'Delivery received for ${order.poNo}'
-            '${damaged ? ' with damaged items' : ''}.',
-        AppRoutes.purchaseOrder(purchaseOrderId),
-      );
-    }
+        '${damaged ? ' with damaged items' : ''}.';
+    await _notifications?.notifyProjectRole(
+      order.projectId,
+      AppRole.owner,
+      type: 'delivery',
+      message: message,
+      link: AppRoutes.purchaseOrder(purchaseOrderId),
+    );
+    await _notifyRole(
+      AppRole.accountant,
+      'delivery',
+      message,
+      AppRoutes.purchaseOrder(purchaseOrderId),
+    );
     return delivery;
   }
 
@@ -805,9 +736,9 @@ class MockProcurementRepository implements ProcurementRepository {
   // ---- Helpers
 
   Future<void> _requirePm(int projectId, int userId) async {
-    if (!await _projects.isAssigned(projectId, userId, AppRole.pm)) {
+    if (!await _projects.isAssigned(projectId, userId, AppRole.owner)) {
       throw const BusinessRuleException(
-        'Only the PM of this project can approve its requests.',
+        'Only the owner running this project can approve this.',
       );
     }
   }

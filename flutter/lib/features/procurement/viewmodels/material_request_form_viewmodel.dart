@@ -91,9 +91,10 @@ class MaterialRequestFormViewModel extends ChangeNotifier with ActionRunner {
         (materialId: r.itemId!, quantity: r.quantity),
   ];
 
-  /// Recomputes the budget check after a row or category change.
+  /// Recomputes the budget check after a row or category change. The check
+  /// shows peso amounts, so only finance roles get one.
   Future<void> refreshBudget() async {
-    if (categoryId == null) {
+    if (categoryId == null || !_session.activeRole!.seesFinance) {
       _budget = null;
     } else {
       _budget = await _procurement.checkBudget(categoryId!, _items);

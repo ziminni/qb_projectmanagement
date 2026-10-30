@@ -16,7 +16,7 @@ abstract final class ProjectRules {
 
   /// Roles that hold project assignments.
   static const assignableRoles = [
-    AppRole.pm,
+    AppRole.owner,
     AppRole.siteEngineer,
     AppRole.client,
   ];
@@ -63,13 +63,9 @@ abstract final class ProjectRules {
     }
   }
 
-  /// Moving to Bidding is the owner's bid approval; closing is also the
-  /// owner's call. PMs handle the other moves on their own projects.
-  static bool canChangeStatus(AppRole role, ProjectStatus to) {
-    if (role == AppRole.owner) return true;
-    if (role != AppRole.pm) return false;
-    return to != ProjectStatus.bidding && to != ProjectStatus.closed;
-  }
+  /// The owner running the project makes every status move.
+  static bool canChangeStatus(AppRole role, ProjectStatus to) =>
+      role == AppRole.owner;
 
   static String? validateTransition(
     ProjectStatus from,

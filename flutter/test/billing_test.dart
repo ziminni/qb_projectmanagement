@@ -82,12 +82,11 @@ void main() {
 
   test('approval chain, dispute and payments', () async {
     final b = await repo.createBilling(1, DateTime(2026, 10, 26), userId: 3);
-    await repo.submitBilling(b.id, userId: 3);
     expect(
       repo.clientApprove(b.id, userId: 7),
-      throwsRule('waiting for owner'),
+      throwsRule('not waiting for client'),
     );
-    await repo.ownerApprove(b.id, userId: 2);
+    await repo.submitBilling(b.id, userId: 3);
 
     expect(
       repo.clientDispute(b.id, userId: 7, reason: ''),
@@ -98,7 +97,6 @@ void main() {
     expect(history.last.details['reason'], 'Pillars not complete');
 
     await repo.submitBilling(b.id, userId: 3);
-    await repo.ownerApprove(b.id, userId: 2);
     expect(
       repo.recordPayment(
         b.id,
@@ -187,7 +185,7 @@ void main() {
             daysImpact: 0,
             status: VariationOrderStatus.proposed,
           ),
-          userId: 4,
+          userId: 3,
         );
         expect(vo.amount, -12000);
         expect(vo.voNo, 'VO-03');
@@ -204,45 +202,67 @@ void main() {
       },
     );
 
-    test('only the PM submits; only the owner approves', () async {
+    test(
+      'a site engineer\'s VO has no price until the owner sets one',
+      () async {
+        final vo = await repo.saveVariationOrder(
+          VariationOrder(
+            id: 0,
+            projectId: 1,
+            voNo: '',
+            type: VariationOrderType.additive,
+            description: 'Extra lighting outlets',
+            amount: 9999,
+            daysImpact: 1,
+            status: VariationOrderStatus.proposed,
+          ),
+          userId: 4,
+        );
+        expect(vo.amount, 0);
+        expect(
+          repo.submitVariationOrder(vo.id, userId: 3),
+          throwsRule('cost impact'),
+        );
+        await repo.saveVariationOrder(vo.copyWith(amount: 15000), userId: 3);
+        final sent = await repo.submitVariationOrder(vo.id, userId: 3);
+        expect(sent.amount, 15000);
+      },
+    );
+
+    test('only the owner sends a VO to the client', () async {
       expect(
         repo.submitVariationOrder(2, userId: 4),
         throwsRule('project manager'),
       );
-      await repo.submitVariationOrder(2, userId: 3);
-      final approved = await repo.ownerApproveVo(2, userId: 2);
-      expect(approved.status, VariationOrderStatus.pendingClient);
+      final sent = await repo.submitVariationOrder(2, userId: 3);
+      expect(sent.status, VariationOrderStatus.pendingClient);
+      expect(sent.approvedByOwner, 3);
     });
   });
 
-  testWidgets('PM creates a billing and submits it', (tester) async {
+  testWidgets('owner creates a billing and sends it to the client', (
+    tester,
+  ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/billings/new?projectId=1');
     expect(find.text('₱120,000.00'), findsOneWidget);
     await tester.tap(find.text('Create draft billing'));
     await tester.pumpAndSettle();
     expect(find.text('PROGRESS BILLING NO. 2'), findsOneWidget);
-    await tester.tap(find.text('Submit to owner'));
+    await tester.tap(find.text('Send to client'));
     await tester.pumpAndSettle();
-    expect(statusChip('Waiting for owner'), findsOneWidget);
+    expect(statusChip('Waiting for client'), findsOneWidget);
   });
 
-  testWidgets('owner approves a billing and a VO from the inbox', (
-    tester,
-  ) async {
+  testWidgets('owner rejects a proposed VO from the inbox', (tester) async {
     await pumpApp(tester);
     await signInAs(tester, 'ramon@example.ph');
     expect(find.text('Billed vs. collected'), findsOneWidget);
     await goTo(tester, '/approvals');
-    expect(find.text('Progress billings (1)'), findsWidgets);
-    await tester.tap(find.text('Billing #1 · QB-2026-018'));
+    expect(find.text('Variation orders (2)'), findsWidgets);
+    await tester.tap(find.text('VO-02 · QB-2026-014'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Approve and send to client'));
-    await tester.pumpAndSettle();
-    expect(statusChip('Waiting for client'), findsOneWidget);
-
-    await goTo(tester, '/variation-orders/3');
     await tester.tap(find.text('Reject'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField), 'Use 0.4 mm as quoted');

@@ -16,8 +16,10 @@ class AppVoStatusChip extends StatelessWidget {
         AppColors.textSecondary,
         AppColors.surfaceMuted,
       ),
-      VariationOrderStatus.pendingOwner || VariationOrderStatus.pendingClient =>
-        (AppColors.info, AppColors.infoContainer),
+      VariationOrderStatus.pendingClient => (
+        AppColors.info,
+        AppColors.infoContainer,
+      ),
       VariationOrderStatus.approved => (
         AppColors.success,
         AppColors.successContainer,

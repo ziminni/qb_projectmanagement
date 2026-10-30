@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/equipment.dart';
@@ -46,7 +47,9 @@ class _UserManagementEquipmentDialogState
         id: widget.initial?.id ?? 0,
         name: _name.text.trim(),
         ownership: _ownership,
-        rate: InputParsers.amount(_rate.text)!,
+        rate: canSeeFinance()
+            ? InputParsers.amount(_rate.text)!
+            : widget.initial?.rate ?? 0,
         rateUnit: _unit,
         createdAt: widget.initial?.createdAt,
       ),
@@ -83,23 +86,25 @@ class _UserManagementEquipmentDialogState
               const SizedBox(height: AppSpacing.md),
               Row(
                 children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _rate,
-                      decoration: const InputDecoration(
-                        labelText: 'Rate',
-                        prefixText: '₱ ',
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      validator: (v) => MasterDataRules.validateAmount(
-                        InputParsers.amount(v),
-                        'rate',
+                  if (canSeeFinance()) ...[
+                    Expanded(
+                      child: TextFormField(
+                        controller: _rate,
+                        decoration: const InputDecoration(
+                          labelText: 'Rate',
+                          prefixText: '₱ ',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        validator: (v) => MasterDataRules.validateAmount(
+                          InputParsers.amount(v),
+                          'rate',
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
+                    const SizedBox(width: AppSpacing.md),
+                  ],
                   Expanded(
                     child: DropdownButtonFormField<RateUnit>(
                       initialValue: _unit,

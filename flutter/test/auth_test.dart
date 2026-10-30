@@ -20,20 +20,20 @@ void main() {
 
     test('rejects a wrong password', () {
       expect(
-        auth.signIn('jose@example.ph', 'nope'),
+        auth.signIn('ramon@example.ph', 'nope'),
         throwsA(isA<BusinessRuleException>()),
       );
     });
 
     test('email is case-insensitive', () async {
-      final result = await auth.signIn('JOSE@example.ph', 'password123');
-      expect(result.user.fullName, 'Jose Reyes');
+      final result = await auth.signIn('RAMON@example.ph', 'password123');
+      expect(result.user.fullName, 'Ramon Dela Cruz');
     });
 
     test('a deactivated user cannot sign in', () async {
       await users.setActive(3, false);
       expect(
-        auth.signIn('jose@example.ph', 'password123'),
+        auth.signIn('ramon@example.ph', 'password123'),
         throwsA(
           isA<BusinessRuleException>().having(
             (e) => e.message,
@@ -64,7 +64,7 @@ void main() {
           currentPassword: 'password123',
           newPassword: 'newpass123',
         );
-        final result = await auth.signIn('jose@example.ph', 'newpass123');
+        final result = await auth.signIn('ramon@example.ph', 'newpass123');
         expect(result.user.id, 3);
       },
     );
@@ -74,7 +74,7 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph', password: 'wrong');
+    await signInAs(tester, 'ramon@example.ph', password: 'wrong');
     expect(find.text('Incorrect email or password.'), findsOneWidget);
   });
 
@@ -114,7 +114,7 @@ void main() {
 
   testWidgets('profile edits update the signed-in user', (tester) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/profile');
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Full name'),

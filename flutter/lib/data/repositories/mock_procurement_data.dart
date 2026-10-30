@@ -54,14 +54,14 @@ abstract final class MockProcurementData {
       approvedBy: 3,
       createdAt: DateTime(2026, 10, 21, 9),
     ),
-    // Over the Site preparation budget, so it waits for the owner.
+    // Over the Site preparation budget; the owner sees a warning.
     MaterialRequest(
       id: 5,
       projectId: 2,
       categoryId: 5,
       requestedBy: 8,
       neededBy: DateTime(2026, 11, 3),
-      status: MaterialRequestStatus.pendingOwner,
+      status: MaterialRequestStatus.pending,
       createdAt: DateTime(2026, 10, 23, 11),
     ),
   ];
@@ -212,7 +212,7 @@ abstract final class MockProcurementData {
       source: _own,
       status: PurchaseOrderStatus.partiallyDelivered,
       totalAmount: 53650,
-      approvedBy: 2,
+      approvedBy: 3,
       createdAt: DateTime(2026, 8, 29),
     ),
   ];

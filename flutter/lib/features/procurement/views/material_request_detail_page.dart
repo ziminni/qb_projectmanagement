@@ -21,7 +21,7 @@ import '../widgets/procurement_po_tile.dart';
 import '../widgets/procurement_request_status_chip.dart';
 
 /// A material request with its review actions (PM, then owner when over
-/// budget) and purchasing's "Create purchase orders".
+/// budget) and the owner's "Create purchase orders".
 class MaterialRequestDetailPage extends StatelessWidget {
   const MaterialRequestDetailPage({super.key, required this.requestId});
 

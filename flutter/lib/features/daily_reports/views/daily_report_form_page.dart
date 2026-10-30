@@ -57,7 +57,7 @@ class _DailyReportFormPageState extends State<DailyReportFormPage> {
     final ok = await reportAction(
       context,
       _vm.save(submit: submit),
-      success: submit ? 'Report submitted to the PM.' : 'Draft saved.',
+      success: submit ? 'Report submitted to the owner.' : 'Draft saved.',
     );
     if (ok && mounted) context.go(AppRoutes.dailyReport(_vm.savedId!));
   }
@@ -93,7 +93,7 @@ class _DailyReportFormPageState extends State<DailyReportFormPage> {
                               Icons.undo,
                               color: AppColors.warning,
                             ),
-                            title: const Text('Returned by the PM'),
+                            title: const Text('Returned by the owner'),
                             subtitle: Text(vm.remarks!),
                           ),
                         ),
@@ -180,7 +180,7 @@ class _DailyReportFormPageState extends State<DailyReportFormPage> {
                       AppSectionCard(
                         title: 'To-dos accomplished',
                         subtitle:
-                            'Tick what was finished today. It counts toward progress once the PM approves this report.',
+                            'Tick what was finished today. It counts toward progress once the owner approves this report.',
                         child: DailyReportsTodoPicker(
                           todos: vm.todoOptions,
                           selected: vm.todoIds,
@@ -314,7 +314,7 @@ class _DailyReportFormPageState extends State<DailyReportFormPage> {
                 ),
                 AppActionBar(
                   hint:
-                      'Submitting marks the checked to-dos done and sends the report to the PM.',
+                      'Submitting marks the checked to-dos done and sends the report to the owner.',
                   children: [
                     OutlinedButton(
                       onPressed: vm.isBusy ? null : () => _save(submit: false),
@@ -323,7 +323,7 @@ class _DailyReportFormPageState extends State<DailyReportFormPage> {
                     FilledButton.icon(
                       onPressed: vm.isBusy ? null : () => _save(submit: true),
                       icon: const Icon(Icons.send),
-                      label: const Text('Submit to PM'),
+                      label: const Text('Submit to owner'),
                     ),
                   ],
                 ),

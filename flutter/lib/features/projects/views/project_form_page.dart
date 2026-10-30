@@ -37,7 +37,6 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
   DateTime? _start;
   DateTime? _end;
   int? _clientId;
-  int? _pmId;
   String? _dateError;
 
   late final _vm = ProjectFormViewModel(
@@ -46,7 +45,6 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
     projects: getIt(),
     clients: getIt(),
     company: getIt(),
-    users: getIt(),
   );
 
   @override
@@ -125,7 +123,6 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
         retentionPct: InputParsers.amount(_retention.text) ?? 0,
         startDate: _start!,
         targetEndDate: _end!,
-        pmUserId: _pmId,
       ),
       success: 'Project saved.',
     );
@@ -166,8 +163,8 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
                                   bottom: AppSpacing.md,
                                 ),
                                 child: Text(
-                                  'New projects start as Draft. The owner approves '
-                                  'the bid by moving it to Bidding.',
+                                  'New projects start as Draft. Move it to Bidding '
+                                  'when the bid is ready to submit.',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ),
@@ -224,27 +221,6 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
                                   v == null ? 'Choose the client.' : null,
                               onChanged: (v) => setState(() => _clientId = v),
                             ),
-                            if (vm.choosesPm) ...[
-                              const SizedBox(height: AppSpacing.md),
-                              DropdownButtonFormField<int>(
-                                initialValue: _pmId,
-                                isExpanded: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Project manager',
-                                ),
-                                items: [
-                                  for (final u in vm.projectManagers)
-                                    DropdownMenuItem(
-                                      value: u.id,
-                                      child: Text(u.fullName),
-                                    ),
-                                ],
-                                validator: (v) => v == null
-                                    ? 'Choose the project manager.'
-                                    : null,
-                                onChanged: (v) => setState(() => _pmId = v),
-                              ),
-                            ],
                           ],
                         ),
                       ),

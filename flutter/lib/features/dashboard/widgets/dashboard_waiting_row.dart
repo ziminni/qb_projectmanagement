@@ -18,13 +18,10 @@ class DashboardWaitingRow extends StatelessWidget {
   final VoidCallback onTap;
 
   static IconData iconFor(ApprovalKind kind) => switch (kind) {
-    ApprovalKind.bid => Icons.gavel_outlined,
     ApprovalKind.todoVerification => Icons.fact_check_outlined,
     ApprovalKind.dailyReport => Icons.edit_note_outlined,
     ApprovalKind.materialRequest => Icons.inventory_2_outlined,
-    ApprovalKind.purchaseOrder => Icons.shopping_cart_outlined,
     ApprovalKind.payroll => Icons.badge_outlined,
-    ApprovalKind.billing => Icons.receipt_long_outlined,
     ApprovalKind.variationOrder => Icons.difference_outlined,
   };
 

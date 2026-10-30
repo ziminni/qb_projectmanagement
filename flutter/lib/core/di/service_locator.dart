@@ -73,13 +73,10 @@ void setupServiceLocator() {
     )
     ..registerLazySingleton<ApprovalInbox>(
       () => ApprovalInbox([
-        BidApprovalSource(projects: getIt()),
         TodoVerificationSource(projects: getIt(), schedule: getIt()),
         DailyReportApprovalSource(projects: getIt(), reports: getIt()),
         MaterialRequestApprovalSource(projects: getIt(), procurement: getIt()),
-        PurchaseOrderApprovalSource(projects: getIt(), procurement: getIt()),
         PayrollVerificationSource(projects: getIt(), labor: getIt()),
-        BillingApprovalSource(projects: getIt(), billing: getIt()),
         VariationOrderApprovalSource(projects: getIt(), billing: getIt()),
       ]),
     )
@@ -93,7 +90,7 @@ void setupServiceLocator() {
       ),
     )
     ..registerLazySingleton<DocumentRepository>(
-      () => MockDocumentRepository(projects: getIt(), users: getIt()),
+      () => MockDocumentRepository(projects: getIt()),
     )
     ..registerLazySingleton<ProjectCostService>(
       () => ProjectCostService(
@@ -116,7 +113,6 @@ void setupServiceLocator() {
         projects: getIt(),
         schedule: getIt(),
         masterData: getIt(),
-        company: getIt(),
         reports: getIt(),
         users: getIt(),
         auditLog: getIt(),

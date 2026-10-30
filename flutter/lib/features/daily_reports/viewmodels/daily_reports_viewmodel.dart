@@ -7,7 +7,7 @@ import '../../../data/repositories/daily_report_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/services/session_service.dart';
 
-/// Daily report history: the site engineer's own sites, a PM's projects,
+/// Daily report history: the site engineer's own sites, an owner's projects,
 /// every project for the owner, or one project when [projectId] is set.
 class DailyReportsViewModel extends ChangeNotifier {
   DailyReportsViewModel({

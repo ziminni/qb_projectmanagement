@@ -14,13 +14,18 @@ class DocumentsUploadInput {
 /// Adds a project document. File picking arrives with file storage; until
 /// then the file name is typed in and stored as a placeholder.
 class DocumentsUploadDialog extends StatefulWidget {
-  const DocumentsUploadDialog({super.key});
+  const DocumentsUploadDialog({super.key, required this.types});
 
-  static Future<DocumentsUploadInput?> show(BuildContext context) =>
-      showDialog<DocumentsUploadInput>(
-        context: context,
-        builder: (_) => const DocumentsUploadDialog(),
-      );
+  /// Sections the uploader may file into.
+  final List<DocumentType> types;
+
+  static Future<DocumentsUploadInput?> show(
+    BuildContext context, {
+    required List<DocumentType> types,
+  }) => showDialog<DocumentsUploadInput>(
+    context: context,
+    builder: (_) => DocumentsUploadDialog(types: types),
+  );
 
   @override
   State<DocumentsUploadDialog> createState() => _DocumentsUploadDialogState();
@@ -54,7 +59,7 @@ class _DocumentsUploadDialogState extends State<DocumentsUploadDialog> {
                 initialValue: _type,
                 decoration: const InputDecoration(labelText: 'Section'),
                 items: [
-                  for (final t in DocumentType.values)
+                  for (final t in widget.types)
                     DropdownMenuItem(value: t, child: Text(t.label)),
                 ],
                 onChanged: (t) => setState(() => _type = t!),

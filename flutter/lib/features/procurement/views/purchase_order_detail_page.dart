@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
@@ -42,6 +43,7 @@ class PurchaseOrderDetailPage extends StatelessWidget {
         final o = d.order;
         final l = vm.lookups;
         String q(double v) => InputParsers.amountText(v);
+        final finance = canSeeFinance();
         const gap = SizedBox(height: AppSpacing.lg);
         return ListView(
           padding: pagePadding(context),
@@ -59,18 +61,6 @@ class PurchaseOrderDetailPage extends StatelessWidget {
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,
               children: [
-                if (vm.canApprove)
-                  FilledButton.icon(
-                    onPressed: vm.isBusy
-                        ? null
-                        : () => reportAction(
-                            context,
-                            vm.approve(),
-                            success: '${o.poNo} approved and released.',
-                          ),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Approve and release'),
-                  ),
                 if (vm.canReceive)
                   FilledButton.icon(
                     onPressed: () =>
@@ -121,14 +111,16 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                     value: l.supplierName(o.supplierId),
                   ),
                   AppInfoRow(label: 'Source', value: o.source.label),
-                  AppInfoRow(
-                    label: 'Total',
-                    value: Formatters.peso(o.totalAmount),
-                  ),
-                  AppInfoRow(label: 'Paid', value: Formatters.peso(vm.paid)),
+                  if (finance) ...[
+                    AppInfoRow(
+                      label: 'Total',
+                      value: Formatters.peso(o.totalAmount),
+                    ),
+                    AppInfoRow(label: 'Paid', value: Formatters.peso(vm.paid)),
+                  ],
                   if (o.approvedBy != null)
                     AppInfoRow(
-                      label: 'Approved by',
+                      label: 'Ordered by',
                       value: l.userName(o.approvedBy),
                     ),
                 ],
@@ -144,11 +136,13 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                     ListTile(
                       title: Text(l.materialName(i.materialId)),
                       subtitle: Text(
-                        '${q(i.quantity)} ${l.unit(i.materialId)} × '
-                        '${Formatters.peso(i.unitPrice)} · received '
-                        '${q(d.receivedFor(i.id))}',
+                        '${q(i.quantity)} ${l.unit(i.materialId)}'
+                        '${finance ? ' × ${Formatters.peso(i.unitPrice)}' : ''}'
+                        ' · received ${q(d.receivedFor(i.id))}',
                       ),
-                      trailing: Text(Formatters.peso(i.amount)),
+                      trailing: finance
+                          ? Text(Formatters.peso(i.amount))
+                          : null,
                     ),
                 ],
               ),
@@ -177,7 +171,7 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                 ],
               ),
             ),
-            if (d.payments.isNotEmpty) ...[
+            if (finance && d.payments.isNotEmpty) ...[
               gap,
               AppSectionCard(
                 title: 'Supplier payments',

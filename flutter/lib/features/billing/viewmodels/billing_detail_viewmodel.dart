@@ -65,8 +65,6 @@ class BillingDetailViewModel extends ChangeNotifier with ActionRunner {
       (billing?.status == BillingStatus.draft ||
           billing?.status == BillingStatus.disputed);
   bool get canCancel => canSubmit;
-  bool get canOwnerReview =>
-      role == AppRole.owner && billing?.status == BillingStatus.pendingOwner;
   bool get canRecordPayment =>
       role == AppRole.accountant && billing?.status == BillingStatus.approved;
 
@@ -88,11 +86,11 @@ class BillingDetailViewModel extends ChangeNotifier with ActionRunner {
       _client = await _clients.getClient(_project!.clientId);
       _companyInfo = await _company.getCompany();
       _isPm =
-          role == AppRole.pm &&
+          role == AppRole.owner &&
           await _projects.isAssigned(
             _project!.id,
             _session.user!.id,
-            AppRole.pm,
+            AppRole.owner,
           );
       _userNames = {for (final u in await _users.getUsers()) u.id: u.fullName};
     } catch (e) {
@@ -116,12 +114,6 @@ class BillingDetailViewModel extends ChangeNotifier with ActionRunner {
 
   Future<String?> cancel() =>
       _act(() => _billing.cancelBilling(billingId, userId: _me));
-
-  Future<String?> approve() =>
-      _act(() => _billing.ownerApprove(billingId, userId: _me));
-
-  Future<String?> reject(String reason) =>
-      _act(() => _billing.ownerReject(billingId, userId: _me, reason: reason));
 
   String? validatePayment(double? amount) =>
       BillingRules.validatePayment(amount, _detail!.balance);

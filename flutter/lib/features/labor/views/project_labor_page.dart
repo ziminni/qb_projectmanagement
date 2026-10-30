@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/formatters.dart';
@@ -30,6 +31,7 @@ class ProjectLaborPage extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         const gap = SizedBox(height: AppSpacing.lg);
+        final finance = canSeeFinance();
         return ListView(
           padding: pagePadding(context),
           children: [
@@ -43,10 +45,11 @@ class ProjectLaborPage extends StatelessWidget {
                     label: 'Workers on site',
                     value: '${vm.workers.length}',
                   ),
-                  AppFigure(
-                    label: 'Labor cost (processed payroll)',
-                    value: Formatters.peso(vm.laborCost),
-                  ),
+                  if (finance)
+                    AppFigure(
+                      label: 'Labor cost (processed payroll)',
+                      value: Formatters.peso(vm.laborCost),
+                    ),
                 ],
               ),
             ),
@@ -70,25 +73,27 @@ class ProjectLaborPage extends StatelessWidget {
                 ],
               ),
             ),
-            gap,
-            AppSectionCard(
-              title: 'Payroll periods',
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  if (vm.periods.isEmpty)
-                    const ListTile(title: Text('No payroll periods yet.')),
-                  for (final p in vm.periods)
-                    ListTile(
-                      onTap: () => context.go(AppRoutes.payrollPeriod(p.id)),
-                      title: Text(
-                        Formatters.dateRange(p.periodStart, p.periodEnd),
+            if (finance) ...[
+              gap,
+              AppSectionCard(
+                title: 'Payroll periods',
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    if (vm.periods.isEmpty)
+                      const ListTile(title: Text('No payroll periods yet.')),
+                    for (final p in vm.periods)
+                      ListTile(
+                        onTap: () => context.go(AppRoutes.payrollPeriod(p.id)),
+                        title: Text(
+                          Formatters.dateRange(p.periodStart, p.periodEnd),
+                        ),
+                        trailing: LaborPeriodStatusChip(status: p.status),
                       ),
-                      trailing: LaborPeriodStatusChip(status: p.status),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
             gap,
             AppSectionCard(
               title: 'Workers',
@@ -100,7 +105,9 @@ class ProjectLaborPage extends StatelessWidget {
                       dense: true,
                       title: Text(w.fullName),
                       subtitle: Text(w.trade),
-                      trailing: Text('${Formatters.peso(w.dailyRate)}/day'),
+                      trailing: finance
+                          ? Text('${Formatters.peso(w.dailyRate)}/day')
+                          : null,
                     ),
                 ],
               ),

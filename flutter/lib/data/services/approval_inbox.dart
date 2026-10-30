@@ -2,13 +2,10 @@ import '../models/app_role.dart';
 
 /// Kinds of work that wait for someone's approval.
 enum ApprovalKind {
-  bid('Bids'),
   todoVerification('To-do verification'),
   dailyReport('Daily reports'),
   materialRequest('Material requests'),
-  purchaseOrder('Large purchase orders'),
   payroll('Attendance verification'),
-  billing('Progress billings'),
   variationOrder('Variation orders');
 
   const ApprovalKind(this.label);

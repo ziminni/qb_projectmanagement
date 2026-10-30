@@ -33,6 +33,17 @@ flutter analyze
 flutter test
 ```
 
-The frontend runs on mock repositories (`flutter/lib/data/repositories/mock_*.dart`); API integration is not configured yet. Sign in with any demo account listed on the login screen (password `password123`), e.g. `jose@example.ph` (PM), `ana@example.ph` (site engineer), `ramon@example.ph` (owner) or `mark@example.ph` (client).
+The frontend runs on mock repositories (`flutter/lib/data/repositories/mock_*.dart`); API integration is not configured yet. Sign in with any demo account listed on the login screen (password `password123`):
+
+| Role | Account | Job |
+| --- | --- | --- |
+| Owner / Project manager | `ramon@example.ph` | Runs projects end to end: plans, verifies, orders, bills |
+| Owner / PM + site engineer | `elena@example.ph` | A partner who also works a site |
+| Site engineer / foreman | `ana@example.ph` | Daily reports, attendance, material requests, deliveries |
+| Accountant | `liza@example.ph` | Payroll, client and supplier payments, retention |
+| Client | `mark@example.ph` | Progress, photos, billings and VOs for their project |
+| System admin | `maria@example.ph` | Users, company profile, master lists, settings |
+
+Company finances are confidential: only the owner and the accountant see peso amounts. The client sees only what they are billed. The access rules live in `AppRole.seesFinance`, `RoleNavigation` and `ProjectTab`; a real backend must enforce the same rules.
 
 Feature modules live in `flutter/lib/features/` (auth, user_management, projects, schedule, dashboard, daily_reports, procurement, labor, billing, documents, client_portal). Project progress is computed in one place, `flutter/lib/data/services/progress_calculator.dart`, and every progress figure in the app reads from it.

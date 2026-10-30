@@ -12,7 +12,7 @@ import '../viewmodels/material_requests_viewmodel.dart';
 import '../viewmodels/procurement_lookups.dart';
 import '../widgets/procurement_request_tile.dart';
 
-/// Material requests list. With [queue] set it is purchasing's request
+/// Material requests list. With [queue] set it is the owner's purchasing
 /// queue, opening on approved requests waiting for POs.
 class MaterialRequestsPage extends StatelessWidget {
   const MaterialRequestsPage({super.key, this.queue = false});

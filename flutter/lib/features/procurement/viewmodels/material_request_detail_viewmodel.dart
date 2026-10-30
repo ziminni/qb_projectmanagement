@@ -48,14 +48,11 @@ class MaterialRequestDetailViewModel extends ChangeNotifier with ActionRunner {
                   (lookups.materials[i.materialId]?.defaultUnitCost ?? 0),
         );
 
-  bool get canReview => switch (request?.status) {
-    MaterialRequestStatus.pending => role == AppRole.pm,
-    MaterialRequestStatus.pendingOwner => role == AppRole.owner,
-    _ => false,
-  };
+  bool get canReview =>
+      role == AppRole.owner && request?.status == MaterialRequestStatus.pending;
 
   bool get canOrder =>
-      role == AppRole.purchasing &&
+      role == AppRole.owner &&
       request?.status == MaterialRequestStatus.approved;
 
   Future<void> load() async {
@@ -81,10 +78,12 @@ class MaterialRequestDetailViewModel extends ChangeNotifier with ActionRunner {
       return;
     }
     final r = _detail!.request;
-    _budget = await _procurement.checkBudget(r.categoryId, [
-      for (final i in _detail!.items)
-        (materialId: i.materialId, quantity: i.quantity),
-    ], excludingRequestId: r.id);
+    _budget = role.seesFinance
+        ? await _procurement.checkBudget(r.categoryId, [
+            for (final i in _detail!.items)
+              (materialId: i.materialId, quantity: i.quantity),
+          ], excludingRequestId: r.id)
+        : null;
     final itemIds = _detail!.items.map((i) => i.id).toSet();
     final orders = <PurchaseOrder>[];
     for (final o in await _procurement.getPurchaseOrders(

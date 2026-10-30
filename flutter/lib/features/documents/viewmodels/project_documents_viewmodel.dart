@@ -37,19 +37,25 @@ class ProjectDocumentsViewModel extends ChangeNotifier with ActionRunner {
         t: _items.where((d) => d.docType == t).toList(),
   };
 
-  bool get canUpload => const [
-    AppRole.owner,
-    AppRole.pm,
-    AppRole.siteEngineer,
-  ].contains(_session.activeRole);
+  bool get canUpload =>
+      const [AppRole.owner, AppRole.siteEngineer].contains(_session.activeRole);
 
   bool canDelete(Document d) =>
-      d.uploadedBy == _session.user!.id ||
-      _session.activeRole == AppRole.owner ||
-      _session.activeRole == AppRole.pm;
+      d.uploadedBy == _session.user!.id || _session.activeRole == AppRole.owner;
+
+  /// Contracts carry the contract price, so only finance roles see them.
+  List<DocumentType> get uploadTypes => [
+    for (final t in DocumentType.values)
+      if (t != DocumentType.contract || _session.activeRole!.seesFinance) t,
+  ];
+
+  Future<List<Document>> _visible() async => [
+    for (final d in await _documents.getDocuments(projectId))
+      if (uploadTypes.contains(d.docType)) d,
+  ];
 
   Future<void> load() async {
-    _items = await _documents.getDocuments(projectId);
+    _items = await _visible();
     _userNames = {for (final u in await _users.getUsers()) u.id: u.fullName};
     _loading = false;
     notifyListeners();
@@ -67,11 +73,11 @@ class ProjectDocumentsViewModel extends ChangeNotifier with ActionRunner {
       fileName: fileName,
       userId: _session.user!.id,
     );
-    _items = await _documents.getDocuments(projectId);
+    _items = await _visible();
   });
 
   Future<String?> delete(Document d) => runAction(() async {
     await _documents.delete(d.id, userId: _session.user!.id);
-    _items = await _documents.getDocuments(projectId);
+    _items = await _visible();
   });
 }

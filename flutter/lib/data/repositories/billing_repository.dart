@@ -56,19 +56,11 @@ abstract interface class BillingRepository {
     required int userId,
   });
 
-  /// PM sends a draft (or a disputed billing) to the owner.
+  /// Owner sends a draft (or a disputed billing) to the client.
   Future<ProgressBilling> submitBilling(int id, {required int userId});
 
-  /// PM withdraws a draft or disputed billing.
+  /// Owner withdraws a draft or disputed billing.
   Future<ProgressBilling> cancelBilling(int id, {required int userId});
-
-  Future<ProgressBilling> ownerApprove(int id, {required int userId});
-
-  Future<ProgressBilling> ownerReject(
-    int id, {
-    required int userId,
-    required String reason,
-  });
 
   Future<ProgressBilling> clientApprove(int id, {required int userId});
 
@@ -100,16 +92,16 @@ abstract interface class BillingRepository {
 
   Future<VariationOrderDetail?> getVariationOrder(int id);
 
-  /// Site engineer or PM proposes a VO (id 0) or edits a proposed one.
+  /// Site engineer or owner proposes a VO (id 0) or edits a proposed one.
   Future<VariationOrder> saveVariationOrder(
     VariationOrder vo, {
     required int userId,
   });
 
+  /// Owner sends a proposed VO to the client.
   Future<VariationOrder> submitVariationOrder(int id, {required int userId});
 
-  Future<VariationOrder> ownerApproveVo(int id, {required int userId});
-
+  /// Owner turns down a proposed VO.
   Future<VariationOrder> ownerRejectVo(
     int id, {
     required int userId,

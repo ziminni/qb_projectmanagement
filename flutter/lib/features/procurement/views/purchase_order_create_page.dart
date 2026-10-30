@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 
 import '../../../shared/widgets/app_action_bar.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
@@ -18,7 +17,7 @@ import '../viewmodels/procurement_lookups.dart';
 import '../viewmodels/purchase_order_create_viewmodel.dart';
 import '../widgets/procurement_order_line_card.dart';
 
-/// Purchasing picks a source per item; each supplier becomes one PO.
+/// The owner picks a source per item; each supplier becomes one PO.
 class PurchaseOrderCreatePage extends StatefulWidget {
   const PurchaseOrderCreatePage({super.key, required this.requestId});
 
@@ -35,7 +34,6 @@ class _PurchaseOrderCreatePageState extends State<PurchaseOrderCreatePage> {
     requestId: widget.requestId,
     session: getIt(),
     procurement: getIt(),
-    company: getIt(),
     lookups: ProcurementLookups.fromServices(),
   )..load();
 
@@ -110,15 +108,9 @@ class _PurchaseOrderCreatePageState extends State<PurchaseOrderCreatePage> {
                               ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 title: Text(l.supplierName(e.key)),
-                                subtitle: e.value > vm.threshold
-                                    ? const Text(
-                                        'Above the approval threshold; goes to the '
-                                        'owner first.',
-                                        style: TextStyle(
-                                          color: AppColors.warning,
-                                        ),
-                                      )
-                                    : const Text('Released to the supplier.'),
+                                subtitle: const Text(
+                                  'Released to the supplier.',
+                                ),
                                 trailing: Text(Formatters.peso(e.value)),
                               ),
                           ],
@@ -129,7 +121,7 @@ class _PurchaseOrderCreatePageState extends State<PurchaseOrderCreatePage> {
                 ),
                 AppActionBar(
                   hint:
-                      'Each supplier becomes one PO. POs above ₱${vm.threshold.toStringAsFixed(0)} go to the owner first.',
+                      'Each supplier becomes one PO, released to the supplier right away.',
                   children: [
                     FilledButton(
                       onPressed: vm.isBusy ? null : _create,

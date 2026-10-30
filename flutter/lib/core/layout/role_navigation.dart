@@ -40,21 +40,17 @@ abstract final class RoleNavigation {
         Icons.dashboard_outlined,
         AppRoutes.dashboard,
       ),
-      RoleDestination('Projects', Icons.apartment_outlined, AppRoutes.projects),
-      RoleDestination('Approvals', Icons.inbox_outlined, AppRoutes.approvals),
-    ],
-    AppRole.pm: [
-      RoleDestination(
-        'Dashboard',
-        Icons.dashboard_outlined,
-        AppRoutes.dashboard,
-      ),
       RoleDestination(
         'My projects',
         Icons.apartment_outlined,
         AppRoutes.projects,
       ),
       RoleDestination('Approvals', Icons.inbox_outlined, AppRoutes.approvals),
+      RoleDestination(
+        'Purchasing',
+        Icons.shopping_cart_outlined,
+        AppRoutes.requestQueue,
+      ),
       RoleDestination(
         'Billing',
         Icons.receipt_long_outlined,
@@ -64,6 +60,11 @@ abstract final class RoleNavigation {
         'Variation orders',
         Icons.difference_outlined,
         AppRoutes.variationOrders,
+      ),
+      RoleDestination(
+        'Price lists',
+        Icons.list_alt_outlined,
+        AppRoutes.adminMasterLists,
       ),
     ],
     AppRole.siteEngineer: [
@@ -92,33 +93,6 @@ abstract final class RoleNavigation {
         'Deliveries',
         Icons.local_shipping_outlined,
         AppRoutes.deliveries,
-      ),
-    ],
-    AppRole.purchasing: [
-      RoleDestination(
-        'Request queue',
-        Icons.move_to_inbox_outlined,
-        AppRoutes.requestQueue,
-      ),
-      RoleDestination(
-        'Purchase orders',
-        Icons.shopping_cart_outlined,
-        AppRoutes.purchaseOrders,
-      ),
-      RoleDestination(
-        'Suppliers',
-        Icons.storefront_outlined,
-        AppRoutes.suppliers,
-      ),
-      RoleDestination(
-        'Deliveries',
-        Icons.local_shipping_outlined,
-        AppRoutes.deliveries,
-      ),
-      RoleDestination(
-        'Site inventory',
-        Icons.warehouse_outlined,
-        AppRoutes.siteInventory,
       ),
     ],
     AppRole.accountant: [
@@ -174,16 +148,6 @@ abstract final class RoleNavigation {
   /// the permission matrix.
   static const _linked = <AppRole, List<String>>{
     AppRole.owner: [
-      AppRoutes.dailyReports,
-      AppRoutes.materialRequests,
-      AppRoutes.purchaseOrders,
-      AppRoutes.billings,
-      AppRoutes.variationOrders,
-      AppRoutes.payroll,
-      AppRoutes.retention,
-      AppRoutes.expenseReports,
-    ],
-    AppRole.pm: [
       AppRoutes.schedule,
       AppRoutes.todoVerification,
       AppRoutes.dailyReports,
@@ -191,18 +155,14 @@ abstract final class RoleNavigation {
       AppRoutes.purchaseOrders,
       AppRoutes.payroll,
       AppRoutes.workers,
+      AppRoutes.retention,
+      AppRoutes.expenseReports,
+      AppRoutes.suppliers,
+      AppRoutes.siteInventory,
+      AppRoutes.deliveries,
     ],
-    AppRole.siteEngineer: [
-      AppRoutes.variationOrders,
-      AppRoutes.purchaseOrders,
-      AppRoutes.workers,
-    ],
-    AppRole.purchasing: [AppRoutes.projects, AppRoutes.materialRequests],
-    AppRole.accountant: [
-      AppRoutes.projects,
-      AppRoutes.variationOrders,
-      AppRoutes.purchaseOrders,
-    ],
+    AppRole.siteEngineer: [AppRoutes.variationOrders, AppRoutes.purchaseOrders],
+    AppRole.accountant: [AppRoutes.projects, AppRoutes.purchaseOrders],
   };
 
   /// Screens every user has, reached from the app bar.
@@ -279,8 +239,8 @@ abstract final class RoleNavigation {
     return best;
   }
 
-  /// Only the owner and PMs create and edit projects.
-  static const _projectEditors = [AppRole.owner, AppRole.pm];
+  /// Only owners create and edit projects.
+  static const _projectEditors = [AppRole.owner];
 
   static List<RoleDestination> forRole(AppRole role) => _destinations[role]!;
 

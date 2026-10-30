@@ -75,30 +75,34 @@ class ProjectOverviewPage extends StatelessWidget {
           ),
         );
 
+        final finance = vm.role.seesFinance;
         final contract = AppSectionCard(
-          title: 'Contract and key dates',
+          title: finance ? 'Contract and key dates' : 'Key dates',
           child: Column(
             children: [
-              AppInfoRow(
-                label: 'Contract amount',
-                value: Formatters.peso(p.contractAmount),
-              ),
+              if (finance)
+                AppInfoRow(
+                  label: 'Contract amount',
+                  value: Formatters.peso(p.contractAmount),
+                ),
               AppInfoRow(
                 label: '% accomplished',
                 value: Formatters.percent(progress.progress),
               ),
-              AppInfoRow(
-                label: 'Earned value',
-                value: Formatters.peso(progress.earnedValue),
-              ),
-              AppInfoRow(
-                label: 'Down payment',
-                value: '${p.downPaymentPct.toStringAsFixed(0)}%',
-              ),
-              AppInfoRow(
-                label: 'Retention',
-                value: '${p.retentionPct.toStringAsFixed(0)}%',
-              ),
+              if (finance) ...[
+                AppInfoRow(
+                  label: 'Earned value',
+                  value: Formatters.peso(progress.earnedValue),
+                ),
+                AppInfoRow(
+                  label: 'Down payment',
+                  value: '${p.downPaymentPct.toStringAsFixed(0)}%',
+                ),
+                AppInfoRow(
+                  label: 'Retention',
+                  value: '${p.retentionPct.toStringAsFixed(0)}%',
+                ),
+              ],
               const Divider(),
               AppInfoRow(label: 'Start', value: Formatters.date(p.startDate)),
               AppInfoRow(

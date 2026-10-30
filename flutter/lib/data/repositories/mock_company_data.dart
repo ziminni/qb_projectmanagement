@@ -20,7 +20,6 @@ abstract final class MockCompanyData {
   static const settings = CompanySettings(
     id: 1,
     companyId: 1,
-    poApprovalThreshold: 50000,
     defaultRetentionPct: 10,
     defaultDownPaymentPct: 15,
     behindScheduleThresholdPct: 5,

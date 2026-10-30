@@ -17,7 +17,7 @@ enum MaterialRequestItemStatus implements JsonEnum {
   String toJson() => apiValue;
 }
 
-/// A row in `material_request_items`. Purchasing sets [source] when it
+/// A row in `material_request_items`. The owner sets [source] when it
 /// orders the item; an item cannot be ordered without one.
 class MaterialRequestItem {
   const MaterialRequestItem({

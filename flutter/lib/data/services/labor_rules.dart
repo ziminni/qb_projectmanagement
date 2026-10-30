@@ -36,7 +36,7 @@ abstract final class LaborRules {
       ? 'Attendance in a processed payroll period is locked.'
       : null;
 
-  /// The PM verifies attendance at cut-off.
+  /// The owner verifies attendance at cut-off.
   static String? canVerify(PayrollPeriod p, DateTime today) {
     if (p.status != PayrollStatus.open) return 'This period is not open.';
     if (_day(today).isBefore(_day(p.periodEnd))) {
@@ -48,7 +48,7 @@ abstract final class LaborRules {
   static String? canProcess(PayrollPeriod p) =>
       p.status == PayrollStatus.verified
       ? null
-      : 'The PM must verify attendance before payroll is processed.';
+      : 'The owner must verify attendance before payroll is processed.';
 
   static String? validateCashAdvance(double? amount, double grossPay) {
     if (amount == null || amount < 0) return 'Enter 0 or more.';

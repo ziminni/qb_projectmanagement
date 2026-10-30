@@ -65,21 +65,21 @@ void main() {
     expect(ProjectRules.nextStatuses(ProjectStatus.closed), isEmpty);
   });
 
-  test('only the owner approves a bid; status changes are audited', () async {
+  test('only the owner changes status; changes are audited', () async {
     final p = await repo.saveProject(draft());
     expect(
       repo.changeStatus(
         p.id,
         ProjectStatus.bidding,
-        userId: 3,
-        role: AppRole.pm,
+        userId: 4,
+        role: AppRole.siteEngineer,
       ),
       throwsRule,
     );
     await repo.changeStatus(
       p.id,
       ProjectStatus.bidding,
-      userId: 2,
+      userId: 3,
       role: AppRole.owner,
     );
     final logs = await audit.getFor('project', p.id);
@@ -103,7 +103,7 @@ void main() {
     expect(curve.last.planned, closeTo(1, 1e-9));
   });
 
-  testWidgets('owner creates a project and assigns the PM', (tester) async {
+  testWidgets('owner creates a project', (tester) async {
     await pumpApp(tester);
     await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/projects');
@@ -127,12 +127,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Our Lady of Peace Clinic').last);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.widgetWithText(DropdownButtonFormField<int>, 'Project manager'),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Jose Reyes').last);
     await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Contract amount'),
@@ -163,7 +157,7 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/projects/1/overview');
     expect(find.text('Ana Bautista'), findsOneWidget);
     expect(find.text('₱2,000,000.00'), findsOneWidget);
@@ -179,20 +173,35 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/projects/3/overview');
     expect(find.text('You are not assigned to this project.'), findsOneWidget);
   });
 
-  testWidgets('purchasing sees materials tab but not financials', (
-    tester,
-  ) async {
+  testWidgets('site engineer sees no money on the project', (tester) async {
     await pumpApp(tester);
-    await signInAs(tester, 'carlo@example.ph');
+    await signInAs(tester, 'ana@example.ph');
     await goTo(tester, '/projects/1/overview');
-    expect(find.text('Materials'), findsOneWidget);
     expect(find.text('Financials'), findsNothing);
+    expect(find.text('Contract amount'), findsNothing);
+    expect(find.text('Earned value'), findsNothing);
+    expect(find.textContaining('₱'), findsNothing);
+    await goTo(tester, '/projects/1/schedule');
+    expect(find.textContaining('₱'), findsNothing);
+    await goTo(tester, '/projects/1/labor');
+    expect(find.textContaining('₱'), findsNothing);
     await goTo(tester, '/projects/1/financials');
-    expect(find.text('Request queue'), findsWidgets);
+    expect(find.text('Budget vs. actual'), findsNothing);
+  });
+
+  testWidgets('accountant sees finance but not site work', (tester) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'liza@example.ph');
+    await goTo(tester, '/projects/1/overview');
+    expect(find.text('Financials'), findsOneWidget);
+    expect(find.text('Contract amount'), findsOneWidget);
+    expect(find.text('Daily reports'), findsNothing);
+    expect(find.text('Materials'), findsNothing);
+    expect(find.text('Gantt'), findsNothing);
   });
 }

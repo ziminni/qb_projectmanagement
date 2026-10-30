@@ -7,7 +7,7 @@ import '../../../data/services/session_service.dart';
 import 'procurement_lookups.dart';
 
 /// POs expecting deliveries and the delivery history, for the site engineer
-/// (own sites) and purchasing (all).
+/// (own sites) and the owner.
 class DeliveriesViewModel extends ChangeNotifier {
   DeliveriesViewModel({
     required SessionService session,

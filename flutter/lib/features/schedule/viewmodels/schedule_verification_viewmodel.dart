@@ -57,7 +57,7 @@ class ScheduleVerificationViewModel extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
-      if (_session.activeRole != AppRole.pm) {
+      if (_session.activeRole != AppRole.owner) {
         _error = 'Only project managers verify to-dos.';
         return;
       }
@@ -76,7 +76,7 @@ class ScheduleVerificationViewModel extends ChangeNotifier {
   Future<void> _refresh() async {
     final projects = await _projects.getProjectsFor(
       _session.user!.id,
-      AppRole.pm,
+      AppRole.owner,
     );
     final result = <PendingTodo>[];
     for (final project in projects) {

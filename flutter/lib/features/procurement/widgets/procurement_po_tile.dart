@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/material_source.dart';
 import '../../../data/models/purchase_order.dart';
@@ -34,8 +35,8 @@ class ProcurementPoTile extends StatelessWidget {
       ),
       title: Text('${order.poNo} · $projectCode'),
       subtitle: Text(
-        '$supplierName · ${order.source.label} · '
-        '${Formatters.peso(order.totalAmount)}',
+        '$supplierName · ${order.source.label}'
+        '${canSeeFinance() ? ' · ${Formatters.peso(order.totalAmount)}' : ''}',
       ),
       trailing: trailing ?? ProcurementPoStatusChip(status: order.status),
     );

@@ -9,7 +9,7 @@ import 'test_helpers.dart';
 void main() {
   setUp(resetServices);
 
-  test('marking a to-do done notifies the project PM', () async {
+  test('marking a to-do done notifies the project owner', () async {
     final before = await getIt<NotificationRepository>().getFor(3);
     await getIt<ScheduleRepository>().setDone(9, done: true, userId: 4);
     final after = await getIt<NotificationRepository>().getFor(3);
@@ -18,10 +18,10 @@ void main() {
     expect(after.first.link, '/todo-verification');
   });
 
-  testWidgets('owner dashboard and bid approval in the inbox', (tester) async {
+  testWidgets('owner dashboard and approvals inbox', (tester) async {
     await pumpApp(tester);
     await signInAs(tester, 'ramon@example.ph');
-    expect(find.text('Company overview'), findsOneWidget);
+    expect(find.text('Good day, Ramon'), findsOneWidget);
     // Projects 1 and 2 are Ongoing.
     expect(
       find.descendant(
@@ -36,15 +36,12 @@ void main() {
 
     await tester.tap(find.text('Approvals').first);
     await tester.pumpAndSettle();
-    expect(find.text('Bids (1)'), findsWidgets);
-    await tester.tap(find.text('Townhouse row, Malvar'));
-    await tester.pumpAndSettle();
-    expect(find.text('Change status'), findsOneWidget);
+    expect(find.text('Daily reports (1)'), findsWidgets);
   });
 
-  testWidgets('PM inbox lists to-dos awaiting verification', (tester) async {
+  testWidgets('owner inbox lists to-dos awaiting verification', (tester) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     expect(find.text('To-do verification'), findsOneWidget);
     await goTo(tester, '/approvals');
     expect(find.text('To-do verification (2)'), findsWidgets);
@@ -55,9 +52,9 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
-    expect(find.byTooltip('1 unread notifications'), findsOneWidget);
-    await tester.tap(find.byTooltip('1 unread notifications'));
+    await signInAs(tester, 'ramon@example.ph');
+    expect(find.byTooltip('2 unread notifications'), findsOneWidget);
+    await tester.tap(find.byTooltip('2 unread notifications'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mark all as read'));
     await tester.pumpAndSettle();

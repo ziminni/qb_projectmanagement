@@ -57,7 +57,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
 
   /// Roles that can be assigned to projects, limited to those selected.
   List<AppRole> get assignableRoles => [
-    for (final r in const [AppRole.pm, AppRole.siteEngineer, AppRole.client])
+    for (final r in const [AppRole.owner, AppRole.siteEngineer, AppRole.client])
       if (roles.contains(r)) r,
   ];
 

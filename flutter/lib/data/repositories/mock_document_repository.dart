@@ -3,17 +3,12 @@ import '../models/document.dart';
 import '../services/business_rule_exception.dart';
 import 'document_repository.dart';
 import 'project_repository.dart';
-import 'user_repository.dart';
 
 class MockDocumentRepository implements DocumentRepository {
-  MockDocumentRepository({
-    required ProjectRepository projects,
-    required UserRepository users,
-  }) : _projects = projects,
-       _users = users;
+  MockDocumentRepository({required ProjectRepository projects})
+    : _projects = projects;
 
   final ProjectRepository _projects;
-  final UserRepository _users;
 
   static final _allowedExtensions = {
     'pdf',
@@ -35,7 +30,7 @@ class MockDocumentRepository implements DocumentRepository {
       name: 'Construction contract',
       docType: DocumentType.contract,
       fileUrl: 'mock://documents/qb-2026-014-contract.pdf',
-      uploadedBy: 2,
+      uploadedBy: 3,
       createdAt: DateTime(2026, 7, 20),
     ),
     Document(
@@ -71,7 +66,7 @@ class MockDocumentRepository implements DocumentRepository {
       name: 'Construction contract',
       docType: DocumentType.contract,
       fileUrl: 'mock://documents/qb-2026-018-contract.pdf',
-      uploadedBy: 2,
+      uploadedBy: 3,
       createdAt: DateTime(2026, 9, 1),
     ),
   ];
@@ -84,8 +79,7 @@ class MockDocumentRepository implements DocumentRepository {
       );
 
   Future<bool> _canUpload(int projectId, int userId) async {
-    if ((await _users.getRoles(userId)).contains(AppRole.owner)) return true;
-    return await _projects.isAssigned(projectId, userId, AppRole.pm) ||
+    return await _projects.isAssigned(projectId, userId, AppRole.owner) ||
         await _projects.isAssigned(projectId, userId, AppRole.siteEngineer);
   }
 
@@ -99,7 +93,7 @@ class MockDocumentRepository implements DocumentRepository {
   }) async {
     if (!await _canUpload(projectId, userId)) {
       throw const BusinessRuleException(
-        'Only the owner and the project\'s PM or site engineer can upload.',
+        'Only the project\'s owner or site engineer can upload.',
       );
     }
     if (name.trim().isEmpty) {
@@ -142,11 +136,10 @@ class MockDocumentRepository implements DocumentRepository {
     final d = _docs[i];
     final allowed =
         d.uploadedBy == userId ||
-        (await _users.getRoles(userId)).contains(AppRole.owner) ||
-        await _projects.isAssigned(d.projectId, userId, AppRole.pm);
+        await _projects.isAssigned(d.projectId, userId, AppRole.owner);
     if (!allowed) {
       throw const BusinessRuleException(
-        'Only the uploader, the PM or the owner can delete this document.',
+        'Only the uploader or the owner can delete this document.',
       );
     }
     _docs.removeAt(i);

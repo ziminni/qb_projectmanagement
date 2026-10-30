@@ -16,7 +16,7 @@ class AppHistoryList extends StatelessWidget {
 
   static String _label(String action) => switch (action) {
     'billing_created' => 'Prepared',
-    'billing_submitted' => 'Submitted to the owner',
+    'billing_submitted' => 'Sent to the client',
     'billing_withdrawn' => 'Withdrawn',
     'billing_owner_approved' => 'Approved by the owner',
     'billing_owner_rejected' => 'Rejected by the owner',
@@ -25,7 +25,7 @@ class AppHistoryList extends StatelessWidget {
     'billing_payment_recorded' => 'Payment recorded',
     'billing_paid' => 'Marked paid',
     'vo_proposed' => 'Proposed',
-    'vo_submitted' => 'Submitted to the owner',
+    'vo_submitted' => 'Sent to the client',
     'vo_owner_approved' => 'Approved by the owner',
     'vo_owner_rejected' => 'Rejected by the owner',
     'vo_client_approved' => 'Approved by the client',

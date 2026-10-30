@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/finance_access.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/variation_order.dart';
 import '../../../shared/widgets/app_vo_status_chip.dart';
@@ -23,8 +24,9 @@ class BillingVoTile extends StatelessWidget {
       leading: const Icon(Icons.difference_outlined),
       title: Text('${vo.voNo} · $projectCode · ${vo.type.label}'),
       subtitle: Text(
-        '${vo.description}\n${vo.amount >= 0 ? '+' : '−'}'
-        '${Formatters.peso(vo.amount.abs())} · ${vo.daysImpact} day(s)',
+        '${vo.description}\n'
+        '${canSeeFinance() ? '${vo.amount >= 0 ? '+' : '−'}${Formatters.peso(vo.amount.abs())} · ' : ''}'
+        '${vo.daysImpact} day(s)',
       ),
       isThreeLine: true,
       trailing: AppVoStatusChip(status: vo.status),

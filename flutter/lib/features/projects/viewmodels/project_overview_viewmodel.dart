@@ -71,7 +71,7 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
       _project?.status == ProjectStatus.ongoing &&
       (_progress?.scheduleVariance ?? 0) > _behindThreshold;
 
-  bool get canEdit => role == AppRole.owner || _isAssignedPm;
+  bool get canEdit => _isAssignedPm;
   bool get canManageTeam => canEdit;
 
   List<ProjectStatus> get statusOptions => _project == null
@@ -86,8 +86,12 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
       _behindThreshold =
           (await _company.getSettings()).behindScheduleThresholdPct / 100;
       _isAssignedPm =
-          role == AppRole.pm &&
-          await _projects.isAssigned(projectId, _session.user!.id, AppRole.pm);
+          role == AppRole.owner &&
+          await _projects.isAssigned(
+            projectId,
+            _session.user!.id,
+            AppRole.owner,
+          );
     } catch (e) {
       _error = 'Could not load the project. $e';
     } finally {

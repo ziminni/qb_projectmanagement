@@ -8,7 +8,7 @@ import '../../../core/utils/page_padding.dart';
 import '../../../shared/widgets/app_supplier_form_dialog.dart';
 import '../viewmodels/suppliers_viewmodel.dart';
 
-/// Purchasing's supplier list. The own hardware store is listed first.
+/// The owner's supplier list. The own hardware store is listed first.
 class SuppliersPage extends StatelessWidget {
   const SuppliersPage({super.key});
 

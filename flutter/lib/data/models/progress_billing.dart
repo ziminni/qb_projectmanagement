@@ -2,12 +2,11 @@ import 'json_utils.dart';
 
 enum BillingStatus implements JsonEnum {
   draft('draft', 'Draft'),
-  pendingOwner('pending_owner', 'Waiting for owner'),
   pendingClient('pending_client', 'Waiting for client'),
   disputed('disputed', 'Disputed'),
   approved('approved', 'Approved by client'),
   paid('paid', 'Paid'),
-  rejected('rejected', 'Rejected');
+  rejected('rejected', 'Withdrawn');
 
   const BillingStatus(this.apiValue, this.label);
 

@@ -1,5 +1,7 @@
+import 'package:buildpro_frontend/core/layout/project_tabs.dart';
 import 'package:buildpro_frontend/core/layout/role_navigation.dart';
 import 'package:buildpro_frontend/data/models/app_role.dart';
+import 'package:buildpro_frontend/routes/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,9 +15,7 @@ void main() {
   const accounts = {
     AppRole.admin: 'maria@example.ph',
     AppRole.owner: 'ramon@example.ph',
-    AppRole.pm: 'jose@example.ph',
     AppRole.siteEngineer: 'ana@example.ph',
-    AppRole.purchasing: 'carlo@example.ph',
     AppRole.accountant: 'liza@example.ph',
     AppRole.client: 'mark@example.ph',
   };
@@ -48,5 +48,34 @@ void main() {
         }
       });
     }
+  }
+
+  // Company finances are confidential: roles outside finance must never see
+  // a peso amount on any screen they can open.
+  const noFinance = {
+    AppRole.admin: 'maria@example.ph',
+    AppRole.siteEngineer: 'ana@example.ph',
+  };
+  for (final entry in noFinance.entries) {
+    testWidgets('${entry.key.name} sees no peso amounts', (tester) async {
+      await pumpApp(tester, size: const Size(1400, 3000));
+      await signInAs(tester, entry.value);
+      final paths = [
+        for (final d in RoleNavigation.forRole(entry.key)) d.path,
+        if (entry.key == AppRole.siteEngineer) ...[
+          for (final tab in ProjectTab.visibleTo(entry.key))
+            '/projects/1/${tab.segment}',
+          AppRoutes.materialRequest(4),
+          AppRoutes.purchaseOrder(5),
+          AppRoutes.variationOrder(1),
+          AppRoutes.variationOrders,
+          AppRoutes.materialRequestNew,
+        ],
+      ];
+      for (final path in paths) {
+        await goTo(tester, path);
+        expect(find.textContaining('₱'), findsNothing, reason: path);
+      }
+    });
   }
 }

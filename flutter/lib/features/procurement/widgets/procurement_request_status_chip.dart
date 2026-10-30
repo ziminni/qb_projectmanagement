@@ -16,10 +16,6 @@ class ProcurementRequestStatusChip extends StatelessWidget {
         AppColors.info,
         AppColors.infoContainer,
       ),
-      MaterialRequestStatus.pendingOwner => (
-        AppColors.warning,
-        AppColors.warningContainer,
-      ),
       MaterialRequestStatus.approved => (
         AppColors.success,
         AppColors.successContainer,

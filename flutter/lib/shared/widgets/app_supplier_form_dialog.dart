@@ -5,7 +5,7 @@ import '../../core/utils/input_parsers.dart';
 import '../../data/models/supplier.dart';
 import '../../data/services/master_data_rules.dart';
 
-/// Add or edit a supplier. Used by the admin master lists and by purchasing.
+/// Add or edit a supplier. Used by the admin master lists and by the owner.
 class AppSupplierFormDialog extends StatefulWidget {
   const AppSupplierFormDialog({super.key, this.initial});
 

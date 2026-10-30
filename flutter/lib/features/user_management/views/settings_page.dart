@@ -20,7 +20,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final _formKey = GlobalKey<FormState>();
-  final _threshold = TextEditingController();
   final _retention = TextEditingController();
   final _downPayment = TextEditingController();
   final _behind = TextEditingController();
@@ -32,7 +31,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _vm.load().then((_) {
       final s = _vm.settings;
       if (s == null) return;
-      _threshold.text = InputParsers.amountText(s.poApprovalThreshold);
       _retention.text = InputParsers.amountText(s.defaultRetentionPct);
       _downPayment.text = InputParsers.amountText(s.defaultDownPaymentPct);
       _behind.text = InputParsers.amountText(s.behindScheduleThresholdPct);
@@ -41,7 +39,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in [_threshold, _retention, _downPayment, _behind]) {
+    for (final c in [_retention, _downPayment, _behind]) {
       c.dispose();
     }
     _vm.dispose();
@@ -54,7 +52,6 @@ class _SettingsPageState extends State<SettingsPage> {
       context,
       _vm.save(
         _vm.settings!.copyWith(
-          poApprovalThreshold: InputParsers.amount(_threshold.text),
           defaultRetentionPct: InputParsers.amount(_retention.text),
           defaultDownPaymentPct: InputParsers.amount(_downPayment.text),
           behindScheduleThresholdPct: InputParsers.amount(_behind.text),
@@ -98,17 +95,6 @@ class _SettingsPageState extends State<SettingsPage> {
             child: ListView(
               padding: pagePadding(context),
               children: [
-                AppSectionCard(
-                  title: 'Approvals',
-                  child: _field(
-                    _threshold,
-                    'Large purchase threshold',
-                    helper:
-                        'Purchase orders above this amount need owner approval.',
-                    peso: true,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
                 AppSectionCard(
                   title: 'Billing defaults for new projects',
                   child: Column(

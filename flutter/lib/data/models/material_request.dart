@@ -1,8 +1,7 @@
 import 'json_utils.dart';
 
 enum MaterialRequestStatus implements JsonEnum {
-  pending('pending', 'Waiting for PM'),
-  pendingOwner('pending_owner', 'Waiting for owner'),
+  pending('pending', 'Waiting for owner'),
   approved('approved', 'Approved'),
   rejected('rejected', 'Rejected'),
   ordered('ordered', 'Ordered');

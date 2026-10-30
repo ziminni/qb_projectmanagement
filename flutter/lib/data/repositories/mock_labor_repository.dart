@@ -208,9 +208,9 @@ class MockLaborRepository implements LaborRepository {
     final i = _indexOf(id);
     final p = _periods[i];
     LaborRules.enforce(LaborRules.canVerify(p, _clock()));
-    if (!await _projects.isAssigned(p.projectId, userId, AppRole.pm)) {
+    if (!await _projects.isAssigned(p.projectId, userId, AppRole.owner)) {
       throw const BusinessRuleException(
-        'Only the PM of this project verifies its attendance.',
+        'Only the owner of this project verifies its attendance.',
       );
     }
     final updated = p.copyWith(status: PayrollStatus.verified);

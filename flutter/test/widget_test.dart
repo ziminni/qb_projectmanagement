@@ -10,7 +10,7 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    await signInAs(tester, 'jose@example.ph');
+    await signInAs(tester, 'ramon@example.ph');
     expect(find.text('Dashboard'), findsWidgets);
 
     await tester.tap(find.text('My projects').first);

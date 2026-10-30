@@ -23,7 +23,7 @@ class ProjectsStatusDialog extends StatelessWidget {
   );
 
   String _hint(ProjectStatus s) => switch (s) {
-    ProjectStatus.bidding => 'Owner approves the bid for submission.',
+    ProjectStatus.bidding => 'The bid is ready to submit to the client.',
     ProjectStatus.awarded => 'The BOQ locks in as the budget.',
     ProjectStatus.ongoing => 'Site reports, requests and billings open up.',
     ProjectStatus.onHold => 'Pause work; it can return to Ongoing.',

@@ -37,7 +37,7 @@ class ScheduleProjectsViewModel extends ChangeNotifier {
   String? get error => _error;
   List<ScheduleProjectSummary> get items => _items;
   AppRole get role => _session.activeRole!;
-  bool get showCosts => role != AppRole.client;
+  bool get showCosts => role.seesFinance;
 
   Future<void> load() async {
     _loading = true;
