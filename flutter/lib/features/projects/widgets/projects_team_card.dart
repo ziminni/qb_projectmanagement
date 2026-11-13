@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/models/project_assignment.dart';
+import '../../../shared/widgets/app_avatar.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/project_overview_viewmodel.dart';
 
@@ -19,6 +21,7 @@ class ProjectsTeamCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppSectionCard(
       title: 'Team',
+      icon: Icons.groups_outlined,
       padding: EdgeInsets.zero,
       trailing: onAdd == null
           ? null
@@ -33,11 +36,16 @@ class ProjectsTeamCard extends StatelessWidget {
             const ListTile(title: Text('No one is assigned yet.')),
           for (final m in team)
             ListTile(
-              leading: CircleAvatar(
-                child: Text(m.user?.fullName.characters.first ?? '?'),
-              ),
+              leading: AppAvatar(name: m.user?.fullName ?? '?', size: 38),
               title: Text(m.user?.fullName ?? 'Unknown user'),
-              subtitle: Text(m.assignment.roleOnProject.label),
+              subtitle: Text(
+                [
+                  m.assignment.roleOnProject.label,
+                  if (m.assignment.response != RequestResponse.accepted)
+                    m.assignment.response.label,
+                  ?m.assignment.note,
+                ].join(' · '),
+              ),
               trailing: onRemove == null
                   ? null
                   : IconButton(

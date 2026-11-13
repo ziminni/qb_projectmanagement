@@ -4,11 +4,13 @@ import '../models/category.dart';
 import '../models/delivery.dart';
 import '../models/delivery_item.dart';
 import '../models/material_request.dart';
+import '../models/material_item.dart';
 import '../models/material_request_item.dart';
 import '../models/material_source.dart';
 import '../models/payment_method.dart';
 import '../models/purchase_order.dart';
 import '../models/purchase_order_item.dart';
+import '../models/site_count.dart';
 import '../models/supplier_payment.dart';
 import '../services/business_rule_exception.dart';
 import '../services/inventory_calculator.dart';
@@ -54,6 +56,7 @@ class MockProcurementRepository implements ProcurementRepository {
 
   final _requests = [...MockProcurementData.requests];
   final _requestItems = [...MockProcurementData.requestItems];
+  final _counts = <SiteCount>[];
   final _orders = [...MockProcurementData.orders];
   final _orderItems = [...MockProcurementData.orderItems];
   final _deliveries = [...MockProcurementData.deliveries];
@@ -90,59 +93,27 @@ class MockProcurementRepository implements ProcurementRepository {
     return MaterialRequestDetail(
       _requests[i],
       _requestItems.where((x) => x.materialRequestId == id).toList(),
+      _counts.where((c) => c.materialRequestId == id).toList(),
     );
   }
 
-  Future<Map<int, double>> _defaultCosts() async => {
-    for (final m in await _masterData.getMaterials()) m.id: m.defaultUnitCost,
-  };
-
-  /// Approved and ordered material cost for [categoryId]: PO prices where
-  /// ordered, default unit costs otherwise.
-  Future<double> _committed(int categoryId, {int? excludingRequestId}) async {
-    final costs = await _defaultCosts();
-    var total = 0.0;
-    for (final r in _requests) {
-      if (r.categoryId != categoryId || r.id == excludingRequestId) continue;
-      if (r.status != MaterialRequestStatus.approved &&
-          r.status != MaterialRequestStatus.ordered) {
-        continue;
-      }
-      for (final item in _requestItems.where(
-        (x) => x.materialRequestId == r.id,
-      )) {
-        final ordered = _orderItems.where(
-          (o) =>
-              o.materialRequestItemId == item.id &&
-              _orderById(o.purchaseOrderId).status !=
-                  PurchaseOrderStatus.cancelled,
-        );
-        total += ordered.isNotEmpty
-            ? ordered.fold(0.0, (s, o) => s + o.amount)
-            : item.quantity * (costs[item.materialId] ?? 0);
-      }
-    }
-    return total;
-  }
+  /// Ordered or bought material for [categoryId], excluding cancelled
+  /// orders.
+  double _committed(int categoryId) => _orders
+      .where(
+        (o) =>
+            o.categoryId == categoryId &&
+            o.status != PurchaseOrderStatus.cancelled,
+      )
+      .fold(0.0, (s, o) => s + o.totalAmount);
 
   @override
-  Future<BudgetCheck> checkBudget(
-    int categoryId,
-    List<({int materialId, double quantity})> items, {
-    int? excludingRequestId,
-  }) async {
-    final costs = await _defaultCosts();
+  Future<BudgetCheck> checkBudget(int categoryId, double amount) async {
     final category = await _categoryById(categoryId);
     return BudgetCheck(
       budget: category != null && category.hasBudget ? category.budget : null,
-      committed: await _committed(
-        categoryId,
-        excludingRequestId: excludingRequestId,
-      ),
-      requestCost: items.fold(
-        0.0,
-        (s, i) => s + i.quantity * (costs[i.materialId] ?? 0),
-      ),
+      committed: _committed(categoryId),
+      requestCost: amount,
     );
   }
 
@@ -176,10 +147,6 @@ class MockProcurementRepository implements ProcurementRepository {
         'Only the site engineer assigned to this project can request materials.',
       );
     }
-    final categories = await _schedule.getCategories(draft.projectId);
-    if (!categories.any((c) => c.id == draft.categoryId)) {
-      throw const BusinessRuleException('Choose a category of this project.');
-    }
     ProcurementRules.enforce(
       ProcurementRules.validateNeededBy(draft.neededBy, _clock()),
     );
@@ -187,13 +154,29 @@ class MockProcurementRepository implements ProcurementRepository {
       throw const BusinessRuleException('Add at least one item.');
     }
     for (final i in draft.items) {
+      ProcurementRules.enforce(
+        ProcurementRules.validateRequired(i.description, 'item'),
+      );
       ProcurementRules.enforce(ProcurementRules.validateQuantity(i.quantity));
+    }
+    // Forced compliance: every material on site is counted first.
+    final counted = {
+      for (final c in draft.counts) inventoryKey(c.materialId, c.name): c,
+    };
+    for (final line in await getSiteInventory(draft.projectId)) {
+      if (!line.needsCount) continue;
+      final c = counted[line.key];
+      if (c == null) {
+        throw BusinessRuleException(
+          'Count the ${line.name} on site before requesting more.',
+        );
+      }
+      ProcurementRules.enforce(ProcurementRules.validateCount(c.counted));
     }
     final now = _clock();
     final request = MaterialRequest(
       id: _next(_requests.map((r) => r.id)),
       projectId: draft.projectId,
-      categoryId: draft.categoryId,
       requestedBy: userId,
       neededBy: DateTime(
         draft.neededBy.year,
@@ -210,55 +193,41 @@ class MockProcurementRepository implements ProcurementRepository {
         MaterialRequestItem(
           id: _next(_requestItems.map((x) => x.id)),
           materialRequestId: request.id,
-          materialId: i.materialId,
+          description: i.description.trim(),
+          unit: i.unit.trim(),
           quantity: i.quantity,
+          createdAt: now,
         ),
       );
     }
+    for (final c in draft.counts) {
+      _counts.add(
+        SiteCount(
+          id: _next(_counts.map((x) => x.id)),
+          materialRequestId: request.id,
+          materialId: c.materialId,
+          name: c.name,
+          unit: c.unit,
+          expected: c.expected,
+          counted: c.counted,
+        ),
+      );
+    }
+    await _auditLog.record(
+      userId: userId,
+      action: 'material_request_created',
+      entity: 'material_request',
+      entityId: request.id,
+      details: {'items': draft.items.length, 'counted': draft.counts.length},
+    );
     await _notifications?.notifyProjectRole(
       draft.projectId,
       AppRole.owner,
       type: 'material_request',
-      message: '${request.number} for ${project.code} needs your approval.',
+      message: '${request.number} for ${project.code} is waiting for you.',
       link: AppRoutes.materialRequest(request.id),
     );
     return request;
-  }
-
-  @override
-  Future<MaterialRequest> approveRequest(
-    int id, {
-    required int userId,
-    required AppRole role,
-  }) async {
-    final i = _requestIndex(id);
-    final r = _requests[i];
-    if (r.status != MaterialRequestStatus.pending || role != AppRole.owner) {
-      throw BusinessRuleException(
-        'This request is ${r.status.label.toLowerCase()} and cannot be '
-        'approved by a ${role.label.toLowerCase()}.',
-      );
-    }
-    await _requirePm(r.projectId, userId);
-    final updated = r.copyWith(
-      status: MaterialRequestStatus.approved,
-      approvedBy: () => userId,
-      updatedAt: _clock(),
-    );
-    _requests[i] = updated;
-    await _auditLog.record(
-      userId: userId,
-      action: 'material_request_approved',
-      entity: 'material_request',
-      entityId: id,
-    );
-    await _notifications?.notify(
-      [r.requestedBy],
-      type: 'material_request',
-      message: 'Your ${r.number} was approved.',
-      link: AppRoutes.materialRequest(id),
-    );
-    return updated;
   }
 
   @override
@@ -301,117 +270,158 @@ class MockProcurementRepository implements ProcurementRepository {
     return updated;
   }
 
-  // ---- Purchase orders
+  // ---- Orders
+
+  /// A typed name that matches the price list counts as that material.
+  Future<int?> _matchMaterial(String name) async {
+    final n = name.trim().toLowerCase();
+    for (final MaterialItem m in await _masterData.getMaterials()) {
+      if (m.name.toLowerCase() == n) return m.id;
+    }
+    return null;
+  }
 
   @override
-  Future<List<PurchaseOrder>> createPurchaseOrders(
-    int requestId,
-    List<OrderLine> lines, {
+  Future<PurchaseOrder> placeOrder(
+    OrderDraft draft, {
     required int userId,
   }) async {
-    final ri = _requestIndex(requestId);
+    final ri = _requestIndex(draft.requestId);
     final request = _requests[ri];
-    if (request.status != MaterialRequestStatus.approved) {
-      throw const BusinessRuleException(
-        'Only approved requests can be turned into purchase orders.',
-      );
+    if (request.status == MaterialRequestStatus.rejected) {
+      throw const BusinessRuleException('This request was rejected.');
     }
     await _requirePm(request.projectId, userId);
-    final suppliers = {
-      for (final s in await _masterData.getSuppliers()) s.id: s,
-    };
-    final openItems = {
-      for (final x in _requestItems)
-        if (x.materialRequestId == requestId &&
-            x.status == MaterialRequestItemStatus.pending)
-          x.id: x,
-    };
-    if (lines.isEmpty) {
-      throw const BusinessRuleException('Choose at least one item to order.');
+    final categories = await _schedule.getCategories(request.projectId);
+    if (!categories.any((c) => c.id == draft.categoryId)) {
+      throw const BusinessRuleException(
+        'Choose the budget category of this project.',
+      );
     }
-    for (final l in lines) {
-      final item = openItems[l.requestItemId];
-      if (item == null) {
-        throw const BusinessRuleException('An item is already ordered.');
+    if (draft.lines.isEmpty) {
+      throw const BusinessRuleException('Add at least one material.');
+    }
+    for (final id in draft.coversItemIds) {
+      final item = _requestItems.where((x) => x.id == id).firstOrNull;
+      if (item == null || item.materialRequestId != request.id) {
+        throw const BusinessRuleException('An item is not on this request.');
       }
-      final supplier = suppliers[l.supplierId];
-      if (supplier == null) {
-        throw const BusinessRuleException('Choose a supplier for every item.');
-      }
-      if (supplier.isOwnStore != (l.source == MaterialSource.ownStore)) {
+      if (item.isCovered) {
         throw BusinessRuleException(
-          l.source == MaterialSource.ownStore
-              ? 'Own-store items must be ordered from the own store.'
-              : '${supplier.name} is the own store; tag the item Own store.',
+          '${item.description} is already covered by another order.',
         );
       }
+    }
+    for (final l in draft.lines) {
+      ProcurementRules.enforce(
+        ProcurementRules.validateRequired(l.description, 'material'),
+      );
+      ProcurementRules.enforce(ProcurementRules.validateQuantity(l.quantity));
       ProcurementRules.enforce(ProcurementRules.validateUnitPrice(l.unitPrice));
+    }
+    final own = draft.source == MaterialSource.ownStore;
+    int? supplierId;
+    if (own) {
+      ProcurementRules.enforce(
+        ProcurementRules.validateRequired(
+          draft.deliveryAddress,
+          'delivery address',
+        ),
+      );
+      if (draft.lines.any((l) => l.materialId == null)) {
+        throw const BusinessRuleException(
+          'Pick own-store materials from the store catalog.',
+        );
+      }
+      supplierId = (await _masterData.getSuppliers())
+          .where((s) => s.isOwnStore)
+          .firstOrNull
+          ?.id;
+      if (supplierId == null) {
+        throw const BusinessRuleException(
+          'Set up the own store in the supplier list first.',
+        );
+      }
+    } else {
+      ProcurementRules.enforce(
+        ProcurementRules.validateRequired(draft.storeName, 'store name'),
+      );
+      ProcurementRules.enforce(
+        ProcurementRules.validateRequired(draft.orNumber, 'OR number'),
+      );
+      if (draft.receiptPhotoUrl == null || draft.receiptPhotoUrl!.isEmpty) {
+        throw const BusinessRuleException('Attach a photo of the receipt.');
+      }
     }
 
     final now = _clock();
-    final created = <PurchaseOrder>[];
-    final bySupplier = <int, List<OrderLine>>{};
-    for (final l in lines) {
-      bySupplier.putIfAbsent(l.supplierId, () => []).add(l);
-    }
-    for (final entry in bySupplier.entries) {
-      final id = _next(_orders.map((o) => o.id));
-      final total = entry.value.fold(
-        0.0,
-        (s, l) => s + openItems[l.requestItemId]!.quantity * l.unitPrice,
-      );
-      final order = PurchaseOrder(
-        id: id,
-        poNo: 'PO-${now.year}-${id.toString().padLeft(4, '0')}',
-        projectId: request.projectId,
-        supplierId: entry.key,
-        source: entry.value.first.source,
-        status: PurchaseOrderStatus.released,
-        totalAmount: total,
-        approvedBy: userId,
-        createdAt: now,
-        updatedAt: now,
-      );
-      _orders.add(order);
-      for (final l in entry.value) {
-        final item = openItems[l.requestItemId]!;
-        _orderItems.add(
-          PurchaseOrderItem(
-            id: _next(_orderItems.map((o) => o.id)),
-            purchaseOrderId: id,
-            materialRequestItemId: item.id,
-            materialId: item.materialId,
-            quantity: item.quantity,
-            unitPrice: l.unitPrice,
-          ),
-        );
-        final ii = _requestItems.indexWhere((x) => x.id == item.id);
-        _requestItems[ii] = item.copyWith(
-          source: l.source,
-          status: MaterialRequestItemStatus.ordered,
-        );
-      }
-      created.add(order);
-      await _auditLog.record(
-        userId: userId,
-        action: 'purchase_order_created',
-        entity: 'purchase_order',
-        entityId: id,
-        details: {'request_id': requestId, 'total': total},
-      );
-      await _notifyDelivery(order);
-    }
-    if (!_requestItems.any(
-      (x) =>
-          x.materialRequestId == requestId &&
-          x.status == MaterialRequestItemStatus.pending,
-    )) {
-      _requests[ri] = request.copyWith(
-        status: MaterialRequestStatus.ordered,
-        updatedAt: now,
+    final id = _next(_orders.map((o) => o.id));
+    final total = draft.lines.fold(0.0, (s, l) => s + l.quantity * l.unitPrice);
+    final order = PurchaseOrder(
+      id: id,
+      poNo: 'PO-${now.year}-${id.toString().padLeft(4, '0')}',
+      projectId: request.projectId,
+      materialRequestId: request.id,
+      categoryId: draft.categoryId,
+      supplierId: supplierId,
+      storeName: own ? null : draft.storeName!.trim(),
+      source: draft.source,
+      status: own
+          ? PurchaseOrderStatus.released
+          : PurchaseOrderStatus.purchased,
+      totalAmount: total,
+      deliveryAddress: draft.deliveryAddress?.trim(),
+      orNumber: draft.orNumber?.trim(),
+      receiptPhotoUrl: draft.receiptPhotoUrl,
+      approvedBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _orders.add(order);
+    for (final l in draft.lines) {
+      _orderItems.add(
+        PurchaseOrderItem(
+          id: _next(_orderItems.map((o) => o.id)),
+          purchaseOrderId: id,
+          materialId: l.materialId ?? await _matchMaterial(l.description),
+          description: l.description.trim(),
+          unit: l.unit.trim(),
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          createdAt: now,
+        ),
       );
     }
-    return created;
+    for (final itemId in draft.coversItemIds) {
+      final ii = _requestItems.indexWhere((x) => x.id == itemId);
+      _requestItems[ii] = _requestItems[ii].coveredBy(id);
+    }
+    _requests[ri] = request.copyWith(
+      status: MaterialRequestStatus.ordered,
+      approvedBy: () => request.approvedBy ?? userId,
+      updatedAt: now,
+    );
+    await _auditLog.record(
+      userId: userId,
+      action: own ? 'purchase_order_created' : 'purchase_logged',
+      entity: 'purchase_order',
+      entityId: id,
+      details: {
+        'request_id': request.id,
+        'total': total,
+        if (!own) 'or_number': draft.orNumber!.trim(),
+      },
+    );
+    await _notifications?.notify(
+      [request.requestedBy],
+      type: 'material_request',
+      message: own
+          ? 'Your ${request.number} was ordered from the own store.'
+          : 'Your ${request.number} was bought at ${order.storeName}.',
+      link: AppRoutes.materialRequest(request.id),
+    );
+    await _notifyDelivery(order);
+    return order;
   }
 
   @override
@@ -433,11 +443,6 @@ class MockProcurementRepository implements ProcurementRepository {
     final i = _orders.indexWhere((o) => o.id == id);
     if (i < 0) return null;
     final items = _orderItems.where((o) => o.purchaseOrderId == id).toList();
-    final requestItemIds = items.map((o) => o.materialRequestItemId).toSet();
-    final requestId = _requestItems
-        .where((x) => requestItemIds.contains(x.id))
-        .map((x) => x.materialRequestId)
-        .firstOrNull;
     return PurchaseOrderDetail(
       order: _orders[i],
       items: items,
@@ -450,7 +455,7 @@ class MockProcurementRepository implements ProcurementRepository {
             ),
       ],
       payments: _payments.where((p) => p.purchaseOrderId == id).toList(),
-      requestId: requestId,
+      requestId: _orders[i].materialRequestId,
     );
   }
 
@@ -467,23 +472,31 @@ class MockProcurementRepository implements ProcurementRepository {
       );
     }
     if (o.status == PurchaseOrderStatus.cancelled) return o;
+    if (o.paidOnPurchase) {
+      throw const BusinessRuleException(
+        'A purchase already paid at the store cannot be cancelled.',
+      );
+    }
     final updated = o.copyWith(status: PurchaseOrderStatus.cancelled);
     _orders[i] = updated;
-    // Free the request items so purchasing can reorder them.
-    for (final oi in _orderItems.where((x) => x.purchaseOrderId == id)) {
-      final ii = _requestItems.indexWhere(
-        (x) => x.id == oi.materialRequestItemId,
-      );
-      final item = _requestItems[ii];
-      _requestItems[ii] = item.copyWith(
-        status: MaterialRequestItemStatus.pending,
-      );
-      final ri = _requestIndex(item.materialRequestId);
-      if (_requests[ri].status == MaterialRequestStatus.ordered) {
-        _requests[ri] = _requests[ri].copyWith(
-          status: MaterialRequestStatus.approved,
-        );
+    // Its items are open again for another order.
+    for (var j = 0; j < _requestItems.length; j++) {
+      if (_requestItems[j].purchaseOrderId == id) {
+        _requestItems[j] = _requestItems[j].coveredBy(null);
       }
+    }
+    // A request left with no live order goes back to the owner's queue.
+    final requestId = o.materialRequestId;
+    if (requestId != null &&
+        !_orders.any(
+          (x) =>
+              x.materialRequestId == requestId &&
+              x.status != PurchaseOrderStatus.cancelled,
+        )) {
+      final ri = _requestIndex(requestId);
+      _requests[ri] = _requests[ri].copyWith(
+        status: MaterialRequestStatus.pending,
+      );
     }
     await _auditLog.record(
       userId: userId,
@@ -638,6 +651,7 @@ class MockProcurementRepository implements ProcurementRepository {
           .where((d) => deliveryIds.contains(d.deliveryId))
           .toList(),
       usage: await _reports.getApprovedMaterialUsage(projectId),
+      materials: {for (final m in await _masterData.getMaterials()) m.id: m},
     );
   }
 
@@ -662,6 +676,7 @@ class MockProcurementRepository implements ProcurementRepository {
   Future<List<Payable>> getPayables({List<int>? projectIds}) async => [
     for (final o in _orders)
       if (o.status != PurchaseOrderStatus.cancelled &&
+          !o.paidOnPurchase &&
           (projectIds == null || projectIds.contains(o.projectId)))
         Payable(
           order: o,
@@ -710,19 +725,15 @@ class MockProcurementRepository implements ProcurementRepository {
 
   @override
   Future<Map<int, double>> deliveredValueByCategory(int projectId) async {
-    final requestCategory = {
-      for (final r in _requests)
-        if (r.projectId == projectId) r.id: r.categoryId,
-    };
-    final itemCategory = {
-      for (final x in _requestItems)
-        if (requestCategory.containsKey(x.materialRequestId))
-          x.id: requestCategory[x.materialRequestId]!,
+    final orderCategory = {
+      for (final o in _orders)
+        if (o.projectId == projectId && o.categoryId != null)
+          o.id: o.categoryId!,
     };
     final orderItemCategory = {
       for (final o in _orderItems)
-        if (itemCategory.containsKey(o.materialRequestItemId))
-          o.id: (itemCategory[o.materialRequestItemId]!, o.unitPrice),
+        if (orderCategory.containsKey(o.purchaseOrderId))
+          o.id: (orderCategory[o.purchaseOrderId]!, o.unitPrice),
     };
     final result = <int, double>{};
     for (final d in _deliveryItems) {
@@ -763,7 +774,11 @@ class MockProcurementRepository implements ProcurementRepository {
         order.projectId,
         AppRole.siteEngineer,
         type: 'purchase_order',
-        message: '${order.poNo} is released. Confirm the delivery on arrival.',
+        message: order.paidOnPurchase
+            ? '${order.poNo} was bought at ${order.storeName}. Confirm the '
+                  'delivery on arrival.'
+            : '${order.poNo} is released to the own store. Confirm the '
+                  'delivery on arrival.',
         link: AppRoutes.deliveryConfirm(order.id),
       ) ??
       Future.value();

@@ -5,11 +5,15 @@ import '../../routes/routes.dart';
 import 'project_tabs.dart';
 
 class RoleDestination {
-  const RoleDestination(this.label, this.icon, this.path);
+  const RoleDestination(this.label, this.icon, this.path, {this.group});
 
   final String label;
   final IconData icon;
   final String path;
+
+  /// Heading this destination sits under in the sidebar. Null for the
+  /// role's home screen, which sits above every group.
+  final String? group;
 }
 
 /// Navigation for each role's app shell, from "Screens by role". The first
@@ -17,21 +21,35 @@ class RoleDestination {
 abstract final class RoleNavigation {
   static const _destinations = <AppRole, List<RoleDestination>>{
     AppRole.admin: [
-      RoleDestination('Users', Icons.people_outline, AppRoutes.adminUsers),
       RoleDestination(
-        'Company profile',
-        Icons.business_outlined,
-        AppRoutes.adminCompany,
+        'Dashboard',
+        Icons.space_dashboard_outlined,
+        AppRoutes.adminOverview,
+        group: 'Overview',
+      ),
+      RoleDestination(
+        'Users',
+        Icons.people_outline,
+        AppRoutes.adminUsers,
+        group: 'People',
       ),
       RoleDestination(
         'Master lists',
         Icons.list_alt_outlined,
         AppRoutes.adminMasterLists,
+        group: 'Configuration',
       ),
       RoleDestination(
         'Settings',
         Icons.settings_outlined,
         AppRoutes.adminSettings,
+        group: 'Configuration',
+      ),
+      RoleDestination(
+        'Audit log',
+        Icons.history,
+        AppRoutes.adminAuditLog,
+        group: 'Monitoring',
       ),
     ],
     AppRole.owner: [
@@ -39,32 +57,43 @@ abstract final class RoleNavigation {
         'Dashboard',
         Icons.dashboard_outlined,
         AppRoutes.dashboard,
+        group: 'Overview',
       ),
       RoleDestination(
         'My projects',
         Icons.apartment_outlined,
         AppRoutes.projects,
+        group: 'Projects',
       ),
-      RoleDestination('Approvals', Icons.inbox_outlined, AppRoutes.approvals),
+      RoleDestination(
+        'Approvals',
+        Icons.inbox_outlined,
+        AppRoutes.approvals,
+        group: 'Projects',
+      ),
       RoleDestination(
         'Purchasing',
         Icons.shopping_cart_outlined,
         AppRoutes.requestQueue,
-      ),
-      RoleDestination(
-        'Billing',
-        Icons.receipt_long_outlined,
-        AppRoutes.billings,
-      ),
-      RoleDestination(
-        'Variation orders',
-        Icons.difference_outlined,
-        AppRoutes.variationOrders,
+        group: 'Procurement',
       ),
       RoleDestination(
         'Price lists',
         Icons.list_alt_outlined,
         AppRoutes.adminMasterLists,
+        group: 'Procurement',
+      ),
+      RoleDestination(
+        'Billing',
+        Icons.receipt_long_outlined,
+        AppRoutes.billings,
+        group: 'Finance',
+      ),
+      RoleDestination(
+        'Variation orders',
+        Icons.difference_outlined,
+        AppRoutes.variationOrders,
+        group: 'Finance',
       ),
     ],
     AppRole.siteEngineer: [
@@ -72,74 +101,107 @@ abstract final class RoleNavigation {
         'My sites',
         Icons.location_city_outlined,
         AppRoutes.projects,
+        group: 'Overview',
       ),
       RoleDestination(
         'Daily reports',
         Icons.edit_note_outlined,
         AppRoutes.dailyReports,
+        group: 'Site work',
       ),
       RoleDestination(
         'To-do checklist',
         Icons.checklist_outlined,
         AppRoutes.schedule,
+        group: 'Site work',
       ),
-      RoleDestination('Attendance', Icons.badge_outlined, AppRoutes.attendance),
+      RoleDestination(
+        'Attendance',
+        Icons.badge_outlined,
+        AppRoutes.attendance,
+        group: 'Site work',
+      ),
       RoleDestination(
         'Material requests',
         Icons.inventory_2_outlined,
         AppRoutes.materialRequests,
+        group: 'Materials',
       ),
       RoleDestination(
         'Deliveries',
         Icons.local_shipping_outlined,
         AppRoutes.deliveries,
+        group: 'Materials',
       ),
     ],
     AppRole.accountant: [
-      RoleDestination('Payroll', Icons.payments_outlined, AppRoutes.payroll),
+      RoleDestination(
+        'Payroll',
+        Icons.payments_outlined,
+        AppRoutes.payroll,
+        group: 'Labor',
+      ),
+      RoleDestination(
+        'Workers',
+        Icons.engineering_outlined,
+        AppRoutes.workers,
+        group: 'Labor',
+      ),
       RoleDestination(
         'Billings and payments',
         Icons.receipt_long_outlined,
         AppRoutes.billings,
+        group: 'Receivables',
+      ),
+      RoleDestination(
+        'Retention',
+        Icons.savings_outlined,
+        AppRoutes.retention,
+        group: 'Receivables',
       ),
       RoleDestination(
         'Supplier payables',
         Icons.request_quote_outlined,
         AppRoutes.payables,
+        group: 'Payables',
       ),
-      RoleDestination('Retention', Icons.savings_outlined, AppRoutes.retention),
       RoleDestination(
         'Expense reports',
         Icons.summarize_outlined,
         AppRoutes.expenseReports,
+        group: 'Reports',
       ),
-      RoleDestination('Workers', Icons.engineering_outlined, AppRoutes.workers),
     ],
     AppRole.client: [
       RoleDestination(
         'My projects',
         Icons.apartment_outlined,
         AppRoutes.clientProjects,
+        group: 'Overview',
       ),
       RoleDestination(
         'Progress',
         Icons.insights_outlined,
         AppRoutes.clientProgress,
+        group: 'Follow the work',
       ),
       RoleDestination(
         'Photos',
         Icons.photo_library_outlined,
         AppRoutes.clientPhotos,
+        group: 'Follow the work',
       ),
       RoleDestination(
         'Billings',
         Icons.receipt_long_outlined,
         AppRoutes.clientBillings,
+        group: 'Approvals',
       ),
       RoleDestination(
         'Variation orders',
         Icons.difference_outlined,
         AppRoutes.clientVariationOrders,
+        group: 'Approvals',
       ),
     ],
   };
@@ -243,6 +305,11 @@ abstract final class RoleNavigation {
   static const _projectEditors = [AppRole.owner];
 
   static List<RoleDestination> forRole(AppRole role) => _destinations[role]!;
+
+  /// Sections [role] opens from links rather than its navigation.
+  static List<RoleDestination> linkedFor(AppRole role) => [
+    for (final path in _linked[role] ?? const <String>[]) ?sectionFor(path),
+  ];
 
   static String homeFor(AppRole role) => forRole(role).first.path;
 

@@ -22,11 +22,13 @@ import '../../data/repositories/mock_schedule_repository.dart';
 import '../../data/repositories/mock_labor_repository.dart';
 import '../../data/repositories/mock_notification_repository.dart';
 import '../../data/repositories/mock_procurement_repository.dart';
+import '../../data/repositories/mock_store_catalog_repository.dart';
 import '../../data/repositories/mock_user_repository.dart';
 import '../../data/repositories/notification_repository.dart';
 import '../../data/repositories/procurement_repository.dart';
 import '../../data/repositories/project_repository.dart';
 import '../../data/repositories/schedule_repository.dart';
+import '../../data/repositories/store_catalog_repository.dart';
 import '../../data/repositories/user_repository.dart';
 import '../../data/services/approval_inbox.dart';
 import '../../data/services/approval_sources.dart';
@@ -62,6 +64,9 @@ void setupServiceLocator() {
     })
     ..registerLazySingleton<CompanyRepository>(MockCompanyRepository.new)
     ..registerLazySingleton<MasterDataRepository>(MockMasterDataRepository.new)
+    ..registerLazySingleton<StoreCatalogRepository>(
+      MockStoreCatalogRepository.new,
+    )
     ..registerLazySingleton<ClientRepository>(MockClientRepository.new)
     ..registerLazySingleton<AuditLogRepository>(MockAuditLogRepository.new)
     ..registerLazySingleton<ScheduleRepository>(

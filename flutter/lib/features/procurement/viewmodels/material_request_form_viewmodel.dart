@@ -2,17 +2,25 @@ import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
-import '../../../data/models/category.dart';
 import '../../../data/models/project.dart';
 import '../../../data/repositories/procurement_repository.dart';
 import '../../../data/services/business_rule_exception.dart';
-import '../../../data/services/procurement_rules.dart';
+import '../../../data/services/inventory_calculator.dart';
 import '../../../data/services/session_service.dart';
-import '../../../shared/widgets/app_quantity_rows_editor.dart';
+import 'line_draft.dart';
 import 'procurement_lookups.dart';
 
-/// Site engineer's material request: item, quantity, needed-by date, with a
-/// live check against the category's remaining budget.
+/// One material to count on site before requesting more.
+class CountDraft {
+  CountDraft(this.line);
+
+  final InventoryLine line;
+  double? counted;
+}
+
+/// Site engineer's material request. First they count every material the
+/// system shows on site (forced compliance); then they type each item and
+/// its quantity. The owner picks the actual materials and budget category.
 class MaterialRequestFormViewModel extends ChangeNotifier with ActionRunner {
   MaterialRequestFormViewModel({
     this.initialProjectId,
@@ -29,26 +37,20 @@ class MaterialRequestFormViewModel extends ChangeNotifier with ActionRunner {
 
   bool _loading = true;
   String? _error;
-  BudgetCheck? _budget;
   int? _savedId;
 
   int? projectId;
-  int? categoryId;
   DateTime neededBy = DateTime.now().add(const Duration(days: 3));
-  final rows = <AppQuantityRow>[AppQuantityRow()];
+  List<CountDraft> counts = [];
+  final lines = <LineDraft>[LineDraft()];
 
   bool get isLoading => _loading;
   String? get error => _error;
-  BudgetCheck? get budget => _budget;
   int? get savedId => _savedId;
 
   List<Project> get projectOptions => lookups.projects.values
       .where((p) => p.status == ProjectStatus.ongoing)
       .toList();
-
-  List<Category> get categoryOptions =>
-      lookups.categories.values.where((c) => c.projectId == projectId).toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
   Future<void> load() async {
     try {
@@ -57,9 +59,10 @@ class MaterialRequestFormViewModel extends ChangeNotifier with ActionRunner {
         _error = 'You have no ongoing site to request materials for.';
         return;
       }
-      projectId = projectOptions.any((p) => p.id == initialProjectId)
+      final id = projectOptions.any((p) => p.id == initialProjectId)
           ? initialProjectId
           : (projectOptions.length == 1 ? projectOptions.first.id : null);
+      await _loadCounts(id);
     } catch (e) {
       _error = 'Could not load the form. $e';
     } finally {
@@ -68,16 +71,19 @@ class MaterialRequestFormViewModel extends ChangeNotifier with ActionRunner {
     }
   }
 
-  void setProject(int? id) {
+  Future<void> _loadCounts(int? id) async {
     projectId = id;
-    categoryId = null;
-    _budget = null;
-    notifyListeners();
+    counts = id == null
+        ? []
+        : [
+            for (final l in await _procurement.getSiteInventory(id))
+              if (l.needsCount) CountDraft(l),
+          ];
   }
 
-  void setCategory(int? id) {
-    categoryId = id;
-    refreshBudget();
+  Future<void> setProject(int? id) async {
+    await _loadCounts(id);
+    notifyListeners();
   }
 
   void setNeededBy(DateTime d) {
@@ -85,36 +91,38 @@ class MaterialRequestFormViewModel extends ChangeNotifier with ActionRunner {
     notifyListeners();
   }
 
-  List<({int materialId, double quantity})> get _items => [
-    for (final r in rows)
-      if (r.itemId != null && r.quantity > 0)
-        (materialId: r.itemId!, quantity: r.quantity),
-  ];
-
-  /// Recomputes the budget check after a row or category change. The check
-  /// shows peso amounts, so only finance roles get one.
-  Future<void> refreshBudget() async {
-    if (categoryId == null || !_session.activeRole!.seesFinance) {
-      _budget = null;
-    } else {
-      _budget = await _procurement.checkBudget(categoryId!, _items);
-    }
+  void addLine() {
+    lines.add(LineDraft());
     notifyListeners();
   }
 
+  void removeLine(LineDraft line) {
+    lines.remove(line);
+    notifyListeners();
+  }
+
+  void changed() => notifyListeners();
+
   Future<String?> submit() => runAction(() async {
-    if (projectId == null || categoryId == null) {
-      throw const BusinessRuleException('Choose the project and category.');
-    }
-    if (rows.any((r) => r.itemId == null)) {
-      throw const BusinessRuleException('Choose a material for every row.');
+    if (projectId == null) {
+      throw const BusinessRuleException('Choose the project.');
     }
     final request = await _procurement.createRequest(
       MaterialRequestDraft(
         projectId: projectId!,
-        categoryId: categoryId!,
         neededBy: neededBy,
-        items: _items,
+        items: [for (final l in lines) l.toRequestLine()],
+        counts: [
+          for (final c in counts)
+            if (c.counted != null)
+              (
+                materialId: c.line.materialId,
+                name: c.line.name,
+                unit: c.line.unit,
+                expected: c.line.onHand,
+                counted: c.counted!,
+              ),
+        ],
       ),
       userId: _session.user!.id,
     );

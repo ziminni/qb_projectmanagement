@@ -10,6 +10,7 @@ import '../../../core/utils/page_padding.dart';
 import '../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_supplier_form_dialog.dart';
+import '../viewmodels/admin_audit.dart';
 import '../viewmodels/master_lists_viewmodel.dart';
 import '../widgets/user_management_client_dialog.dart';
 import '../widgets/user_management_equipment_dialog.dart';
@@ -23,8 +24,11 @@ class MasterListsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) =>
-          MasterListsViewModel(masterData: getIt(), clients: getIt())..load(),
+      create: (_) => MasterListsViewModel(
+        masterData: getIt(),
+        clients: getIt(),
+        audit: AdminAudit.fromLocator(),
+      )..load(),
       builder: (context, _) {
         final vm = context.watch<MasterListsViewModel>();
         if (vm.isLoading) {

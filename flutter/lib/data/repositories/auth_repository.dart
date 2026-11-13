@@ -16,6 +16,10 @@ abstract interface class AuthRepository {
   /// Always succeeds so the response does not reveal which emails exist.
   Future<void> requestPasswordReset(String email);
 
+  /// Admin action: replaces [userId]'s password with a temporary one and
+  /// returns it so the admin can pass it on.
+  Future<String> resetPassword(int userId);
+
   Future<void> changePassword(
     int userId, {
     required String currentPassword,

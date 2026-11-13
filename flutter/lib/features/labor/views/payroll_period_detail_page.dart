@@ -10,6 +10,7 @@ import '../../../data/models/payroll_period.dart';
 import '../../../data/services/payroll_calculator.dart';
 import '../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../shared/widgets/app_empty_state.dart';
+import '../../../shared/widgets/app_pdf_button.dart';
 import '../../../shared/widgets/app_figure.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
@@ -55,6 +56,7 @@ class PayrollPeriodDetailPage extends StatelessWidget {
                   style: textTheme.headlineSmall,
                 ),
                 LaborPeriodStatusChip(status: p.status),
+                AppPdfButton(build: vm.pdfReport),
               ],
             ),
             Text(

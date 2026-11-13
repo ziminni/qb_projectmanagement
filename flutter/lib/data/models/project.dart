@@ -1,14 +1,19 @@
 import 'json_utils.dart';
 
 enum ProjectStatus implements JsonEnum {
-  draft('draft', 'Draft'),
-  bidding('bidding', 'Bidding'),
-  awarded('awarded', 'Awarded'),
+  /// Sent to the client; the site engineer gets it once the client accepts.
+  requested('requested', 'Waiting for client'),
+
+  /// The client asked for revisions; the owner edits and sends it again.
+  changesRequested('changes_requested', 'Changes requested'),
+
+  /// The client accepted; waiting for the site engineer.
+  siteEngineerPending('site_engineer_pending', 'Waiting for site engineer'),
+  accepted('accepted', 'Accepted'),
   ongoing('ongoing', 'Ongoing'),
   completed('completed', 'Completed'),
   closed('closed', 'Closed'),
-  onHold('on_hold', 'On hold'),
-  lostBid('lost_bid', 'Lost bid');
+  onHold('on_hold', 'On hold');
 
   const ProjectStatus(this.apiValue, this.label);
 
@@ -28,6 +33,8 @@ class Project {
     required this.code,
     required this.name,
     required this.location,
+    this.latitude,
+    this.longitude,
     required this.clientId,
     required this.contractAmount,
     required this.downPaymentPct,
@@ -44,6 +51,10 @@ class Project {
   final String code;
   final String name;
   final String location;
+
+  /// The site's map pin, when the owner placed one.
+  final double? latitude;
+  final double? longitude;
   final int clientId;
   final double contractAmount;
   final double downPaymentPct;
@@ -60,6 +71,8 @@ class Project {
     code: json['code'] as String,
     name: json['name'] as String,
     location: json['location'] as String,
+    latitude: JsonUtils.toDoubleOrNull(json['latitude']),
+    longitude: JsonUtils.toDoubleOrNull(json['longitude']),
     clientId: json['client_id'] as int,
     contractAmount: JsonUtils.toDouble(json['contract_amount']),
     downPaymentPct: JsonUtils.toDouble(json['down_payment_pct']),
@@ -72,11 +85,15 @@ class Project {
     updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
   );
 
+  bool get hasPin => latitude != null && longitude != null;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'code': code,
     'name': name,
     'location': location,
+    'latitude': latitude,
+    'longitude': longitude,
     'client_id': clientId,
     'contract_amount': contractAmount,
     'down_payment_pct': downPaymentPct,

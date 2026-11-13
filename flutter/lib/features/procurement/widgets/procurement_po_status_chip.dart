@@ -12,7 +12,10 @@ class ProcurementPoStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (fg, bg) = switch (status) {
-      PurchaseOrderStatus.released => (AppColors.info, AppColors.infoContainer),
+      PurchaseOrderStatus.released || PurchaseOrderStatus.purchased => (
+        AppColors.info,
+        AppColors.infoContainer,
+      ),
       PurchaseOrderStatus.partiallyDelivered => (
         AppColors.info,
         AppColors.infoContainer,

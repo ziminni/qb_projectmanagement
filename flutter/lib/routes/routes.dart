@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/di/service_locator.dart';
+import '../core/theme/app_motion.dart';
 import '../core/layout/app_shell.dart';
 import '../core/layout/project_detail_shell.dart';
 import '../core/layout/project_tabs.dart';
@@ -9,8 +10,7 @@ import '../core/layout/role_navigation.dart';
 import '../data/services/approval_inbox.dart';
 import '../data/services/session_service.dart';
 import '../features/auth/views/choose_role_page.dart';
-import '../features/auth/views/forgot_password_page.dart';
-import '../features/auth/views/login_page.dart';
+import '../features/landing/views/landing_page.dart';
 import '../features/auth/views/profile_page.dart';
 import '../features/schedule/views/schedule_categories_page.dart';
 import '../features/schedule/views/schedule_gantt_page.dart';
@@ -51,7 +51,8 @@ import '../features/procurement/views/material_request_form_page.dart';
 import '../features/procurement/views/material_requests_page.dart';
 import '../features/procurement/views/payables_page.dart';
 import '../features/procurement/views/project_materials_page.dart';
-import '../features/procurement/views/purchase_order_create_page.dart';
+import '../data/models/material_source.dart';
+import '../features/procurement/views/material_order_page.dart';
 import '../features/procurement/views/purchase_order_detail_page.dart';
 import '../features/procurement/views/purchase_orders_page.dart';
 import '../features/procurement/views/site_inventory_page.dart';
@@ -59,25 +60,40 @@ import '../features/procurement/views/suppliers_page.dart';
 import '../features/projects/views/project_form_page.dart';
 import '../features/projects/views/project_overview_page.dart';
 import '../features/projects/views/projects_page.dart';
-import '../features/user_management/views/company_profile_page.dart';
+import '../features/user_management/views/admin_overview_page.dart';
+import '../features/user_management/views/audit_log_page.dart';
 import '../features/user_management/views/master_lists_page.dart';
 import '../features/user_management/views/settings_page.dart';
+import '../features/user_management/views/user_detail_page.dart';
 import '../features/user_management/views/user_form_page.dart';
 import '../features/user_management/views/users_page.dart';
 
 abstract final class AppRoutes {
-  static const login = '/login';
-  static const forgotPassword = '/forgot-password';
+  static const landing = '/';
   static const chooseRole = '/choose-role';
   static const notifications = '/notifications';
   static const profile = '/profile';
 
+  static const adminOverview = '/admin/overview';
   static const adminUsers = '/admin/users';
   static const adminUserNew = '/admin/users/new';
   static String adminUser(int userId) => '$adminUsers/$userId';
-  static const adminCompany = '/admin/company';
+  static String adminUserEdit(int userId) => '$adminUsers/$userId/edit';
   static const adminMasterLists = '/admin/master-lists';
   static const adminSettings = '/admin/settings';
+  static String adminSettingsSection(String section) =>
+      '$adminSettings?section=$section';
+
+  /// Company details live in Settings.
+  static const adminCompany = '$adminSettings?section=profile';
+  static const adminLicenses = '$adminSettings?section=licenses';
+
+  /// Old links (e.g. in saved notifications) and where they now live.
+  static const legacy = {
+    '/admin/company': adminCompany,
+    '/admin/roles': adminUsers,
+  };
+  static const adminAuditLog = '/admin/audit-log';
 
   static const dashboard = '/dashboard';
   static const approvals = '/approvals';
@@ -100,6 +116,7 @@ abstract final class AppRoutes {
   static const materialRequestNew = '/material-requests/new';
   static String materialRequest(int id) => '$materialRequests/$id';
   static String materialRequestOrder(int id) => '$materialRequests/$id/order';
+  static String materialRequestBuy(int id) => '$materialRequests/$id/buy';
   static const requestQueue = '/purchasing/requests';
   static const purchaseOrders = '/purchase-orders';
   static String purchaseOrder(int id) => '$purchaseOrders/$id';
@@ -143,8 +160,14 @@ int _id(GoRouterState state, String name) =>
 int? _queryId(GoRouterState state, String name) =>
     int.tryParse(state.uri.queryParameters[name] ?? '');
 
+/// Every page fades in with [AppMotion.fadeThrough]. Inside the app shell
+/// only the content area animates; the sidebar and app bar stay put.
 GoRoute _route(String path, Widget Function(GoRouterState state) page) =>
-    GoRoute(path: path, builder: (context, state) => page(state));
+    GoRoute(
+      path: path,
+      pageBuilder: (context, state) =>
+          AppMotion.goPage(key: state.pageKey, child: page(state)),
+    );
 
 /// Pages for each project detail tab.
 final _projectTabPages = <ProjectTab, Widget Function(int projectId)>{
@@ -160,12 +183,14 @@ final _projectTabPages = <ProjectTab, Widget Function(int projectId)>{
 
 /// Project detail: a nested shell with one route per tab.
 final _projectDetailRoutes = ShellRoute(
-  builder: (context, state, child) {
+  // Keyed by project: opening a project fades it in once, then only the
+  // tab content animates as tabs change.
+  pageBuilder: (context, state, child) {
     final tab = ProjectTab.fromSegment(state.uri.pathSegments[2])!;
-    return ProjectDetailShell(
-      projectId: _id(state, 'projectId'),
-      tab: tab,
-      child: child,
+    final id = _id(state, 'projectId');
+    return AppMotion.goPage(
+      key: ValueKey('project-$id'),
+      child: ProjectDetailShell(projectId: id, tab: tab, child: child),
     );
   },
   routes: [
@@ -183,18 +208,35 @@ final _featureRoutes = <GoRoute>[
   // auth
   _route(AppRoutes.profile, (_) => const ProfilePage()),
   // user_management
-  _route(AppRoutes.adminUsers, (_) => const UsersPage()),
+  _route(AppRoutes.adminOverview, (_) => const AdminOverviewPage()),
+  _route(
+    AppRoutes.adminUsers,
+    (state) => UsersPage(
+      key: ValueKey(state.uri.query),
+      initialRole: state.uri.queryParameters['role'],
+    ),
+  ),
   _route(AppRoutes.adminUserNew, (_) => const UserFormPage()),
   _route(
     '${AppRoutes.adminUsers}/:userId',
-    (state) => UserFormPage(
+    (state) => UserDetailPage(
       key: ValueKey(state.pathParameters['userId']),
       userId: _id(state, 'userId'),
     ),
   ),
-  _route(AppRoutes.adminCompany, (_) => const CompanyProfilePage()),
+  _route(
+    '${AppRoutes.adminUsers}/:userId/edit',
+    (state) => UserFormPage(
+      key: ValueKey('edit-${state.pathParameters['userId']}'),
+      userId: _id(state, 'userId'),
+    ),
+  ),
   _route(AppRoutes.adminMasterLists, (_) => const MasterListsPage()),
-  _route(AppRoutes.adminSettings, (_) => const SettingsPage()),
+  _route(
+    AppRoutes.adminSettings,
+    (state) => SettingsPage(section: state.uri.queryParameters['section']),
+  ),
+  _route(AppRoutes.adminAuditLog, (_) => const AuditLogPage()),
   // client_portal
   _route(AppRoutes.clientProjects, (_) => const ClientProjectsPage()),
   _route(AppRoutes.clientProgress, (_) => const ClientProgressPage()),
@@ -265,7 +307,17 @@ final _featureRoutes = <GoRoute>[
   ),
   _route(
     '${AppRoutes.materialRequests}/:requestId/order',
-    (state) => PurchaseOrderCreatePage(requestId: _id(state, 'requestId')),
+    (state) => MaterialOrderPage(
+      requestId: _id(state, 'requestId'),
+      source: MaterialSource.ownStore,
+    ),
+  ),
+  _route(
+    '${AppRoutes.materialRequests}/:requestId/buy',
+    (state) => MaterialOrderPage(
+      requestId: _id(state, 'requestId'),
+      source: MaterialSource.external,
+    ),
   ),
   _route(
     AppRoutes.requestQueue,
@@ -328,15 +380,16 @@ final _featureRoutes = <GoRoute>[
 GoRouter createRouter() {
   final session = getIt<SessionService>();
   return GoRouter(
-    initialLocation: AppRoutes.login,
+    initialLocation: AppRoutes.landing,
     refreshListenable: session,
     redirect: (context, state) {
       final location = state.uri.path;
-      final public =
-          location == AppRoutes.login || location == AppRoutes.forgotPassword;
+      final moved = AppRoutes.legacy[location];
+      if (moved != null) return moved;
+      final public = location == AppRoutes.landing;
       final role = session.activeRole;
       if (!session.isSignedIn || role == null) {
-        return public ? null : AppRoutes.login;
+        return public ? null : AppRoutes.landing;
       }
       if (public) return RoleNavigation.homeFor(role);
       if (location == AppRoutes.chooseRole) return null;
@@ -346,12 +399,15 @@ GoRouter createRouter() {
       return null;
     },
     routes: [
-      _route(AppRoutes.login, (_) => const LoginPage()),
-      _route(AppRoutes.forgotPassword, (_) => const ForgotPasswordPage()),
+      _route(AppRoutes.landing, (_) => const LandingPage()),
       _route(AppRoutes.chooseRole, (_) => const ChooseRolePage()),
       ShellRoute(
-        builder: (context, state, child) =>
-            AppShell(location: state.uri.path, child: child),
+        // One stable key, so the shell animates in once on sign-in and then
+        // stays put while its pages change.
+        pageBuilder: (context, state, child) => AppMotion.goPage(
+          key: const ValueKey('app-shell'),
+          child: AppShell(location: state.uri.path, child: child),
+        ),
         routes: [..._featureRoutes, _projectDetailRoutes],
       ),
     ],

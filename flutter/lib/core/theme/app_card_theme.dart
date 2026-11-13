@@ -5,12 +5,13 @@ import '../constants/app_radii.dart';
 
 abstract final class AppCardTheme {
   static const light = CardThemeData(
-    color: AppColors.surface,
+    color: AppColors.cardBackground,
     surfaceTintColor: Colors.transparent,
+    shadowColor: Color(0x2A050505),
     elevation: 0,
     margin: EdgeInsets.zero,
     shape: RoundedRectangleBorder(
-      borderRadius: AppRadii.mdAll,
+      borderRadius: AppRadii.lgAll,
       side: BorderSide(color: AppColors.border),
     ),
   );

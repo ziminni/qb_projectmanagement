@@ -7,6 +7,7 @@ import '../../../core/di/service_locator.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/variation_order.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../viewmodels/variation_orders_viewmodel.dart';
 import '../widgets/billing_vo_tile.dart';
@@ -27,6 +28,10 @@ class VariationOrdersPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
+            const AppPageHeader(
+              title: 'Variation orders',
+              subtitle: 'Scope changes and their approval by the client.',
+            ),
             Wrap(
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,

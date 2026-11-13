@@ -16,10 +16,6 @@ class ProcurementRequestStatusChip extends StatelessWidget {
         AppColors.info,
         AppColors.infoContainer,
       ),
-      MaterialRequestStatus.approved => (
-        AppColors.success,
-        AppColors.successContainer,
-      ),
       MaterialRequestStatus.rejected => (
         AppColors.error,
         AppColors.errorContainer,

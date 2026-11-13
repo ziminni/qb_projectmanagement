@@ -42,12 +42,7 @@ class SiteInventoryViewModel extends ChangeNotifier {
   Future<void> _refresh() async {
     _lines = _projectId == null
         ? const []
-        : (await _procurement.getSiteInventory(_projectId!)
-            ..sort(
-              (a, b) => lookups
-                  .materialName(a.materialId)
-                  .compareTo(lookups.materialName(b.materialId)),
-            ));
+        : await _procurement.getSiteInventory(_projectId!);
     _loading = false;
     notifyListeners();
   }

@@ -110,7 +110,7 @@ class ProjectMaterialsPage extends StatelessWidget {
                     ProcurementPoTile(
                       order: o,
                       projectCode: l.projectCode(o.projectId),
-                      supplierName: l.supplierName(o.supplierId),
+                      supplierName: l.storeName(o),
                       onTap: () => context.go(AppRoutes.purchaseOrder(o.id)),
                     ),
                 ],
@@ -139,11 +139,7 @@ class ProjectMaterialsPage extends StatelessWidget {
             AppSectionCard(
               title: 'Site inventory',
               padding: EdgeInsets.zero,
-              child: ProcurementInventoryTable(
-                lines: vm.inventory,
-                materialName: l.materialName,
-                unit: l.unit,
-              ),
+              child: ProcurementInventoryTable(lines: vm.inventory),
             ),
           ],
         );

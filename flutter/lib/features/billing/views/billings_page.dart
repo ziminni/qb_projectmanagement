@@ -8,6 +8,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/progress_billing.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_figure.dart';
 import '../viewmodels/billings_viewmodel.dart';
@@ -33,6 +34,11 @@ class BillingsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
+            const AppPageHeader(
+              title: 'Progress billings',
+              subtitle:
+                  'Bill clients for verified progress and track their payments.',
+            ),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),

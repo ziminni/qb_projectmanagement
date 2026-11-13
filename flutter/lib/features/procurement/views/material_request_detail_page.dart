@@ -6,7 +6,6 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_empty_state.dart';
@@ -16,12 +15,13 @@ import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
 import '../viewmodels/material_request_detail_viewmodel.dart';
 import '../viewmodels/procurement_lookups.dart';
-import '../widgets/procurement_budget_card.dart';
 import '../widgets/procurement_po_tile.dart';
 import '../widgets/procurement_request_status_chip.dart';
+import '../widgets/procurement_request_summary.dart';
 
-/// A material request with its review actions (PM, then owner when over
-/// budget) and the owner's "Create purchase orders".
+/// A material request with the site count taken before it. The owner
+/// answers by ordering from the own store, logging a purchase from another
+/// store, or rejecting it.
 class MaterialRequestDetailPage extends StatelessWidget {
   const MaterialRequestDetailPage({super.key, required this.requestId});
 
@@ -63,23 +63,26 @@ class MaterialRequestDetailPage extends StatelessWidget {
             gap,
             AppWorkflowSteps.materialRequest(r.status),
             gap,
-            if (vm.canReview || vm.canOrder) ...[
+            if (vm.canReject || vm.canOrder) ...[
               Wrap(
                 spacing: AppSpacing.sm,
                 runSpacing: AppSpacing.sm,
                 children: [
-                  if (vm.canReview) ...[
+                  if (vm.canOrder) ...[
                     FilledButton.icon(
-                      onPressed: vm.isBusy
-                          ? null
-                          : () => reportAction(
-                              context,
-                              vm.approve(),
-                              success: 'Request approved.',
-                            ),
-                      icon: const Icon(Icons.check),
-                      label: const Text('Approve'),
+                      onPressed: () =>
+                          context.go(AppRoutes.materialRequestOrder(r.id)),
+                      icon: const Icon(Icons.storefront_outlined),
+                      label: const Text('Own hardware store'),
                     ),
+                    FilledButton.tonalIcon(
+                      onPressed: () =>
+                          context.go(AppRoutes.materialRequestBuy(r.id)),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                      label: const Text('Other store'),
+                    ),
+                  ],
+                  if (vm.canReject)
                     OutlinedButton.icon(
                       onPressed: vm.isBusy
                           ? null
@@ -100,14 +103,6 @@ class MaterialRequestDetailPage extends StatelessWidget {
                       icon: const Icon(Icons.close),
                       label: const Text('Reject'),
                     ),
-                  ],
-                  if (vm.canOrder)
-                    FilledButton.icon(
-                      onPressed: () =>
-                          context.go(AppRoutes.materialRequestOrder(r.id)),
-                      icon: const Icon(Icons.shopping_cart_outlined),
-                      label: const Text('Create purchase orders'),
-                    ),
                 ],
               ),
               gap,
@@ -116,10 +111,11 @@ class MaterialRequestDetailPage extends StatelessWidget {
               title: 'Details',
               child: Column(
                 children: [
-                  AppInfoRow(
-                    label: 'Category',
-                    value: l.categoryName(r.categoryId),
-                  ),
+                  if (r.categoryId != null)
+                    AppInfoRow(
+                      label: 'Category',
+                      value: l.categoryName(r.categoryId),
+                    ),
                   AppInfoRow(
                     label: 'Needed by',
                     value: Formatters.date(r.neededBy),
@@ -137,31 +133,18 @@ class MaterialRequestDetailPage extends StatelessWidget {
               ),
             ),
             gap,
-            AppSectionCard(
-              title: 'Items',
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  for (final i in vm.detail!.items)
-                    ListTile(
-                      title: Text(l.materialName(i.materialId)),
-                      subtitle: Text(
-                        [
-                          '${InputParsers.amountText(i.quantity)} ${l.unit(i.materialId)}',
-                          i.status.label,
-                          if (i.source != null) i.source!.label,
-                        ].join(' · '),
-                      ),
-                    ),
-                ],
-              ),
+            ProcurementRequestedItems(
+              items: vm.detail!.items,
+              orderNo: (id) =>
+                  vm.orders.where((o) => o.id == id).firstOrNull?.poNo ??
+                  'PO #$id',
             ),
             gap,
-            if (vm.budget != null) ProcurementBudgetCard(check: vm.budget!),
+            ProcurementSiteCounts(counts: vm.detail!.counts),
             if (vm.orders.isNotEmpty) ...[
               gap,
               AppSectionCard(
-                title: 'Purchase orders',
+                title: 'Orders and purchases',
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
@@ -169,7 +152,7 @@ class MaterialRequestDetailPage extends StatelessWidget {
                       ProcurementPoTile(
                         order: o,
                         projectCode: l.projectCode(o.projectId),
-                        supplierName: l.supplierName(o.supplierId),
+                        supplierName: l.storeName(o),
                         onTap: () => context.go(AppRoutes.purchaseOrder(o.id)),
                       ),
                   ],

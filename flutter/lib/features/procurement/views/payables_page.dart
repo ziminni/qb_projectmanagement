@@ -64,7 +64,7 @@ class PayablesPage extends StatelessWidget {
                         onTap: () =>
                             context.go(AppRoutes.purchaseOrder(p.order.id)),
                         title: Text(
-                          '${p.order.poNo} · ${l.supplierName(p.order.supplierId)}',
+                          '${p.order.poNo} · ${l.storeName(p.order)}',
                         ),
                         subtitle: Text(
                           '${l.projectCode(p.order.projectId)} · delivered '

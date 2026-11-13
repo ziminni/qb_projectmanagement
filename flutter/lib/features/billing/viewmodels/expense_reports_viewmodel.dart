@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/utils/formatters.dart';
+import '../../../data/services/project_rules.dart';
 import '../../../data/models/category.dart';
 import '../../../data/models/project.dart';
 import '../../../data/repositories/project_repository.dart';
@@ -7,6 +9,7 @@ import '../../../data/repositories/schedule_repository.dart';
 import '../../../data/services/progress_calculator.dart';
 import '../../../data/services/project_cost_service.dart';
 import '../../../data/services/session_service.dart';
+import '../../../shared/pdf/pdf_report.dart';
 
 /// Budget vs. actual for one category.
 class CategoryCost {
@@ -37,6 +40,56 @@ class CostReport {
 
   /// Earned value less actual cost; positive is under cost.
   double get costVariance => progress.earnedValue - costs.total;
+
+  /// Budget vs. actual as a printable expense report.
+  PdfReport pdfReport() {
+    String peso(double? v) => v == null ? '—' : Formatters.peso(v);
+    return PdfReport(
+      title: 'Expense report',
+      fileName: 'expense-report-${project.code}',
+      subtitle: '${project.code} · ${project.name}',
+      info: [
+        ('Contract amount', peso(project.contractAmount)),
+        ('Progress', Formatters.percent(progress.progress)),
+        ('Earned value', peso(progress.earnedValue)),
+        ('Cost variance', peso(costVariance)),
+      ],
+      tables: [
+        PdfTable(
+          title: 'Actual cost',
+          headers: const ['Cost', 'Amount'],
+          rows: [
+            ['Materials', peso(costs.materials)],
+            ['Labor', peso(costs.labor)],
+            ['Equipment', peso(costs.equipment)],
+          ],
+          numeric: const {1},
+          totals: ['Total', peso(costs.total)],
+        ),
+        PdfTable(
+          title: 'Materials: budget vs. actual by category',
+          headers: const ['Category', 'Budget', 'Actual', 'Variance'],
+          rows: [
+            for (final c in categories)
+              [
+                c.category.name,
+                peso(c.budget),
+                peso(c.actual),
+                peso(c.variance),
+              ],
+          ],
+          numeric: const {1, 2, 3},
+          totals: [
+            'Total',
+            peso(totalBudget),
+            peso(costs.materials),
+            peso(totalBudget - costs.materials),
+          ],
+        ),
+      ],
+      signatures: const ['Prepared by (accountant)', 'Noted by (owner)'],
+    );
+  }
 }
 
 /// Builds [CostReport]s; shared by expense reports and the Financials tab.
@@ -93,10 +146,18 @@ class ExpenseReportsViewModel extends ChangeNotifier {
   CostReport? get report => _report;
 
   Future<void> load() async {
-    projects = (await _projects.getProjectsFor(
-      _session.user!.id,
-      _session.activeRole!,
-    )).where((p) => p.status != ProjectStatus.draft).toList();
+    projects =
+        (await _projects.getProjectsFor(
+              _session.user!.id,
+              _session.activeRole!,
+            ))
+            .where(
+              // Projects that have not reached site work have no costs to report.
+              (p) =>
+                  !ProjectRules.isRequest(p.status) &&
+                  p.status != ProjectStatus.accepted,
+            )
+            .toList();
     _projectId = projects.firstOrNull?.id;
     await _refresh();
   }

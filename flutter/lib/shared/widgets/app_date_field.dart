@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/app_colors.dart';
 import '../../core/utils/formatters.dart';
 
 /// Tappable date field that opens a date picker through [onTap].
@@ -24,11 +25,17 @@ class AppDateField extends StatelessWidget {
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
-          suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
+          prefixIcon: const Icon(Icons.event_outlined),
+          suffixIcon: const Icon(Icons.expand_more_rounded),
           errorText: hasError ? '' : null,
           errorStyle: const TextStyle(height: 0, fontSize: 0),
         ),
-        child: Text(value == null ? 'Choose' : Formatters.date(value!)),
+        child: Text(
+          value == null ? 'Choose' : Formatters.date(value!),
+          style: value == null
+              ? const TextStyle(color: AppColors.textDisabled)
+              : null,
+        ),
       ),
     );
   }

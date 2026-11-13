@@ -18,6 +18,13 @@ abstract final class ProcurementRules {
   static String? validateUnitPrice(double? value) =>
       (value == null || value < 0) ? 'Enter a unit price of 0 or more.' : null;
 
+  static String? validateRequired(String? value, String what) =>
+      (value == null || value.trim().isEmpty) ? 'Enter the $what.' : null;
+
+  /// A counted quantity on site: zero or more.
+  static String? validateCount(double? value) =>
+      (value == null || value < 0) ? 'Enter the count (0 or more).' : null;
+
   /// Quantity received cannot exceed quantity ordered; damaged cannot
   /// exceed received.
   static String? validateReceipt({
@@ -51,7 +58,7 @@ abstract final class ProcurementRules {
   }
 }
 
-/// A request's cost against its category's remaining budget.
+/// An order's cost against its category's remaining budget.
 class BudgetCheck {
   const BudgetCheck({
     required this.budget,
@@ -62,15 +69,14 @@ class BudgetCheck {
   /// Null when the category has no budget yet.
   final double? budget;
 
-  /// Approved and ordered material for the category.
+  /// Material already ordered or bought for the category.
   final double committed;
 
-  /// This request at default unit costs.
+  /// The order being prepared.
   final double requestCost;
 
   double? get remaining => budget == null ? null : budget! - committed;
 
-  /// A request that exceeds the category's remaining budget needs owner
-  /// approval.
+  /// The owner is warned before placing an order over the remaining budget.
   bool get exceedsBudget => remaining != null && requestCost > remaining!;
 }

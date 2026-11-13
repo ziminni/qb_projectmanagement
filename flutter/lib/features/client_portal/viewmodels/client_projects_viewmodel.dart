@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/project.dart';
+import '../../../data/models/project_assignment.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
 import '../../../data/services/progress_calculator.dart';
@@ -14,8 +16,9 @@ class ClientProjectSummary {
   final ProjectProgress progress;
 }
 
-/// The client's own projects with their progress.
-class ClientProjectsViewModel extends ChangeNotifier {
+/// The client's own projects with their progress, and new project requests
+/// to accept or decline.
+class ClientProjectsViewModel extends ChangeNotifier with ActionRunner {
   ClientProjectsViewModel({
     required SessionService session,
     required ProjectRepository projects,
@@ -30,11 +33,31 @@ class ClientProjectsViewModel extends ChangeNotifier {
 
   bool _loading = true;
   List<ClientProjectSummary> _items = const [];
+  List<ProjectRequest> _requests = const [];
 
   bool get isLoading => _loading;
   List<ClientProjectSummary> get items => _items;
+  List<ProjectRequest> get requests => _requests;
+
+  Future<String?> respond(
+    ProjectRequest r, {
+    required RequestResponse answer,
+    String? note,
+  }) => runAction(() async {
+    await _projects.respondToRequest(
+      r.assignment.id,
+      userId: _session.user!.id,
+      answer: answer,
+      note: note,
+    );
+    await load();
+  });
 
   Future<void> load() async {
+    _requests = await _projects.getRequestsFor(
+      _session.user!.id,
+      AppRole.client,
+    );
     final projects = await _projects.getProjectsFor(
       _session.user!.id,
       AppRole.client,

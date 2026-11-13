@@ -261,6 +261,8 @@ void main() {
     expect(find.text('Billed vs. collected'), findsOneWidget);
     await goTo(tester, '/approvals');
     expect(find.text('Variation orders (2)'), findsWidgets);
+    await tester.tap(find.text('Variation orders (2)').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('VO-02 · QB-2026-014'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Reject'));

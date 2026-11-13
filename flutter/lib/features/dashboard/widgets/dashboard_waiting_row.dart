@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_radii.dart';
 import '../../../data/services/approval_inbox.dart';
 
 /// One kind of pending work on the dashboard, opening the inbox filtered to
@@ -28,19 +29,40 @@ class DashboardWaitingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      dense: true,
       onTap: onTap,
-      leading: Icon(iconFor(kind), color: AppColors.primary),
-      title: Text(kind.label, style: Theme.of(context).textTheme.bodyMedium),
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: const BoxDecoration(
+          color: AppColors.primaryContainer,
+          borderRadius: AppRadii.mdAll,
+        ),
+        child: Icon(iconFor(kind), size: 19, color: AppColors.primary),
+      ),
+      title: Text(kind.label),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Badge(
-            backgroundColor: AppColors.accent,
-            textColor: AppColors.onAccent,
-            label: Text('$count'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+            decoration: const BoxDecoration(
+              color: AppColors.accentContainer,
+              borderRadius: AppRadii.pillAll,
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                color: AppColors.warning,
+              ),
+            ),
           ),
-          const Icon(Icons.chevron_right),
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: AppColors.textDisabled,
+          ),
         ],
       ),
     );

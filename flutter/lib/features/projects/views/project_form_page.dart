@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-
-import '../../../shared/widgets/app_action_bar.dart';
 
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
@@ -12,11 +11,18 @@ import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/services/project_rules.dart';
 import '../../../routes/routes.dart';
-import '../../../shared/widgets/app_date_field.dart';
+import '../../../shared/widgets/app_action_bar.dart';
 import '../../../shared/widgets/app_empty_state.dart';
-import '../../../shared/widgets/app_section_card.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../viewmodels/project_form_viewmodel.dart';
+import '../widgets/projects_budget_step.dart';
+import '../widgets/projects_details_step.dart';
+import '../widgets/projects_location_step.dart';
+import '../widgets/projects_review_step.dart';
+import '../widgets/projects_wizard_steps.dart';
 
+/// Creates or edits a project in four steps: details, location, budget and
+/// review. Creating sends the request to the client.
 class ProjectFormPage extends StatefulWidget {
   const ProjectFormPage({super.key, this.projectId});
 
@@ -27,6 +33,29 @@ class ProjectFormPage extends StatefulWidget {
 }
 
 class _ProjectFormPageState extends State<ProjectFormPage> {
+  static const _steps = <WizardStep>[
+    (
+      title: 'Project details',
+      subtitle: 'Name, client, foreman and dates',
+      icon: Icons.description_outlined,
+    ),
+    (
+      title: 'Location',
+      subtitle: 'Address and map pin',
+      icon: Icons.place_outlined,
+    ),
+    (
+      title: 'Budget',
+      subtitle: 'Contract terms and categories',
+      icon: Icons.payments_outlined,
+    ),
+    (
+      title: 'Review',
+      subtitle: 'Check and send',
+      icon: Icons.fact_check_outlined,
+    ),
+  ];
+
   final _formKey = GlobalKey<FormState>();
   final _code = TextEditingController();
   final _name = TextEditingController();
@@ -34,9 +63,13 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
   final _contract = TextEditingController();
   final _downPayment = TextEditingController();
   final _retention = TextEditingController();
+  final _categories = <ProjectsCategoryDraft>[];
+  int _step = 0;
   DateTime? _start;
   DateTime? _end;
   int? _clientId;
+  int? _siteEngineerId;
+  LatLng? _pin;
   String? _dateError;
 
   late final _vm = ProjectFormViewModel(
@@ -45,6 +78,8 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
     projects: getIt(),
     clients: getIt(),
     company: getIt(),
+    users: getIt(),
+    schedule: getIt(),
   );
 
   @override
@@ -65,6 +100,7 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
           _start = p.startDate;
           _end = p.targetEndDate;
           _clientId = p.clientId;
+          if (p.hasPin) _pin = LatLng(p.latitude!, p.longitude!);
         } else if (s != null) {
           _downPayment.text = InputParsers.amountText(s.defaultDownPaymentPct);
           _retention.text = InputParsers.amountText(s.defaultRetentionPct);
@@ -84,6 +120,9 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
       _retention,
     ]) {
       c.dispose();
+    }
+    for (final d in _categories) {
+      d.dispose();
     }
     _vm.dispose();
     super.dispose();
@@ -107,32 +146,117 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
     });
   }
 
+  List<(String, double)> get _categoryValues => [
+    for (final d in _categories) (d.name.text.trim(), d.value),
+  ];
+
+  /// Checks the current step; returns false and shows why when it is not
+  /// complete.
+  bool _validateStep() {
+    var ok = _formKey.currentState!.validate();
+    if (_step == 0) {
+      final dateError = ProjectRules.validateDates(_start, _end);
+      setState(() => _dateError = dateError);
+      ok = ok && dateError == null;
+    }
+    if (ok && _step == 2 && _vm.isNew) {
+      final error = _vm.validateCategories(
+        InputParsers.amount(_contract.text) ?? 0,
+        _categoryValues,
+      );
+      if (error != null) {
+        showAppMessage(context, error);
+        return false;
+      }
+    }
+    return ok;
+  }
+
+  void _next() {
+    if (!_validateStep()) return;
+    setState(() => _step++);
+  }
+
   Future<void> _save() async {
-    final dateError = ProjectRules.validateDates(_start, _end);
-    setState(() => _dateError = dateError);
-    if (!_formKey.currentState!.validate() || dateError != null) return;
     final ok = await reportAction(
       context,
       _vm.save(
         code: _code.text,
         name: _name.text,
         location: _location.text,
+        latitude: _pin?.latitude,
+        longitude: _pin?.longitude,
         clientId: _clientId,
         contractAmount: InputParsers.amount(_contract.text) ?? 0,
         downPaymentPct: InputParsers.amount(_downPayment.text) ?? 0,
         retentionPct: InputParsers.amount(_retention.text) ?? 0,
         startDate: _start!,
         targetEndDate: _end!,
+        siteEngineerId: _siteEngineerId,
+        categories: _vm.isNew ? _categoryValues : const [],
       ),
-      success: 'Project saved.',
+      success: _vm.isNew
+          ? 'Project created and sent to the client.'
+          : 'Project saved.',
     );
     if (ok && mounted) {
       context.go(AppRoutes.projectTab(_vm.savedId!, ProjectTab.overview));
     }
   }
 
-  String? _required(String? v, String label) =>
-      (v == null || v.trim().isEmpty) ? 'Enter the $label.' : null;
+  Widget _stepBody(ProjectFormViewModel vm) => switch (_step) {
+    0 => ProjectsDetailsStep(
+      code: _code,
+      name: _name,
+      isNew: vm.isNew,
+      clients: vm.clients,
+      clientId: _clientId,
+      onClient: (v) => setState(() => _clientId = v),
+      validateClient: vm.validateClient,
+      siteEngineers: vm.siteEngineers,
+      siteEngineerId: _siteEngineerId,
+      onSiteEngineer: (v) => setState(() => _siteEngineerId = v),
+      start: _start,
+      end: _end,
+      dateError: _dateError,
+      onPickStart: () => _pick(true),
+      onPickEnd: () => _pick(false),
+    ),
+    1 => ProjectsLocationStep(
+      location: _location,
+      pin: _pin,
+      onPick: (p) => setState(() => _pin = p),
+      onClear: () => setState(() => _pin = null),
+    ),
+    2 => ProjectsBudgetStep(
+      contract: _contract,
+      downPayment: _downPayment,
+      retention: _retention,
+      contractLocked: vm.contractLocked,
+      categories: vm.isNew ? _categories : null,
+      onAddCategory: (name) =>
+          setState(() => _categories.add(ProjectsCategoryDraft(name))),
+      onRemoveCategory: (i) =>
+          setState(() => _categories.removeAt(i).dispose()),
+      onChanged: () => setState(() {}),
+    ),
+    _ => ProjectsReviewStep(
+      isNew: vm.isNew,
+      code: _code.text,
+      name: _name.text,
+      clientName: vm.clientName(_clientId),
+      siteEngineerName: vm.siteEngineerName(_siteEngineerId),
+      start: _start!,
+      end: _end!,
+      location: _location.text,
+      pin: _pin,
+      contract: InputParsers.amount(_contract.text) ?? 0,
+      downPaymentPct: InputParsers.amount(_downPayment.text) ?? 0,
+      retentionPct: InputParsers.amount(_retention.text) ?? 0,
+      categories: _categoryValues,
+      onEdit: (i) => setState(() => _step = i),
+    ),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -144,190 +268,93 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (vm.error != null) return AppEmptyState(message: vm.error!);
+          final wide = MediaQuery.sizeOf(context).width >= 1000;
+          final last = _step == _steps.length - 1;
+          final step = _steps[_step];
+          final content = Card(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        step.icon,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Text(
+                        step.title,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    step.subtitle,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  _stepBody(vm),
+                ],
+              ),
+            ),
+          );
           return Form(
             key: _formKey,
             child: Column(
               children: [
                 Expanded(
                   child: ListView(
-                    padding: pagePadding(context),
+                    padding: pagePadding(context).copyWith(top: AppSpacing.xl),
                     children: [
-                      AppSectionCard(
-                        title: vm.isNew ? 'New project' : 'Edit project',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (vm.isNew)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  bottom: AppSpacing.md,
-                                ),
-                                child: Text(
-                                  'New projects start as Draft. Move it to Bidding '
-                                  'when the bid is ready to submit.',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ),
-                            Row(
-                              children: [
-                                SizedBox(
-                                  width: 160,
-                                  child: TextFormField(
-                                    controller: _code,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Code',
-                                      hintText: 'QB-2026-030',
-                                    ),
-                                    validator: (v) =>
-                                        _required(v, 'project code'),
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.md),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _name,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Project name',
-                                    ),
-                                    validator: (v) =>
-                                        _required(v, 'project name'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            TextFormField(
-                              controller: _location,
-                              decoration: const InputDecoration(
-                                labelText: 'Location',
-                              ),
-                              validator: (v) => _required(v, 'location'),
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            DropdownButtonFormField<int>(
-                              initialValue: _clientId,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Client',
-                              ),
-                              items: [
-                                for (final c in vm.clients)
-                                  DropdownMenuItem(
-                                    value: c.id,
-                                    child: Text(c.name),
-                                  ),
-                              ],
-                              validator: (v) =>
-                                  v == null ? 'Choose the client.' : null,
-                              onChanged: (v) => setState(() => _clientId = v),
-                            ),
-                          ],
-                        ),
+                      AppPageHeader(
+                        title: vm.isNew
+                            ? 'New project'
+                            : 'Edit ${vm.project!.code}',
+                        subtitle:
+                            'Step ${_step + 1} of ${_steps.length} · '
+                            '${step.title}',
                       ),
-                      const SizedBox(height: AppSpacing.lg),
-                      AppSectionCard(
-                        title: 'Contract',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                      if (wide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            TextFormField(
-                              controller: _contract,
-                              enabled: !vm.contractLocked,
-                              decoration: InputDecoration(
-                                labelText: 'Contract amount',
-                                prefixText: '₱ ',
-                                helperText: vm.contractLocked
-                                    ? 'Change the contract amount with a variation '
-                                          'order once work has started.'
-                                    : null,
-                              ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              validator: (v) =>
-                                  ProjectRules.validateContractAmount(
-                                    InputParsers.amount(v),
-                                  ),
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _downPayment,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Down payment',
-                                      suffixText: '%',
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    validator: (v) =>
-                                        ProjectRules.validatePercent(
-                                          InputParsers.amount(v),
-                                          'down payment',
-                                        ),
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.md),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _retention,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Retention',
-                                      suffixText: '%',
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    validator: (v) =>
-                                        ProjectRules.validatePercent(
-                                          InputParsers.amount(v),
-                                          'retention',
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: AppDateField(
-                                    label: 'Start date',
-                                    value: _start,
-                                    hasError: _dateError != null,
-                                    onTap: () => _pick(true),
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.md),
-                                Expanded(
-                                  child: AppDateField(
-                                    label: 'Target end date',
-                                    value: _end,
-                                    hasError: _dateError != null,
-                                    onTap: () => _pick(false),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (_dateError != null)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: AppSpacing.sm,
-                                ),
-                                child: Text(
-                                  _dateError!,
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.error,
-                                    fontSize: 12,
+                            SizedBox(
+                              width: 280,
+                              child: Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(AppSpacing.sm),
+                                  child: ProjectsWizardSteps(
+                                    steps: _steps,
+                                    current: _step,
+                                    onTap: (i) => setState(() => _step = i),
                                   ),
                                 ),
                               ),
+                            ),
+                            const SizedBox(width: AppSpacing.lg),
+                            Expanded(child: content),
                           ],
+                        )
+                      else ...[
+                        ProjectsWizardSteps(
+                          steps: _steps,
+                          current: _step,
+                          vertical: false,
+                          onTap: (i) => setState(() => _step = i),
                         ),
-                      ),
+                        const SizedBox(height: AppSpacing.lg),
+                        content,
+                      ],
                     ],
                   ),
                 ),
                 AppActionBar(
+                  hint: last && vm.isNew
+                      ? 'The client gets the request first.'
+                      : null,
                   children: [
                     TextButton(
                       onPressed: () => context.go(
@@ -340,10 +367,29 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
                       ),
                       child: const Text('Cancel'),
                     ),
-                    FilledButton(
-                      onPressed: vm.isBusy ? null : _save,
-                      child: Text(vm.isNew ? 'Create project' : 'Save'),
-                    ),
+                    if (_step > 0)
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => _step--),
+                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                        label: const Text('Back'),
+                      ),
+                    if (!last)
+                      FilledButton.icon(
+                        onPressed: _next,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                        label: Text('Next: ${_steps[_step + 1].title}'),
+                      )
+                    else
+                      FilledButton.icon(
+                        onPressed: vm.isBusy ? null : _save,
+                        icon: Icon(
+                          vm.isNew ? Icons.send_rounded : Icons.save_outlined,
+                          size: 18,
+                        ),
+                        label: Text(
+                          vm.isNew ? 'Create and send request' : 'Save changes',
+                        ),
+                      ),
                   ],
                 ),
               ],

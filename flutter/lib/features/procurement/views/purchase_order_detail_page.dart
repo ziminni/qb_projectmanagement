@@ -10,6 +10,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_pdf_button.dart';
 import '../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_info_row.dart';
@@ -17,6 +18,7 @@ import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/procurement_lookups.dart';
 import '../viewmodels/purchase_order_detail_viewmodel.dart';
 import '../widgets/procurement_po_status_chip.dart';
+import '../widgets/procurement_receipt_photo.dart';
 
 class PurchaseOrderDetailPage extends StatelessWidget {
   const PurchaseOrderDetailPage({super.key, required this.orderId});
@@ -54,6 +56,7 @@ class PurchaseOrderDetailPage extends StatelessWidget {
               children: [
                 Text(o.poNo, style: Theme.of(context).textTheme.headlineSmall),
                 ProcurementPoStatusChip(status: o.status),
+                AppPdfButton(build: vm.pdfReport),
               ],
             ),
             gap,
@@ -77,8 +80,8 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                               context,
                               title: 'Cancel ${o.poNo}?',
                               message:
-                                  'Its request items go back to the queue to '
-                                  'be reordered.',
+                                  'If the request has no other order, it goes '
+                                  'back to your queue.',
                               confirmLabel: 'Cancel PO',
                               destructive: true,
                             );
@@ -106,11 +109,12 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                     label: 'Project',
                     value: l.projectCode(o.projectId),
                   ),
-                  AppInfoRow(
-                    label: 'Supplier',
-                    value: l.supplierName(o.supplierId),
-                  ),
+                  AppInfoRow(label: 'Store', value: l.storeName(o)),
                   AppInfoRow(label: 'Source', value: o.source.label),
+                  if (o.deliveryAddress != null)
+                    AppInfoRow(label: 'Deliver to', value: o.deliveryAddress!),
+                  if (o.orNumber != null)
+                    AppInfoRow(label: 'OR number', value: o.orNumber!),
                   if (finance) ...[
                     AppInfoRow(
                       label: 'Total',
@@ -126,6 +130,19 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                 ],
               ),
             ),
+            if (o.receiptPhotoUrl != null) ...[
+              gap,
+              AppSectionCard(
+                title: 'Receipt photo',
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ProcurementReceiptImage(
+                    path: o.receiptPhotoUrl!,
+                    height: 240,
+                  ),
+                ),
+              ),
+            ],
             gap,
             AppSectionCard(
               title: 'Lines',
@@ -134,9 +151,9 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                 children: [
                   for (final i in d.items)
                     ListTile(
-                      title: Text(l.materialName(i.materialId)),
+                      title: Text(i.description),
                       subtitle: Text(
-                        '${q(i.quantity)} ${l.unit(i.materialId)}'
+                        '${q(i.quantity)} ${i.unit}'
                         '${finance ? ' × ${Formatters.peso(i.unitPrice)}' : ''}'
                         ' · received ${q(d.receivedFor(i.id))}',
                       ),
@@ -161,7 +178,7 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                       subtitle: Text(
                         [
                           for (final it in dd.items)
-                            '${l.materialName(d.items.firstWhere((x) => x.id == it.purchaseOrderItemId).materialId)}: '
+                            '${d.items.firstWhere((x) => x.id == it.purchaseOrderItemId).description}: '
                                 '${q(it.qtyReceived)}'
                                 '${it.qtyDamaged > 0 ? ' (${q(it.qtyDamaged)} damaged)' : ''}',
                         ].join('\n'),

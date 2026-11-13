@@ -50,11 +50,7 @@ class SiteInventoryPage extends StatelessWidget {
             AppSectionCard(
               title: 'Stock on site',
               padding: EdgeInsets.zero,
-              child: ProcurementInventoryTable(
-                lines: vm.lines,
-                materialName: l.materialName,
-                unit: l.unit,
-              ),
+              child: ProcurementInventoryTable(lines: vm.lines),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(

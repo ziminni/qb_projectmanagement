@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/utils/action_runner.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/daily_report.dart';
 import '../../../data/models/project.dart';
@@ -9,6 +11,7 @@ import '../../../data/repositories/master_data_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/session_service.dart';
+import '../../../shared/pdf/pdf_report.dart';
 
 class DailyReportDetailViewModel extends ChangeNotifier with ActionRunner {
   DailyReportDetailViewModel({
@@ -116,4 +119,76 @@ class DailyReportDetailViewModel extends ChangeNotifier with ActionRunner {
     );
     await _refresh();
   });
+
+  /// The report as a printable document.
+  PdfReport pdfReport() {
+    final d = detail!;
+    final r = d.report;
+    final p = project!;
+    String q(double v) => InputParsers.amountText(v);
+    final headcount = d.manpower.fold(0, (s, m) => s + m.headcount);
+    return PdfReport(
+      title: 'Daily site report',
+      fileName:
+          'daily-report-${p.code}-${r.reportDate.toIso8601String().substring(0, 10)}',
+      subtitle: '${p.code} · ${p.name}',
+      info: [
+        ('Date', Formatters.date(r.reportDate)),
+        ('Status', r.status.label),
+        ('Weather', r.weather.label),
+        ('Toolbox meeting', r.toolboxMeetingHeld ? 'Held' : 'Not held'),
+        ('Submitted by', userName(r.submittedBy) ?? '—'),
+        if (r.reviewedBy != null)
+          ('Reviewed by', userName(r.reviewedBy) ?? '—'),
+        ('Photos', '${d.photos.length} attached'),
+      ],
+      tables: [
+        PdfTable(
+          title: 'Manpower',
+          headers: const ['Trade', 'Headcount'],
+          rows: [
+            for (final m in d.manpower) [m.trade, '${m.headcount}'],
+          ],
+          numeric: const {1},
+          totals: d.manpower.isEmpty ? null : ['Total', '$headcount'],
+        ),
+        PdfTable(
+          title: 'Work accomplished',
+          headers: const ['To-do'],
+          rows: [
+            for (final t in d.todos) [t.title],
+          ],
+        ),
+        PdfTable(
+          title: 'Materials used',
+          headers: const ['Material', 'Quantity'],
+          rows: [
+            for (final m in d.materials)
+              [materialName(m.materialId), q(m.quantity)],
+          ],
+          numeric: const {1},
+        ),
+        PdfTable(
+          title: 'Equipment',
+          headers: const ['Equipment', 'Hours used'],
+          rows: [
+            for (final e in d.equipment)
+              [equipmentName(e.equipmentId), q(e.hoursUsed)],
+          ],
+          numeric: const {1},
+        ),
+        PdfTable(
+          title: 'Issues and delays',
+          headers: const ['Type', 'Reason', 'Description', 'Days lost'],
+          rows: [
+            for (final i in d.issues)
+              [i.type.label, i.reason.label, i.description, q(i.daysLost)],
+          ],
+          numeric: const {3},
+        ),
+      ],
+      notes: [if (r.remarks != null) ('Owner remarks', r.remarks!)],
+      signatures: const ['Prepared by (site engineer)', 'Reviewed by (owner)'],
+    );
+  }
 }

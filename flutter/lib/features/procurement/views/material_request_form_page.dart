@@ -7,16 +7,16 @@ import '../../../shared/widgets/app_action_bar.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
+import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/services/procurement_rules.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_date_field.dart';
 import '../../../shared/widgets/app_empty_state.dart';
-import '../../../shared/widgets/app_quantity_rows_editor.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/material_request_form_viewmodel.dart';
 import '../viewmodels/procurement_lookups.dart';
-import '../widgets/procurement_budget_card.dart';
+import '../widgets/procurement_line_editor.dart';
 
 class MaterialRequestFormPage extends StatefulWidget {
   const MaterialRequestFormPage({super.key, this.projectId});
@@ -67,6 +67,7 @@ class _MaterialRequestFormPageState extends State<MaterialRequestFormPage> {
             vm.neededBy,
             DateTime.now(),
           );
+          final small = Theme.of(context).textTheme.bodySmall;
           return Form(
             key: _formKey,
             child: Column(
@@ -98,25 +99,6 @@ class _MaterialRequestFormPageState extends State<MaterialRequestFormPage> {
                               onChanged: vm.setProject,
                             ),
                             const SizedBox(height: AppSpacing.md),
-                            DropdownButtonFormField<int>(
-                              key: ValueKey('category-${vm.projectId}'),
-                              initialValue: vm.categoryId,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Category (budget it draws from)',
-                              ),
-                              items: [
-                                for (final c in vm.categoryOptions)
-                                  DropdownMenuItem(
-                                    value: c.id,
-                                    child: Text(c.name),
-                                  ),
-                              ],
-                              validator: (v) =>
-                                  v == null ? 'Choose the category.' : null,
-                              onChanged: vm.setCategory,
-                            ),
-                            const SizedBox(height: AppSpacing.md),
                             AppDateField(
                               label: 'Needed by',
                               value: vm.neededBy,
@@ -134,33 +116,110 @@ class _MaterialRequestFormPageState extends State<MaterialRequestFormPage> {
                           ],
                         ),
                       ),
+                      if (vm.projectId != null) ...[
+                        const SizedBox(height: AppSpacing.lg),
+                        AppSectionCard(
+                          key: ValueKey('counts-${vm.projectId}'),
+                          title: '1. Count what is left on site',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                vm.counts.isEmpty
+                                    ? 'Nothing on site to count yet.'
+                                    : 'Count each material before asking for '
+                                          'more. The owner sees your count next '
+                                          'to what the system expects.',
+                                style: small,
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              for (final c in vm.counts)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    bottom: AppSpacing.sm,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(c.line.name),
+                                            Text(
+                                              'System: ${InputParsers.amountText(c.line.onHand)} ${c.line.unit}',
+                                              style: small,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: AppSpacing.sm),
+                                      Expanded(
+                                        flex: 2,
+                                        child: TextFormField(
+                                          decoration: InputDecoration(
+                                            labelText: 'Counted',
+                                            suffixText: c.line.unit,
+                                          ),
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          validator: (v) =>
+                                              ProcurementRules.validateCount(
+                                                InputParsers.amount(v),
+                                              ),
+                                          onChanged: (v) => c.counted =
+                                              InputParsers.amount(v),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: AppSpacing.lg),
                       AppSectionCard(
-                        title: 'Items',
-                        child: AppQuantityRowsEditor(
-                          rows: vm.rows,
-                          options: [
-                            for (final m in vm.lookups.materials.values)
-                              (m.id, '${m.name} (${m.unit})'),
+                        title: '2. What you need',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Type each item and how many you need. The owner '
+                              'picks the exact materials when ordering.',
+                              style: small,
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            for (final line in vm.lines)
+                              ProcurementLineEditor(
+                                key: ObjectKey(line),
+                                line: line,
+                                nameLabel: 'Item',
+                                showUnit: false,
+                                onChanged: vm.changed,
+                                onRemove: () => vm.removeLine(line),
+                              ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: vm.addLine,
+                                icon: const Icon(Icons.add),
+                                label: const Text('Add item'),
+                              ),
+                            ),
                           ],
-                          itemLabel: 'Material',
-                          quantityLabel: 'Quantity',
-                          addLabel: 'Add item',
-                          validateQuantity: ProcurementRules.validateQuantity,
-                          onChanged: vm.refreshBudget,
                         ),
                       ),
-                      if (vm.budget != null) ...[
-                        const SizedBox(height: AppSpacing.lg),
-                        ProcurementBudgetCard(check: vm.budget!),
-                      ],
                     ],
                   ),
                 ),
                 AppActionBar(
-                  hint: vm.budget?.exceedsBudget == true
-                      ? 'Over the category budget: the owner will see a warning.'
-                      : 'The owner reviews the request, then orders it from a supplier.',
+                  hint:
+                      'The owner orders it from the own store or buys it from '
+                      'another store.',
                   children: [
                     FilledButton.icon(
                       onPressed: vm.isBusy ? null : _submit,

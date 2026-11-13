@@ -85,11 +85,13 @@ class ScheduleTodoTile extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.sm),
           if (todo.isVerified)
-            const AppStatusChip(
-              label: 'Verified',
-              icon: Icons.verified_outlined,
-              foreground: AppColors.success,
-              background: AppColors.successContainer,
+            const Flexible(
+              child: AppStatusChip(
+                label: 'Verified',
+                icon: Icons.verified_outlined,
+                foreground: AppColors.success,
+                background: AppColors.successContainer,
+              ),
             )
           else if (todo.isAwaitingVerification)
             onVerify != null
@@ -97,10 +99,12 @@ class ScheduleTodoTile extends StatelessWidget {
                     onPressed: enabled ? onVerify : null,
                     child: const Text('Verify'),
                   )
-                : const AppStatusChip(
-                    label: 'Awaiting verification',
-                    foreground: AppColors.warning,
-                    background: AppColors.warningContainer,
+                : const Flexible(
+                    child: AppStatusChip(
+                      label: 'Awaiting verification',
+                      foreground: AppColors.warning,
+                      background: AppColors.warningContainer,
+                    ),
                   ),
           if (hasMenu)
             PopupMenuButton<_TodoAction>(

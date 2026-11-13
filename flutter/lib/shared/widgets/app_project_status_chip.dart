@@ -16,8 +16,15 @@ class AppProjectStatusChip extends StatelessWidget {
       ProjectStatus.completed ||
       ProjectStatus.closed => (AppColors.success, AppColors.successContainer),
       ProjectStatus.onHold => (AppColors.warning, AppColors.warningContainer),
-      ProjectStatus.lostBid => (AppColors.error, AppColors.errorContainer),
-      _ => (AppColors.textSecondary, AppColors.surfaceMuted),
+      ProjectStatus.changesRequested => (
+        AppColors.error,
+        AppColors.errorContainer,
+      ),
+      ProjectStatus.siteEngineerPending || ProjectStatus.requested => (
+        AppColors.warning,
+        AppColors.warningContainer,
+      ),
+      ProjectStatus.accepted => (AppColors.primary, AppColors.primaryContainer),
     };
     return AppStatusChip(label: status.label, foreground: fg, background: bg);
   }

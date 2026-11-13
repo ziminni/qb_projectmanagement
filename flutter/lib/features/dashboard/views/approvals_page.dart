@@ -6,6 +6,7 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/services/approval_inbox.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/approvals_viewmodel.dart';
@@ -45,6 +46,11 @@ class ApprovalsPage extends StatelessWidget {
           child: ListView(
             padding: pagePadding(context),
             children: [
+              const AppPageHeader(
+                title: 'Approvals',
+                subtitle:
+                    'Everything waiting for your decision, grouped by type.',
+              ),
               Wrap(
                 spacing: AppSpacing.sm,
                 runSpacing: AppSpacing.sm,

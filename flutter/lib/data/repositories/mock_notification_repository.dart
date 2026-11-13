@@ -8,7 +8,7 @@ class MockNotificationRepository implements NotificationRepository {
       userId: 1,
       type: 'pcab_expiry',
       message: 'The PCAB license expires on Dec 15, 2026. Start the renewal.',
-      link: '/admin/company',
+      link: '/admin/settings?section=licenses',
       createdAt: DateTime(2026, 10, 16, 8),
     ),
     AppNotification(

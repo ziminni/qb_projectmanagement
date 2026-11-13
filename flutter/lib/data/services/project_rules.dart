@@ -4,16 +4,6 @@ import 'business_rule_exception.dart';
 
 /// Project rules from "Business rules and validations".
 abstract final class ProjectRules {
-  /// The forward lifecycle; On hold and Lost bid sit beside it.
-  static const _lifecycle = [
-    ProjectStatus.draft,
-    ProjectStatus.bidding,
-    ProjectStatus.awarded,
-    ProjectStatus.ongoing,
-    ProjectStatus.completed,
-    ProjectStatus.closed,
-  ];
-
   /// Roles that hold project assignments.
   static const assignableRoles = [
     AppRole.owner,
@@ -43,25 +33,35 @@ abstract final class ProjectRules {
     return null;
   }
 
-  /// Statuses a project can move to from [from]. Status moves forward only;
-  /// On hold can return to Ongoing.
-  static List<ProjectStatus> nextStatuses(ProjectStatus from) {
-    switch (from) {
-      case ProjectStatus.onHold:
-        return const [ProjectStatus.ongoing];
-      case ProjectStatus.lostBid:
-      case ProjectStatus.closed:
-        return const [];
-      default:
-        final index = _lifecycle.indexOf(from);
-        return [
-          ..._lifecycle.skip(index + 1),
-          if (from == ProjectStatus.draft || from == ProjectStatus.bidding)
-            ProjectStatus.lostBid,
-          if (from == ProjectStatus.ongoing) ProjectStatus.onHold,
-        ];
-    }
-  }
+  /// Statuses the owner can move a project to from [from]. A request
+  /// moves on its own as the client and then the site engineer answer, so
+  /// the request statuses have no manual moves.
+  static List<ProjectStatus> nextStatuses(ProjectStatus from) => switch (from) {
+    ProjectStatus.accepted => const [ProjectStatus.ongoing],
+    ProjectStatus.ongoing => const [
+      ProjectStatus.completed,
+      ProjectStatus.onHold,
+    ],
+    ProjectStatus.onHold => const [ProjectStatus.ongoing],
+    ProjectStatus.completed => const [ProjectStatus.closed],
+    ProjectStatus.requested ||
+    ProjectStatus.changesRequested ||
+    ProjectStatus.siteEngineerPending ||
+    ProjectStatus.closed => const [],
+  };
+
+  /// Declining needs a reason, and asking for changes needs a note.
+  static String? validateNote(String? note) =>
+      (note == null || note.trim().isEmpty)
+      ? 'Add a note so the owner knows why.'
+      : null;
+
+  /// Not yet past the request stage.
+  static bool isRequest(ProjectStatus s) => const [
+    ProjectStatus.requested,
+    ProjectStatus.changesRequested,
+    ProjectStatus.siteEngineerPending,
+  ].contains(s);
 
   /// The owner running the project makes every status move.
   static bool canChangeStatus(AppRole role, ProjectStatus to) =>

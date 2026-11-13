@@ -7,6 +7,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_figure.dart';
+import '../../../shared/widgets/app_pdf_button.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/expense_reports_viewmodel.dart';
 import '../widgets/billing_cost_table.dart';
@@ -33,21 +34,29 @@ class ExpenseReportsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
-            SizedBox(
-              width: 420,
-              child: DropdownButtonFormField<int>(
-                initialValue: vm.projectId,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Project'),
-                items: [
-                  for (final p in vm.projects)
-                    DropdownMenuItem(
-                      value: p.id,
-                      child: Text('${p.code} · ${p.name}'),
-                    ),
-                ],
-                onChanged: vm.setProject,
-              ),
+            Wrap(
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.md,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 420,
+                  child: DropdownButtonFormField<int>(
+                    initialValue: vm.projectId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Project'),
+                    items: [
+                      for (final p in vm.projects)
+                        DropdownMenuItem(
+                          value: p.id,
+                          child: Text('${p.code} · ${p.name}'),
+                        ),
+                    ],
+                    onChanged: vm.setProject,
+                  ),
+                ),
+                if (r != null) AppPdfButton(build: r.pdfReport),
+              ],
             ),
             const SizedBox(height: AppSpacing.lg),
             if (r == null)

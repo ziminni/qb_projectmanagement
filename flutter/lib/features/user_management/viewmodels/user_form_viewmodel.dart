@@ -11,6 +11,7 @@ import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/business_rule_exception.dart';
 import '../../../data/services/session_service.dart';
+import 'admin_audit.dart';
 
 typedef AssignmentDraft = ({int projectId, AppRole role});
 
@@ -23,10 +24,12 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     required ProjectRepository projects,
     required ClientRepository clients,
     required SessionService session,
+    AdminAudit? audit,
   }) : _users = users,
        _projects = projects,
        _clients = clients,
-       _session = session;
+       _session = session,
+       _audit = audit;
 
   /// Null when creating a user.
   final int? userId;
@@ -34,6 +37,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
   final ProjectRepository _projects;
   final ClientRepository _clients;
   final SessionService _session;
+  final AdminAudit? _audit;
 
   bool _loading = true;
   String? _error;
@@ -180,6 +184,18 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
       roles.contains(AppRole.client) ? clientId : null,
     );
     if (isSelf) _session.updateUser(saved);
+    final wasActive = _user?.isActive;
+    await _audit?.record(
+      isNew ? 'user_created' : 'user_updated',
+      entity: 'user',
+      entityId: saved.id,
+      details: {
+        'name': saved.fullName,
+        'roles': roles.map((r) => r.label).join(', '),
+        if (wasActive != null && wasActive != saved.isActive)
+          'status': saved.isActive ? 'reactivated' : 'deactivated',
+      },
+    );
     _user = saved;
   });
 }

@@ -1,6 +1,8 @@
 import 'package:buildpro_frontend/data/repositories/mock_auth_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_user_repository.dart';
 import 'package:buildpro_frontend/data/services/business_rule_exception.dart';
+import 'package:buildpro_frontend/features/auth/widgets/login_dialog.dart';
+import 'package:buildpro_frontend/features/landing/views/landing_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -70,7 +72,7 @@ void main() {
     );
   });
 
-  testWidgets('wrong password shows an error on the login screen', (
+  testWidgets('wrong password shows an error in the login modal', (
     tester,
   ) async {
     await pumpApp(tester);
@@ -94,13 +96,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
+    expect(find.byType(LandingPage), findsOneWidget);
+    expect(find.byType(LoginDialog), findsNothing);
   });
 
   testWidgets('forgot password confirms without revealing accounts', (
     tester,
   ) async {
     await pumpApp(tester);
+    await openLoginDialog(tester);
     await tester.tap(find.text('Forgot password?'));
     await tester.pumpAndSettle();
     await tester.enterText(

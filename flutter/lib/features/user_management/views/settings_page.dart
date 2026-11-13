@@ -1,133 +1,268 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_radii.dart';
 import '../../../core/constants/app_spacing.dart';
-import '../../../core/di/service_locator.dart';
-import '../../../core/utils/app_messages.dart';
-import '../../../core/utils/input_parsers.dart';
+import '../../../core/theme/app_motion.dart';
 import '../../../core/utils/page_padding.dart';
-import '../../../data/services/master_data_rules.dart';
-import '../../../shared/widgets/app_empty_state.dart';
-import '../../../shared/widgets/app_section_card.dart';
-import '../viewmodels/settings_viewmodel.dart';
+import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_page_header.dart';
+import '../widgets/settings_company_section.dart';
+import '../widgets/settings_defaults_section.dart';
 
-class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+/// The sections of Settings, grouped under headings in the side tabs.
+enum SettingsSection {
+  profile('profile', 'Company profile', Icons.business_outlined, 'Company'),
+  licenses(
+    'licenses',
+    'Licenses and compliance',
+    Icons.verified_outlined,
+    'Company',
+  ),
+  billing('billing', 'Billing defaults', Icons.percent_rounded, 'Projects'),
+  schedule(
+    'schedule',
+    'Schedule monitoring',
+    Icons.view_timeline_outlined,
+    'Projects',
+  );
 
-  @override
-  State<SettingsPage> createState() => _SettingsPageState();
+  const SettingsSection(this.slug, this.label, this.icon, this.group);
+
+  /// The `?section=` value.
+  final String slug;
+  final String label;
+  final IconData icon;
+  final String group;
+
+  static SettingsSection fromSlug(String? slug) => values.firstWhere(
+    (s) => s.slug == slug,
+    orElse: () => SettingsSection.profile,
+  );
 }
 
-class _SettingsPageState extends State<SettingsPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _retention = TextEditingController();
-  final _downPayment = TextEditingController();
-  final _behind = TextEditingController();
-  late final _vm = SettingsViewModel(company: getIt());
+/// Admin settings with GitHub-style side tabs: one section at a time, each
+/// with its own save button. The section is in the URL so it can be linked.
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key, this.section});
 
-  @override
-  void initState() {
-    super.initState();
-    _vm.load().then((_) {
-      final s = _vm.settings;
-      if (s == null) return;
-      _retention.text = InputParsers.amountText(s.defaultRetentionPct);
-      _downPayment.text = InputParsers.amountText(s.defaultDownPaymentPct);
-      _behind.text = InputParsers.amountText(s.behindScheduleThresholdPct);
-    });
-  }
-
-  @override
-  void dispose() {
-    for (final c in [_retention, _downPayment, _behind]) {
-      c.dispose();
-    }
-    _vm.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    await reportAction(
-      context,
-      _vm.save(
-        _vm.settings!.copyWith(
-          defaultRetentionPct: InputParsers.amount(_retention.text),
-          defaultDownPaymentPct: InputParsers.amount(_downPayment.text),
-          behindScheduleThresholdPct: InputParsers.amount(_behind.text),
-        ),
-      ),
-      success: 'Settings saved.',
-    );
-  }
-
-  Widget _field(
-    TextEditingController c,
-    String label, {
-    String? helper,
-    bool peso = false,
-  }) => TextFormField(
-    controller: c,
-    decoration: InputDecoration(
-      labelText: label,
-      helperText: helper,
-      prefixText: peso ? '₱ ' : null,
-      suffixText: peso ? null : '%',
-    ),
-    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    validator: (v) => peso
-        ? MasterDataRules.validateAmount(InputParsers.amount(v), label)
-        : MasterDataRules.validatePercent(InputParsers.amount(v), label),
-  );
+  /// The `?section=` value; the company profile when missing.
+  final String? section;
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _vm,
-      child: Consumer<SettingsViewModel>(
-        builder: (context, vm, _) {
-          if (vm.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (vm.error != null) return AppEmptyState(message: vm.error!);
-          return Form(
-            key: _formKey,
-            child: ListView(
-              padding: pagePadding(context),
+    final current = SettingsSection.fromSlug(section);
+    final wide = MediaQuery.sizeOf(context).width >= AppSpacing.wideBreakpoint;
+    void open(SettingsSection s) =>
+        context.go(AppRoutes.adminSettingsSection(s.slug));
+
+    final content = AnimatedSwitcher(
+      duration: AppMotion.medium,
+      switchInCurve: AppMotion.switchIn,
+      switchOutCurve: AppMotion.switchOut,
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topLeft,
+        children: [...previous, ?current],
+      ),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0, 0.01),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(current),
+        child: switch (current) {
+          SettingsSection.profile => const SettingsCompanySection(
+            part: CompanySectionPart.profile,
+          ),
+          SettingsSection.licenses => const SettingsCompanySection(
+            part: CompanySectionPart.licenses,
+          ),
+          SettingsSection.billing => const SettingsDefaultsSection(
+            part: DefaultsSectionPart.billing,
+          ),
+          SettingsSection.schedule => const SettingsDefaultsSection(
+            part: DefaultsSectionPart.schedule,
+          ),
+        },
+      ),
+    );
+
+    return ListView(
+      padding: pagePadding(context),
+      children: [
+        const AppPageHeader(
+          title: 'Settings',
+          subtitle: 'Company details and defaults for new projects.',
+        ),
+        if (wide)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 248,
+                child: _SideTabs(current: current, onSelect: open),
+              ),
+              const SizedBox(width: AppSpacing.xxl),
+              Expanded(child: content),
+            ],
+          )
+        else ...[
+          _TopTabs(current: current, onSelect: open),
+          const SizedBox(height: AppSpacing.xl),
+          content,
+        ],
+      ],
+    );
+  }
+}
+
+/// Vertical section list with group headings, as on GitHub.
+class _SideTabs extends StatelessWidget {
+  const _SideTabs({required this.current, required this.onSelect});
+  final SettingsSection current;
+  final ValueChanged<SettingsSection> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final children = <Widget>[];
+    String? group;
+    for (final s in SettingsSection.values) {
+      if (s.group != group) {
+        group = s.group;
+        children.add(
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              children.isEmpty ? 0 : AppSpacing.lg,
+              AppSpacing.md,
+              AppSpacing.xs,
+            ),
+            child: Text(
+              s.group.toUpperCase(),
+              style: textTheme.labelSmall?.copyWith(
+                color: AppColors.textSecondary,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        );
+      }
+      children.add(
+        _SideTab(section: s, selected: s == current, onTap: () => onSelect(s)),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+}
+
+class _SideTab extends StatelessWidget {
+  const _SideTab({
+    required this.section,
+    required this.selected,
+    required this.onTap,
+  });
+  final SettingsSection section;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: AppRadii.mdAll,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadii.mdAll,
+          hoverColor: AppColors.surfaceMuted,
+          child: AnimatedContainer(
+            duration: AppMotion.medium,
+            curve: AppMotion.enter,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm + 2,
+            ),
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppColors.selected
+                  : AppColors.selected.withValues(alpha: 0),
+              borderRadius: AppRadii.mdAll,
+              border: Border(
+                left: BorderSide(
+                  color: selected
+                      ? AppColors.brandGold
+                      : AppColors.brandGold.withValues(alpha: 0),
+                  width: 3,
+                ),
+              ),
+            ),
+            child: Row(
               children: [
-                AppSectionCard(
-                  title: 'Billing defaults for new projects',
-                  child: Column(
-                    children: [
-                      _field(_retention, 'Default retention'),
-                      const SizedBox(height: AppSpacing.md),
-                      _field(_downPayment, 'Default down payment'),
-                    ],
-                  ),
+                Icon(
+                  section.icon,
+                  size: 18,
+                  color: selected
+                      ? AppColors.brandGoldText
+                      : AppColors.textSecondary,
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                AppSectionCard(
-                  title: 'Schedule monitoring',
-                  child: _field(
-                    _behind,
-                    'Behind-schedule threshold',
-                    helper:
-                        'Projects this many points behind plan are flagged on '
-                        'the owner dashboard.',
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton(
-                    onPressed: vm.isBusy ? null : _save,
-                    child: const Text('Save settings'),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Text(
+                    section.label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
+                    ),
                   ),
                 ),
               ],
             ),
-          );
-        },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Phones: the same sections as a scrollable row of chips.
+class _TopTabs extends StatelessWidget {
+  const _TopTabs({required this.current, required this.onSelect});
+  final SettingsSection current;
+  final ValueChanged<SettingsSection> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final s in SettingsSection.values)
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: ChoiceChip(
+                avatar: Icon(s.icon, size: 16),
+                label: Text(s.label),
+                selected: s == current,
+                onSelected: (_) => onSelect(s),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -8,6 +8,7 @@ import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../viewmodels/payroll_periods_viewmodel.dart';
 import '../widgets/labor_period_dialog.dart';
@@ -33,6 +34,10 @@ class PayrollPeriodsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
+            const AppPageHeader(
+              title: 'Payroll',
+              subtitle: 'Pay periods, attendance verification and processing.',
+            ),
             if (vm.canCreate)
               Align(
                 alignment: Alignment.centerLeft,

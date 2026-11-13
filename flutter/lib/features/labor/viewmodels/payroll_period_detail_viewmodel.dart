@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/utils/action_runner.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/payroll_line.dart';
 import '../../../data/models/payroll_period.dart';
@@ -9,6 +11,7 @@ import '../../../data/repositories/labor_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/services/labor_rules.dart';
 import '../../../data/services/session_service.dart';
+import '../../../shared/pdf/pdf_report.dart';
 
 class PayrollPeriodDetailViewModel extends ChangeNotifier with ActionRunner {
   PayrollPeriodDetailViewModel({
@@ -111,4 +114,71 @@ class PayrollPeriodDetailViewModel extends ChangeNotifier with ActionRunner {
     await _labor.processPeriod(periodId, userId: _session.user!.id);
     await _refresh();
   });
+
+  /// The payroll period as a printable payroll sheet.
+  PdfReport pdfReport() {
+    final p = period!;
+    final pr = project!;
+    String peso(double v) => Formatters.peso(v);
+    double sum(double Function(PayrollLine) f) =>
+        _lines.fold(0, (s, l) => s + f(l));
+    return PdfReport(
+      title: 'Payroll',
+      fileName:
+          'payroll-${pr.code}-${p.periodEnd.toIso8601String().substring(0, 10)}',
+      subtitle: '${pr.code} · ${pr.name}',
+      info: [
+        ('Period', Formatters.dateRange(p.periodStart, p.periodEnd)),
+        ('Status', p.status.label),
+        ('Workers', '${_lines.length}'),
+      ],
+      tables: [
+        PdfTable(
+          title: 'Pay',
+          headers: const [
+            'Worker',
+            'Days',
+            'OT pay',
+            'Gross',
+            'SSS',
+            'PhilHealth',
+            'Pag-IBIG',
+            'Cash adv.',
+            'Net pay',
+          ],
+          rows: [
+            for (final l in _lines)
+              [
+                workerName(l.workerId),
+                InputParsers.amountText(l.daysWorked),
+                peso(l.overtimePay),
+                peso(l.grossPay),
+                peso(l.sss),
+                peso(l.philhealth),
+                peso(l.pagibig),
+                peso(l.cashAdvance),
+                peso(l.netPay),
+              ],
+          ],
+          numeric: const {1, 2, 3, 4, 5, 6, 7, 8},
+          totals: [
+            'Total',
+            InputParsers.amountText(sum((l) => l.daysWorked)),
+            peso(sum((l) => l.overtimePay)),
+            peso(totalGross),
+            peso(sum((l) => l.sss)),
+            peso(sum((l) => l.philhealth)),
+            peso(sum((l) => l.pagibig)),
+            peso(sum((l) => l.cashAdvance)),
+            peso(totalNet),
+          ],
+        ),
+      ],
+      signatures: const [
+        'Prepared by (accountant)',
+        'Verified by (owner)',
+        'Received by',
+      ],
+    );
+  }
 }

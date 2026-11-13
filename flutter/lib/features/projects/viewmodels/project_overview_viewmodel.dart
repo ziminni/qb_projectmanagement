@@ -74,6 +74,35 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
   bool get canEdit => _isAssignedPm;
   bool get canManageTeam => canEdit;
 
+  bool get canResend =>
+      canEdit && _project?.status == ProjectStatus.changesRequested;
+
+  /// What the owner needs to know about the request, or null once it is
+  /// settled.
+  String? get requestNote {
+    if (!canEdit) return null;
+    String notes(RequestResponse response, String verb) => [
+      for (final m in _team)
+        if (m.assignment.response == response)
+          '${m.user?.fullName ?? 'Someone'} $verb: ${m.assignment.note}',
+    ].join('\n');
+    final declinedSite = notes(RequestResponse.declined, 'declined');
+    final siteNote = declinedSite.isEmpty
+        ? ''
+        : '\n$declinedSite\nAdd another site engineer in Team.';
+    return switch (_project?.status) {
+      ProjectStatus.requested =>
+        'Waiting for the client to accept. The site engineer gets the '
+            'request after that.',
+      ProjectStatus.changesRequested =>
+        '${notes(RequestResponse.changesRequested, 'asked for changes')}\n'
+            'Edit the project, then send it again.',
+      ProjectStatus.siteEngineerPending =>
+        'The client accepted. Waiting for the site engineer.$siteNote',
+      _ => declinedSite.isEmpty ? null : siteNote.trim(),
+    };
+  }
+
   List<ProjectStatus> get statusOptions => _project == null
       ? const []
       : ProjectRules.nextStatuses(
@@ -136,7 +165,10 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
     return users
         .where(
           (u) => !_team.any(
-            (m) => m.user?.id == u.id && m.assignment.roleOnProject == role,
+            (m) =>
+                m.user?.id == u.id &&
+                m.assignment.roleOnProject == role &&
+                m.assignment.response != RequestResponse.declined,
           ),
         )
         .toList();
@@ -149,6 +181,11 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
       userId: _session.user!.id,
       role: role,
     );
+    await _refresh();
+  });
+
+  Future<String?> resendRequest() => runAction(() async {
+    await _projects.resendRequest(projectId, userId: _session.user!.id);
     await _refresh();
   });
 

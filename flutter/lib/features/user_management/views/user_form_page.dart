@@ -13,6 +13,7 @@ import '../../../data/services/auth_rules.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_section_card.dart';
+import '../viewmodels/admin_audit.dart';
 import '../viewmodels/user_form_viewmodel.dart';
 import '../widgets/user_management_assignment_editor.dart';
 import '../widgets/user_management_role_selector.dart';
@@ -38,6 +39,7 @@ class _UserFormPageState extends State<UserFormPage> {
     projects: getIt(),
     clients: getIt(),
     session: getIt(),
+    audit: AdminAudit.fromLocator(),
   );
 
   @override
@@ -68,7 +70,12 @@ class _UserFormPageState extends State<UserFormPage> {
       _vm.save(fullName: _name.text, email: _email.text, phone: _phone.text),
       success: 'User saved.',
     );
-    if (ok && mounted) context.go(AppRoutes.adminUsers);
+    if (!ok || !mounted) return;
+    context.go(
+      widget.userId == null
+          ? AppRoutes.adminUsers
+          : AppRoutes.adminUser(widget.userId!),
+    );
   }
 
   @override
@@ -189,7 +196,11 @@ class _UserFormPageState extends State<UserFormPage> {
                 AppActionBar(
                   children: [
                     TextButton(
-                      onPressed: () => context.go(AppRoutes.adminUsers),
+                      onPressed: () => context.go(
+                        widget.userId == null
+                            ? AppRoutes.adminUsers
+                            : AppRoutes.adminUser(widget.userId!),
+                      ),
                       child: const Text('Cancel'),
                     ),
                     FilledButton(

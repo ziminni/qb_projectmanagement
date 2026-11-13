@@ -9,6 +9,10 @@ import '../../data/services/session_service.dart';
 import '../../routes/routes.dart';
 import '../../shared/widgets/app_empty_state.dart';
 import '../../shared/widgets/app_project_status_chip.dart';
+import '../constants/app_colors.dart';
+import '../constants/app_radii.dart';
+import '../utils/formatters.dart';
+import '../utils/page_padding.dart';
 import '../constants/app_spacing.dart';
 import '../di/service_locator.dart';
 import 'project_tabs.dart';
@@ -110,6 +114,7 @@ class _ProjectDetailShellState extends State<ProjectDetailShell> {
           }
           final project = c.project!;
           final textTheme = Theme.of(context).textTheme;
+          final side = pagePadding(context).left;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -119,26 +124,75 @@ class _ProjectDetailShellState extends State<ProjectDetailShell> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.md,
-                        AppSpacing.lg,
-                        0,
+                      padding: EdgeInsets.fromLTRB(
+                        side,
+                        AppSpacing.xl,
+                        side,
+                        AppSpacing.sm,
                       ),
-                      child: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Wrap(
-                            spacing: AppSpacing.sm,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(project.code, style: textTheme.labelMedium),
-                              AppProjectStatusChip(status: project.status),
-                            ],
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: const BoxDecoration(
+                              gradient: AppColors.brandGradient,
+                              borderRadius: AppRadii.lgAll,
+                            ),
+                            child: const Icon(
+                              Icons.apartment_rounded,
+                              color: Colors.white,
+                              size: 28,
+                            ),
                           ),
-                          const SizedBox(height: AppSpacing.xxs),
-                          Text(project.name, style: textTheme.titleLarge),
-                          Text(project.location, style: textTheme.bodySmall),
+                          const SizedBox(width: AppSpacing.lg),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  spacing: AppSpacing.sm,
+                                  runSpacing: AppSpacing.xs,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      project.code,
+                                      style: textTheme.labelMedium,
+                                    ),
+                                    AppProjectStatusChip(
+                                      status: project.status,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: AppSpacing.xs),
+                                Text(
+                                  project.name,
+                                  style: textTheme.headlineSmall,
+                                ),
+                                const SizedBox(height: AppSpacing.xs),
+                                Wrap(
+                                  spacing: AppSpacing.lg,
+                                  runSpacing: AppSpacing.xs,
+                                  children: [
+                                    _meta(
+                                      context,
+                                      Icons.place_outlined,
+                                      project.location,
+                                    ),
+                                    _meta(
+                                      context,
+                                      Icons.event_outlined,
+                                      Formatters.dateRange(
+                                        project.startDate,
+                                        project.targetEndDate,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -149,6 +203,9 @@ class _ProjectDetailShellState extends State<ProjectDetailShell> {
                           .indexOf(widget.tab)
                           .clamp(0, tabs.length - 1),
                       child: TabBar(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: side - AppSpacing.lg,
+                        ),
                         isScrollable: true,
                         tabAlignment: TabAlignment.start,
                         onTap: (i) => context.go(
@@ -157,7 +214,6 @@ class _ProjectDetailShellState extends State<ProjectDetailShell> {
                         tabs: [for (final t in tabs) Tab(text: t.label)],
                       ),
                     ),
-                    const Divider(height: 1),
                   ],
                 ),
               ),
@@ -168,4 +224,21 @@ class _ProjectDetailShellState extends State<ProjectDetailShell> {
       ),
     );
   }
+
+  Widget _meta(BuildContext context, IconData icon, String text) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 16, color: AppColors.textSecondary),
+      const SizedBox(width: AppSpacing.xs),
+      Flexible(
+        child: Text(
+          text,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+        ),
+      ),
+    ],
+  );
 }

@@ -69,18 +69,14 @@ abstract final class AppWorkflowSteps {
 
   static AppStatusSteps materialRequest(MaterialRequestStatus status) {
     const steps = [
-      AppStep('Requested', who: 'Site engineer'),
-      AppStep('Approval', who: 'Owner'),
-      AppStep('Purchase orders', who: 'Owner'),
+      AppStep('Count and request', who: 'Site engineer'),
+      AppStep('Order or buy', who: 'Owner'),
+      AppStep('Ordered'),
     ];
     return switch (status) {
       MaterialRequestStatus.pending => const AppStatusSteps(
         steps: steps,
         current: 1,
-      ),
-      MaterialRequestStatus.approved => const AppStatusSteps(
-        steps: steps,
-        current: 2,
       ),
       MaterialRequestStatus.ordered => const AppStatusSteps(
         steps: steps,

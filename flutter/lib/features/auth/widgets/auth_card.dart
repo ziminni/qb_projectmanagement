@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
+import '../../../shared/widgets/app_brand_mark.dart';
+import 'auth_brand_panel.dart';
 
-/// Centered, width-limited card used by the signed-out screens.
+/// Layout for the signed-out screens: the brand panel beside the form on
+/// wide screens, the form alone (under the logo) on phones.
 class AuthCard extends StatelessWidget {
   const AuthCard({
     super.key,
@@ -20,54 +24,53 @@ class AuthCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Icon(
-                    Icons.construction,
-                    size: 40,
-                    color: theme.colorScheme.primary,
+    final wide = MediaQuery.sizeOf(context).width >= 960;
+    final form = Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!wide) ...[
+                const Center(child: AppBrandMark(size: 40)),
+                const SizedBox(height: 40),
+              ],
+              Text(title, style: theme.textTheme.displaySmall),
+              if (subtitle != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  subtitle!,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: AppColors.textSecondary,
                   ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'BuildPro',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.xl),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(title, style: theme.textTheme.headlineSmall),
-                          if (subtitle != null) ...[
-                            const SizedBox(height: AppSpacing.xs),
-                            Text(subtitle!, style: theme.textTheme.bodySmall),
-                          ],
-                          const SizedBox(height: AppSpacing.lg),
-                          child,
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (below != null) ...[
-                    const SizedBox(height: AppSpacing.lg),
-                    below!,
-                  ],
-                ],
-              ),
-            ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.xxl),
+              child,
+              if (below != null) ...[
+                const SizedBox(height: AppSpacing.xl),
+                below!,
+              ],
+            ],
           ),
         ),
+      ),
+    );
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      body: SafeArea(
+        top: !wide,
+        bottom: !wide,
+        child: wide
+            ? Row(
+                children: [
+                  const Expanded(flex: 5, child: AuthBrandPanel()),
+                  Expanded(flex: 6, child: form),
+                ],
+              )
+            : form,
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../../core/di/service_locator.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/material_request.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../viewmodels/material_requests_viewmodel.dart';
 import '../viewmodels/procurement_lookups.dart';
@@ -34,6 +35,11 @@ class MaterialRequestsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
+            const AppPageHeader(
+              title: 'Material requests',
+              subtitle:
+                  'Materials requested from site and where each request stands.',
+            ),
             Wrap(
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,

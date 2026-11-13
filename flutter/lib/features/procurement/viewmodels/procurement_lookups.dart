@@ -3,6 +3,7 @@ import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
 import '../../../data/models/material_item.dart';
 import '../../../data/models/project.dart';
+import '../../../data/models/purchase_order.dart';
 import '../../../data/models/supplier.dart';
 import '../../../data/repositories/master_data_repository.dart';
 import '../../../data/repositories/project_repository.dart';
@@ -54,9 +55,15 @@ class ProcurementLookups {
   }
 
   String projectCode(int id) => projects[id]?.code ?? 'Project #$id';
-  String categoryName(int id) => categories[id]?.name ?? 'Category #$id';
+  String categoryName(int? id) =>
+      id == null ? 'No category' : categories[id]?.name ?? 'Category #$id';
   String materialName(int id) => materials[id]?.name ?? 'Material #$id';
   String unit(int id) => materials[id]?.unit ?? '';
   String supplierName(int id) => suppliers[id]?.name ?? 'Supplier #$id';
+
+  /// The own store or supplier an order went to, or the store typed in for
+  /// another store's purchase.
+  String storeName(PurchaseOrder o) =>
+      o.storeName ?? (o.supplierId == null ? '—' : supplierName(o.supplierId!));
   String userName(int? id) => id == null ? '—' : userNames[id] ?? 'User #$id';
 }

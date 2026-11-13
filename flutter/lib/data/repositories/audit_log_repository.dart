@@ -10,4 +10,7 @@ abstract interface class AuditLogRepository {
   });
 
   Future<List<AuditLog>> getFor(String entity, int entityId);
+
+  /// Every entry, newest first, for the admin's audit log.
+  Future<List<AuditLog>> getAll();
 }

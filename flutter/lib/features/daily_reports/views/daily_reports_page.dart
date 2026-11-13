@@ -8,6 +8,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/daily_report.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../viewmodels/daily_reports_viewmodel.dart';
 import '../widgets/daily_reports_report_tile.dart';
@@ -34,6 +35,10 @@ class DailyReportsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
+            const AppPageHeader(
+              title: 'Daily reports',
+              subtitle: 'Site reports by date and status.',
+            ),
             Wrap(
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,

@@ -8,7 +8,7 @@ import '../../../data/services/session_service.dart';
 import 'procurement_lookups.dart';
 
 /// Material requests the active role can see. In [queue] mode it is
-/// the owner's purchasing queue: approved requests waiting for POs first.
+/// the owner's purchasing queue: requests waiting to be ordered.
 class MaterialRequestsViewModel extends ChangeNotifier {
   MaterialRequestsViewModel({
     this.queue = false,
@@ -17,7 +17,7 @@ class MaterialRequestsViewModel extends ChangeNotifier {
     required this.lookups,
   }) : _session = session,
        _procurement = procurement,
-       _status = queue ? MaterialRequestStatus.approved : null;
+       _status = queue ? MaterialRequestStatus.pending : null;
 
   final bool queue;
   final SessionService _session;

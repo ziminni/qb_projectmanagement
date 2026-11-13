@@ -7,44 +7,93 @@ import '../models/material_source.dart';
 import '../models/payment_method.dart';
 import '../models/purchase_order.dart';
 import '../models/purchase_order_item.dart';
+import '../models/site_count.dart';
 import '../models/supplier_payment.dart';
 import '../services/inventory_calculator.dart';
 import '../services/procurement_rules.dart';
 
 class MaterialRequestDetail {
-  const MaterialRequestDetail(this.request, this.items);
+  const MaterialRequestDetail(this.request, this.items, this.counts);
 
   final MaterialRequest request;
   final List<MaterialRequestItem> items;
+
+  /// The site count taken before the request.
+  final List<SiteCount> counts;
 }
+
+typedef RequestLine = ({String description, String unit, double quantity});
+
+typedef CountLine = ({
+  int? materialId,
+  String name,
+  String unit,
+  double expected,
+  double counted,
+});
 
 class MaterialRequestDraft {
   const MaterialRequestDraft({
     required this.projectId,
-    required this.categoryId,
     required this.neededBy,
     required this.items,
+    required this.counts,
   });
 
   final int projectId;
-  final int categoryId;
   final DateTime neededBy;
-  final List<({int materialId, double quantity})> items;
+  final List<RequestLine> items;
+
+  /// One count per material currently on site.
+  final List<CountLine> counts;
 }
 
-/// The owner's choice for one request item.
-class OrderLine {
-  const OrderLine({
-    required this.requestItemId,
-    required this.source,
-    required this.supplierId,
-    required this.unitPrice,
-  });
+typedef OrderLine = ({
+  int? materialId,
+  String description,
+  String unit,
+  double quantity,
+  double unitPrice,
+});
 
-  final int requestItemId;
+/// The owner's answer to a request: an own-store order delivered to
+/// [deliveryAddress], or a purchase already paid at another store.
+class OrderDraft {
+  const OrderDraft.ownStore({
+    required this.requestId,
+    required this.categoryId,
+    required this.lines,
+    this.coversItemIds = const [],
+    required String this.deliveryAddress,
+  }) : source = MaterialSource.ownStore,
+       storeName = null,
+       orNumber = null,
+       receiptPhotoUrl = null;
+
+  const OrderDraft.otherStore({
+    required this.requestId,
+    required this.categoryId,
+    required this.lines,
+    this.coversItemIds = const [],
+    required String this.storeName,
+    required String this.orNumber,
+    required String this.receiptPhotoUrl,
+  }) : source = MaterialSource.external,
+       deliveryAddress = null;
+
+  final int requestId;
+
+  /// The budget category the order is charged to.
+  final int categoryId;
   final MaterialSource source;
-  final int supplierId;
-  final double unitPrice;
+  final List<OrderLine> lines;
+
+  /// The requested items this order covers.
+  final List<int> coversItemIds;
+  final String? deliveryAddress;
+  final String? storeName;
+  final String? orNumber;
+  final String? receiptPhotoUrl;
 }
 
 class DeliveryDetail {
@@ -101,26 +150,15 @@ abstract interface class ProcurementRepository {
 
   Future<MaterialRequestDetail?> getRequest(int id);
 
-  /// Checks [items] against the category's remaining budget.
-  Future<BudgetCheck> checkBudget(
-    int categoryId,
-    List<({int materialId, double quantity})> items, {
-    int? excludingRequestId,
-  });
+  /// Checks an order of [amount] against the category's remaining budget.
+  Future<BudgetCheck> checkBudget(int categoryId, double amount);
 
   Future<MaterialRequest> createRequest(
     MaterialRequestDraft draft, {
     required int userId,
   });
 
-  /// PM approval sends over-budget requests on to the owner; owner approval
-  /// approves them.
-  Future<MaterialRequest> approveRequest(
-    int id, {
-    required int userId,
-    required AppRole role,
-  });
-
+  /// Owner turns down a pending request.
   Future<MaterialRequest> rejectRequest(
     int id, {
     required int userId,
@@ -128,13 +166,9 @@ abstract interface class ProcurementRepository {
     required String reason,
   });
 
-  /// Owner turns an approved request into one PO per supplier, released to
-  /// the supplier right away.
-  Future<List<PurchaseOrder>> createPurchaseOrders(
-    int requestId,
-    List<OrderLine> lines, {
-    required int userId,
-  });
+  /// Owner orders from the own store or logs another store's purchase. A
+  /// request can be answered with several orders.
+  Future<PurchaseOrder> placeOrder(OrderDraft draft, {required int userId});
 
   Future<List<PurchaseOrder>> getPurchaseOrders({
     List<int>? projectIds,

@@ -63,55 +63,57 @@ class _DeliveryConfirmPageState extends State<DeliveryConfirmPage> {
           final l = vm.lookups;
           return Form(
             key: _formKey,
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: pagePadding(context),
-                    children: [
-                      Text(
-                        'Receive ${o.poNo}',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      Text(
-                        '${l.supplierName(o.supplierId)} · ${l.projectCode(o.projectId)}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      for (final line in vm.lines) ...[
-                        ProcurementReceiptLineCard(
-                          line: line,
-                          materialLabel:
-                              '${l.materialName(line.item.materialId)} '
-                              '(${l.unit(line.item.materialId)})',
-                          onChanged: vm.changed,
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ListView(
+                      padding: pagePadding(context),
+                      children: [
+                        Text(
+                          'Receive ${o.poNo}',
+                          style: Theme.of(context).textTheme.headlineSmall,
                         ),
-                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          '${l.storeName(o)} · ${l.projectCode(o.projectId)}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        for (final line in vm.lines) ...[
+                          ProcurementReceiptLineCard(
+                            line: line,
+                            materialLabel:
+                                '${line.item.description} (${line.item.unit})',
+                            onChanged: vm.changed,
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                        ],
+                        SwitchListTile(
+                          title: const Text('Delivery receipt photo taken'),
+                          subtitle: const Text(
+                            'Camera upload arrives with file storage; a placeholder '
+                            'is attached for now.',
+                          ),
+                          value: vm.receiptPhoto,
+                          onChanged: vm.setReceiptPhoto,
+                        ),
                       ],
-                      SwitchListTile(
-                        title: const Text('Delivery receipt photo taken'),
-                        subtitle: const Text(
-                          'Camera upload arrives with file storage; a placeholder '
-                          'is attached for now.',
-                        ),
-                        value: vm.receiptPhoto,
-                        onChanged: vm.setReceiptPhoto,
+                    ),
+                  ),
+                  AppActionBar(
+                    hint:
+                        'Good items go into site inventory; damaged ones are recorded.',
+                    children: [
+                      FilledButton.icon(
+                        onPressed: vm.isBusy ? null : _confirm,
+                        icon: const Icon(Icons.check),
+                        label: const Text('Confirm delivery'),
                       ),
                     ],
                   ),
-                ),
-                AppActionBar(
-                  hint:
-                      'Good items go into site inventory; damaged ones are recorded.',
-                  children: [
-                    FilledButton.icon(
-                      onPressed: vm.isBusy ? null : _confirm,
-                      icon: const Icon(Icons.check),
-                      label: const Text('Confirm delivery'),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },

@@ -4,6 +4,8 @@ import '../models/project_assignment.dart';
 import '../services/business_rule_exception.dart';
 import '../services/notification_service.dart';
 import '../services/project_rules.dart';
+import '../../core/layout/project_tabs.dart';
+import '../../routes/routes.dart';
 import 'audit_log_repository.dart';
 import 'mock_data.dart';
 import 'project_repository.dart';
@@ -42,7 +44,8 @@ class MockProjectRepository implements ProjectRepository {
     }
     final ids = {
       for (final a in _assignments)
-        if (a.userId == userId && a.roleOnProject == role) a.projectId,
+        if (a.userId == userId && a.roleOnProject == role && a.isActive)
+          a.projectId,
     };
     return _projects.where((p) => ids.contains(p.id)).toList();
   }
@@ -53,7 +56,8 @@ class MockProjectRepository implements ProjectRepository {
         (a) =>
             a.projectId == projectId &&
             a.userId == userId &&
-            a.roleOnProject == role,
+            a.roleOnProject == role &&
+            a.isActive,
       );
 
   @override
@@ -77,19 +81,255 @@ class MockProjectRepository implements ProjectRepository {
         );
       }
     }
+    final previous = [..._assignments.where((a) => a.userId == userId)];
     _assignments.removeWhere((a) => a.userId == userId);
     var next = _nextAssignmentId;
     for (final a in assignments.toSet()) {
-      _assignments.add(
-        ProjectAssignment(
-          id: next++,
-          projectId: a.projectId,
-          userId: userId,
-          roleOnProject: a.role,
-          createdAt: DateTime.now(),
-        ),
+      final kept = previous
+          .where((p) => p.projectId == a.projectId && p.roleOnProject == a.role)
+          .firstOrNull;
+      if (kept != null) {
+        _assignments.add(kept);
+        continue;
+      }
+      final created = ProjectAssignment(
+        id: next++,
+        projectId: a.projectId,
+        userId: userId,
+        roleOnProject: a.role,
+        response: await _firstResponse(a.projectId, a.role),
+        createdAt: DateTime.now(),
+      );
+      _assignments.add(created);
+      await _sendRequest(created);
+    }
+  }
+
+  static bool _needsAcceptance(AppRole role) =>
+      role == AppRole.siteEngineer || role == AppRole.client;
+
+  /// Clients get the request at once; a site engineer's waits until the
+  /// client has accepted.
+  Future<RequestResponse> _firstResponse(int projectId, AppRole role) async {
+    if (!_needsAcceptance(role)) return RequestResponse.accepted;
+    final status = (await getProject(projectId))?.status;
+    final clientDeciding =
+        status == ProjectStatus.requested ||
+        status == ProjectStatus.changesRequested;
+    return role == AppRole.siteEngineer && clientDeciding
+        ? RequestResponse.notSent
+        : RequestResponse.pending;
+  }
+
+  Future<void> _sendRequest(ProjectAssignment a) async {
+    if (a.response != RequestResponse.pending) return;
+    final p = await getProject(a.projectId);
+    if (p == null) return;
+    await _notifications?.notify(
+      [a.userId],
+      type: 'project_request',
+      message: a.roleOnProject == AppRole.client
+          ? 'New project request: ${p.code} ${p.name}. Accept it, ask for '
+                'changes or decline it.'
+          : 'New project request: ${p.code} ${p.name}. Accept or decline it.',
+      link: a.roleOnProject == AppRole.client
+          ? AppRoutes.clientProjects
+          : AppRoutes.projects,
+    );
+  }
+
+  Future<void> _notifyOwners(
+    int projectId,
+    String message, {
+    String? link,
+  }) async => _notifications?.notify(
+    [
+      for (final a in _assignments)
+        if (a.projectId == projectId &&
+            a.roleOnProject == AppRole.owner &&
+            a.isActive)
+          a.userId,
+    ],
+    type: 'project_request',
+    message: message,
+    link: link ?? AppRoutes.projectTab(projectId, ProjectTab.overview),
+  );
+
+  @override
+  Future<List<ProjectRequest>> getRequestsFor(int userId, AppRole role) async =>
+      [
+        for (final a in _assignments)
+          if (a.userId == userId &&
+              a.roleOnProject == role &&
+              a.response == RequestResponse.pending)
+            ProjectRequest(_projects[_indexOf(a.projectId)], a),
+      ];
+
+  @override
+  Future<ProjectAssignment> respondToRequest(
+    int assignmentId, {
+    required int userId,
+    required RequestResponse answer,
+    String? note,
+  }) async {
+    final i = _assignments.indexWhere((a) => a.id == assignmentId);
+    if (i < 0) throw const BusinessRuleException('Request not found.');
+    final a = _assignments[i];
+    if (a.userId != userId) {
+      throw const BusinessRuleException('This request is not yours.');
+    }
+    if (a.response != RequestResponse.pending) {
+      throw const BusinessRuleException('You already answered this request.');
+    }
+    final isClient = a.roleOnProject == AppRole.client;
+    switch (answer) {
+      case RequestResponse.accepted:
+        break;
+      case RequestResponse.declined:
+        ProjectRules.enforce(ProjectRules.validateNote(note));
+      case RequestResponse.changesRequested:
+        if (!isClient) {
+          throw const BusinessRuleException(
+            'Only the client can ask for changes.',
+          );
+        }
+        ProjectRules.enforce(ProjectRules.validateNote(note));
+      case RequestResponse.pending || RequestResponse.notSent:
+        throw const BusinessRuleException(
+          'Accept, decline or ask for changes.',
+        );
+    }
+    final trimmed = answer == RequestResponse.accepted ? null : note!.trim();
+    final updated = a.copyWith(
+      response: answer,
+      note: () => trimmed,
+      respondedAt: () => DateTime.now(),
+    );
+    _assignments[i] = updated;
+    final pi = _indexOf(a.projectId);
+    final project = _projects[pi];
+    final who = (await _users.getUser(userId))?.fullName ?? 'Someone';
+    await _auditLog.record(
+      userId: userId,
+      action: 'project_request_${answer.apiValue}',
+      entity: 'project',
+      entityId: project.id,
+      details: {'role': a.roleOnProject.apiValue, 'note': ?trimmed},
+    );
+
+    if (isClient) {
+      switch (answer) {
+        case RequestResponse.declined:
+          // Declining deletes the project; the owner keeps the reason in
+          // the notification.
+          await _notifyOwners(
+            project.id,
+            '$who declined ${project.code} ${project.name}, so it was '
+            'deleted. Reason: $trimmed',
+            link: AppRoutes.projects,
+          );
+          _projects.removeAt(pi);
+          _assignments.removeWhere((x) => x.projectId == project.id);
+        case RequestResponse.changesRequested:
+          _projects[pi] = _copy(
+            project,
+            status: ProjectStatus.changesRequested,
+          );
+          await _notifyOwners(
+            project.id,
+            '$who asked for changes on ${project.code}: $trimmed',
+          );
+        default:
+          _projects[pi] = _copy(
+            project,
+            status: ProjectStatus.siteEngineerPending,
+          );
+          await _notifyOwners(
+            project.id,
+            '$who accepted ${project.code}. The site engineer has been '
+            'sent the request.',
+          );
+          for (var j = 0; j < _assignments.length; j++) {
+            final x = _assignments[j];
+            if (x.projectId == project.id &&
+                x.response == RequestResponse.notSent) {
+              _assignments[j] = x.copyWith(response: RequestResponse.pending);
+              await _sendRequest(_assignments[j]);
+            }
+          }
+          await _acceptIfReady(pi);
+      }
+      return updated;
+    }
+
+    if (answer == RequestResponse.declined) {
+      await _notifyOwners(
+        project.id,
+        '$who declined ${project.code}: $trimmed Choose another site engineer.',
+      );
+      return updated;
+    }
+    await _notifyOwners(project.id, '$who accepted ${project.code}.');
+    await _acceptIfReady(pi);
+    return updated;
+  }
+
+  /// Moves a project waiting for its site engineer to Accepted once one has
+  /// joined and nobody is still deciding.
+  Future<void> _acceptIfReady(int pi) async {
+    final project = _projects[pi];
+    if (project.status != ProjectStatus.siteEngineerPending) return;
+    final team = _assignments.where(
+      (a) => a.projectId == project.id && _needsAcceptance(a.roleOnProject),
+    );
+    final ready =
+        team.any(
+          (a) => a.roleOnProject == AppRole.siteEngineer && a.isActive,
+        ) &&
+        !team.any((a) => a.response == RequestResponse.pending);
+    if (!ready) return;
+    _projects[pi] = _copy(project, status: ProjectStatus.accepted);
+    await _notifyOwners(
+      project.id,
+      '${project.code} is accepted by the client and the site engineer. '
+      'Start it when work begins.',
+    );
+  }
+
+  @override
+  Future<Project> resendRequest(int projectId, {required int userId}) async {
+    final pi = _indexOf(projectId);
+    final project = _projects[pi];
+    if (project.status != ProjectStatus.changesRequested) {
+      throw const BusinessRuleException(
+        'Only a project the client asked to change is sent again.',
       );
     }
+    if (!await isAssigned(projectId, userId, AppRole.owner)) {
+      throw const BusinessRuleException(
+        'Only the owner running this project can send it again.',
+      );
+    }
+    _projects[pi] = _copy(project, status: ProjectStatus.requested);
+    for (var i = 0; i < _assignments.length; i++) {
+      final a = _assignments[i];
+      if (a.projectId == projectId &&
+          a.roleOnProject == AppRole.client &&
+          a.response == RequestResponse.changesRequested) {
+        _assignments[i] = a.copyWith(
+          response: RequestResponse.pending,
+          respondedAt: () => null,
+        );
+        await _sendRequest(_assignments[i]);
+      }
+    }
+    await _auditLog.record(
+      userId: userId,
+      action: 'project_request_resent',
+      entity: 'project',
+      entityId: projectId,
+    );
+    return _projects[pi];
   }
 
   @override
@@ -103,17 +343,32 @@ class MockProjectRepository implements ProjectRepository {
         'The user does not hold the ${role.label} role.',
       );
     }
-    if (await isAssigned(projectId, userId, role)) {
-      throw const BusinessRuleException('Already assigned to this project.');
+    // A declined request can be sent again; a live one cannot be doubled.
+    _assignments.removeWhere(
+      (a) =>
+          a.projectId == projectId &&
+          a.userId == userId &&
+          a.roleOnProject == role &&
+          a.response == RequestResponse.declined,
+    );
+    if (_assignments.any(
+      (a) =>
+          a.projectId == projectId &&
+          a.userId == userId &&
+          a.roleOnProject == role,
+    )) {
+      throw const BusinessRuleException('Already on this project.');
     }
     final created = ProjectAssignment(
       id: _nextAssignmentId,
       projectId: projectId,
       userId: userId,
       roleOnProject: role,
+      response: await _firstResponse(projectId, role),
       createdAt: DateTime.now(),
     );
     _assignments.add(created);
+    await _sendRequest(created);
     return created;
   }
 
@@ -157,7 +412,7 @@ class MockProjectRepository implements ProjectRepository {
         project,
         id: _projects.fold(0, (m, p) => p.id > m ? p.id : m) + 1,
         code: code,
-        status: ProjectStatus.draft,
+        status: ProjectStatus.requested,
         createdAt: now,
       );
       _projects.add(created);
@@ -204,7 +459,8 @@ class MockProjectRepository implements ProjectRepository {
     await _notifications?.notify(
       [
         for (final a in _assignments)
-          if (a.projectId == projectId && a.userId != userId) a.userId,
+          if (a.projectId == projectId && a.userId != userId && a.isActive)
+            a.userId,
       ],
       type: 'project_status',
       message: '${current.code} ${current.name} is now ${status.label}.',
@@ -249,6 +505,8 @@ class MockProjectRepository implements ProjectRepository {
     code: code ?? p.code,
     name: p.name.trim(),
     location: p.location.trim(),
+    latitude: p.latitude,
+    longitude: p.longitude,
     clientId: p.clientId,
     contractAmount: contractAmount ?? p.contractAmount,
     downPaymentPct: p.downPaymentPct,

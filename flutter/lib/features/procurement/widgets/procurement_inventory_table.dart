@@ -6,16 +6,9 @@ import '../../../data/services/inventory_calculator.dart';
 
 /// Site inventory: received, damaged, used on approved reports, on hand.
 class ProcurementInventoryTable extends StatelessWidget {
-  const ProcurementInventoryTable({
-    super.key,
-    required this.lines,
-    required this.materialName,
-    required this.unit,
-  });
+  const ProcurementInventoryTable({super.key, required this.lines});
 
   final List<InventoryLine> lines;
-  final String Function(int id) materialName;
-  final String Function(int id) unit;
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +33,13 @@ class ProcurementInventoryTable extends StatelessWidget {
           for (final l in lines)
             DataRow(
               cells: [
-                DataCell(Text(materialName(l.materialId))),
+                DataCell(Text(l.name)),
                 DataCell(Text(q(l.received))),
                 DataCell(Text(q(l.damaged))),
                 DataCell(Text(q(l.used))),
                 DataCell(
                   Text(
-                    '${q(l.onHand)} ${unit(l.materialId)}',
+                    '${q(l.onHand)} ${l.unit}',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: l.onHand < 0 ? AppColors.error : null,

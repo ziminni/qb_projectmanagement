@@ -1,8 +1,9 @@
 import 'json_utils.dart';
 
+/// The owner answers a request by ordering it (own store) or logging a
+/// purchase (other store); there is no separate approval step.
 enum MaterialRequestStatus implements JsonEnum {
   pending('pending', 'Waiting for owner'),
-  approved('approved', 'Approved'),
   rejected('rejected', 'Rejected'),
   ordered('ordered', 'Ordered');
 
@@ -23,7 +24,7 @@ class MaterialRequest {
   const MaterialRequest({
     required this.id,
     required this.projectId,
-    required this.categoryId,
+    this.categoryId,
     required this.requestedBy,
     required this.neededBy,
     required this.status,
@@ -34,7 +35,10 @@ class MaterialRequest {
 
   final int id;
   final int projectId;
-  final int categoryId;
+
+  /// Older requests carried a category; new ones leave it to the owner's
+  /// order.
+  final int? categoryId;
   final int requestedBy;
   final DateTime neededBy;
   final MaterialRequestStatus status;
@@ -64,7 +68,7 @@ class MaterialRequest {
       MaterialRequest(
         id: json['id'] as int,
         projectId: json['project_id'] as int,
-        categoryId: json['category_id'] as int,
+        categoryId: json['category_id'] as int?,
         requestedBy: json['requested_by'] as int,
         neededBy: JsonUtils.toDate(json['needed_by']),
         status: MaterialRequestStatus.fromJson(json['status']),

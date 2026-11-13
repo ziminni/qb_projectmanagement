@@ -35,7 +35,7 @@ class ChooseRolePage extends StatelessWidget {
           TextButton(
             onPressed: () {
               session.signOut();
-              context.go(AppRoutes.login);
+              context.go(AppRoutes.landing);
             },
             child: const Text('Sign out'),
           ),

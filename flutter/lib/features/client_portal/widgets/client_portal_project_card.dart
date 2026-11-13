@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_radii.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
@@ -29,21 +31,64 @@ class ClientPortalProjectCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(project.name, style: textTheme.titleMedium),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: const BoxDecoration(
+                      gradient: AppColors.brandGradient,
+                      borderRadius: AppRadii.mdAll,
+                    ),
+                    child: const Icon(
+                      Icons.home_work_rounded,
+                      color: Colors.white,
+                    ),
                   ),
-                  AppProjectStatusChip(status: project.status),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          project.name,
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.place_outlined,
+                              size: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                project.location,
+                                style: textTheme.bodySmall,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Flexible(child: AppProjectStatusChip(status: project.status)),
                 ],
               ),
-              Text(project.location, style: textTheme.bodySmall),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.lg),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     Formatters.percent(progress.progress),
@@ -51,8 +96,11 @@ class ClientPortalProjectCard extends StatelessWidget {
                       AppTextStyles.numeric,
                     ),
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  const Text('complete'),
+                  const SizedBox(width: AppSpacing.xs),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('complete', style: textTheme.bodySmall),
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -60,10 +108,22 @@ class ClientPortalProjectCard extends StatelessWidget {
                 value: progress.progress,
                 planned: progress.plannedProgress,
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Target completion ${Formatters.date(project.targetEndDate)}',
-                style: textTheme.bodySmall,
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.flag_outlined,
+                    size: 15,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Flexible(
+                    child: Text(
+                      'Target completion ${Formatters.date(project.targetEndDate)}',
+                      style: textTheme.bodySmall,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

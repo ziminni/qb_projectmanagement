@@ -167,7 +167,10 @@ void main() {
     await pumpApp(tester);
     await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/approvals');
-    expect(find.text('Attendance verification (1)'), findsWidgets);
+    // How many periods have passed cut-off depends on today's date.
+    expect(find.textContaining('Attendance verification ('), findsWidgets);
+    await tester.ensureVisible(find.text('Attendance · QB-2026-018'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Attendance · QB-2026-018'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Verify attendance'));

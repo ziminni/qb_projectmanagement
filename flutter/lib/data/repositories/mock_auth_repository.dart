@@ -42,6 +42,16 @@ class MockAuthRepository implements AuthRepository {
   Future<void> requestPasswordReset(String email) async {}
 
   @override
+  Future<String> resetPassword(int userId) async {
+    if (await _users.getUser(userId) == null) {
+      throw const BusinessRuleException('User not found.');
+    }
+    // Mock build: the temporary password is the demo password.
+    _passwords.remove(userId);
+    return MockData.demoPassword;
+  }
+
+  @override
   Future<void> changePassword(
     int userId, {
     required String currentPassword,

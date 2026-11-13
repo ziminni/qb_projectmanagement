@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_radii.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
@@ -36,56 +37,128 @@ class ProjectsProjectCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.xs,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(project.code, style: textTheme.labelMedium),
-                  AppProjectStatusChip(status: project.status),
-                  if (isBehind)
-                    const AppStatusChip(
-                      label: 'Behind schedule',
-                      icon: Icons.warning_amber_rounded,
-                      foreground: AppColors.warning,
-                      background: AppColors.warningContainer,
-                    ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xs),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryContainer,
+                      borderRadius: AppRadii.mdAll,
+                    ),
+                    child: const Icon(
+                      Icons.apartment_rounded,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(project.name, style: textTheme.titleMedium),
-                        Text(project.location, style: textTheme.bodySmall),
+                        Text(project.code, style: textTheme.labelSmall),
+                        const SizedBox(height: 2),
+                        Text(
+                          project.name,
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.place_outlined,
+                              size: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                project.location,
+                                style: textTheme.bodySmall,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
-                  Text(
-                    Formatters.percent(progress.progress),
-                    style: textTheme.titleLarge?.merge(AppTextStyles.numeric),
-                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Flexible(child: AppProjectStatusChip(status: project.status)),
                 ],
               ),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    Formatters.percent(progress.progress),
+                    style: textTheme.headlineSmall?.merge(
+                      AppTextStyles.numeric,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('complete', style: textTheme.bodySmall),
+                  ),
+                  const Spacer(),
+                  if (isBehind)
+                    const Flexible(
+                      flex: 3,
+                      child: AppStatusChip(
+                        label: 'Behind schedule',
+                        icon: Icons.warning_amber_rounded,
+                        foreground: AppColors.warning,
+                        background: AppColors.warningContainer,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
               AppProgressBar(
                 value: progress.progress,
                 planned: progress.plannedProgress,
+                color: isBehind ? AppColors.warning : AppColors.progressFill,
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                Formatters.dateRange(project.startDate, project.targetEndDate),
-                style: textTheme.bodySmall,
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.event_outlined,
+                    size: 15,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: Text(
+                      Formatters.dateRange(
+                        project.startDate,
+                        project.targetEndDate,
+                      ),
+                      style: textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    'Planned ${Formatters.percent(progress.plannedProgress)}',
+                    style: textTheme.bodySmall,
+                  ),
+                ],
               ),
               if (actions != null) ...[
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: AppSpacing.md),
+                const Divider(),
+                const SizedBox(height: AppSpacing.md),
                 actions!,
               ],
             ],

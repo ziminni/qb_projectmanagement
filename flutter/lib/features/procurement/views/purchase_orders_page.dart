@@ -61,7 +61,7 @@ class PurchaseOrdersPage extends StatelessWidget {
                       ProcurementPoTile(
                         order: o,
                         projectCode: vm.lookups.projectCode(o.projectId),
-                        supplierName: vm.lookups.supplierName(o.supplierId),
+                        supplierName: vm.lookups.storeName(o),
                         onTap: () => context.go(AppRoutes.purchaseOrder(o.id)),
                       ),
                     ],

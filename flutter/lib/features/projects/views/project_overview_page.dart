@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import 'package:latlong2/latlong.dart';
+
+import '../../../data/models/app_role.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/layout/project_detail_shell.dart';
@@ -13,6 +16,7 @@ import '../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_info_row.dart';
 import '../../../shared/widgets/app_project_status_chip.dart';
+import '../../../shared/widgets/app_location_map.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/project_overview_viewmodel.dart';
 import '../widgets/projects_add_member_dialog.dart';
@@ -52,6 +56,7 @@ class ProjectOverviewPage extends StatelessWidget {
 
         final status = AppSectionCard(
           title: 'Status',
+          icon: Icons.flag_outlined,
           child: Wrap(
             spacing: AppSpacing.md,
             runSpacing: AppSpacing.sm,
@@ -65,11 +70,31 @@ class ProjectOverviewPage extends StatelessWidget {
                       : () => _changeStatus(context, vm),
                   child: const Text('Change status'),
                 ),
+              if (vm.canResend)
+                FilledButton.icon(
+                  onPressed: vm.isBusy
+                      ? null
+                      : () => reportAction(
+                          context,
+                          vm.resendRequest(),
+                          success: 'Request sent to the client again.',
+                        ),
+                  icon: const Icon(Icons.send),
+                  label: const Text('Send again'),
+                ),
               if (vm.canEdit)
                 TextButton.icon(
                   onPressed: () => context.go(AppRoutes.projectEdit(p.id)),
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Edit project'),
+                ),
+              if (vm.requestNote != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    vm.requestNote!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
             ],
           ),
@@ -78,6 +103,7 @@ class ProjectOverviewPage extends StatelessWidget {
         final finance = vm.role.seesFinance;
         final contract = AppSectionCard(
           title: finance ? 'Contract and key dates' : 'Key dates',
+          icon: Icons.description_outlined,
           child: Column(
             children: [
               if (finance)
@@ -138,6 +164,25 @@ class ProjectOverviewPage extends StatelessWidget {
               : null,
         );
 
+        final siteMap = AppSectionCard(
+          title: 'Site map',
+          subtitle: p.location,
+          icon: Icons.place_outlined,
+          child: p.hasPin
+              ? AppLocationMap(
+                  pin: LatLng(p.latitude!, p.longitude!),
+                  height: 260,
+                  zoom: 14,
+                )
+              : Text(
+                  vm.canEdit
+                      ? 'No pin yet. Edit the project to place the site on '
+                            'the map.'
+                      : 'The site has not been pinned on the map yet.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+        );
+
         final progressCard = ProjectsProgressCard(
           progress: progress,
           sCurve: vm.sCurve,
@@ -161,9 +206,26 @@ class ProjectOverviewPage extends StatelessWidget {
                     ],
                   ),
                   gap,
-                  team,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 3, child: team),
+                      gap,
+                      Expanded(flex: 2, child: siteMap),
+                    ],
+                  ),
                 ]
-              : [progressCard, gap, status, gap, contract, gap, team],
+              : [
+                  progressCard,
+                  gap,
+                  status,
+                  gap,
+                  contract,
+                  gap,
+                  siteMap,
+                  gap,
+                  team,
+                ],
         );
       },
     );
@@ -198,7 +260,13 @@ class ProjectOverviewPage extends StatelessWidget {
       candidatesFor: vm.candidatesFor,
     );
     if (result == null || !context.mounted) return;
-    await reportAction(context, vm.addMember(result.userId, result.role));
+    await reportAction(
+      context,
+      vm.addMember(result.userId, result.role),
+      success: result.role == AppRole.owner
+          ? 'Added to the team.'
+          : 'Request sent. They join once they accept.',
+    );
   }
 
   Future<void> _removeMember(

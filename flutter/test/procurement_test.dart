@@ -37,57 +37,80 @@ void main() {
     ),
   );
 
-  MaterialRequestDraft draft({
+  /// Every material on project 1's site, counted at what the system expects.
+  Future<List<CountLine>> fullCount(int projectId) async => [
+    for (final l in await repo.getSiteInventory(projectId))
+      if (l.needsCount)
+        (
+          materialId: l.materialId,
+          name: l.name,
+          unit: l.unit,
+          expected: l.onHand,
+          counted: l.onHand,
+        ),
+  ];
+
+  Future<MaterialRequestDraft> draft({
     double qty = 10,
-    int categoryId = 2,
     int projectId = 1,
     DateTime? neededBy,
-  }) => MaterialRequestDraft(
+    bool counted = true,
+  }) async => MaterialRequestDraft(
     projectId: projectId,
-    categoryId: categoryId,
     neededBy: neededBy ?? DateTime(2026, 10, 30),
-    items: [(materialId: 1, quantity: qty)],
+    items: [(description: 'Cement 40kg bags', unit: '', quantity: qty)],
+    counts: counted ? await fullCount(projectId) : const [],
+  );
+
+  OrderLine line(int? materialId, String name, double qty, double price) => (
+    materialId: materialId,
+    description: name,
+    unit: 'pc',
+    quantity: qty,
+    unitPrice: price,
   );
 
   group('requests', () {
-    test('validations: ongoing project, assigned engineer, qty, date', () {
+    test(
+      'validations: ongoing project, assigned engineer, qty, date',
+      () async {
+        expect(
+          repo.createRequest(await draft(projectId: 3), userId: 8),
+          throwsRule('Ongoing'),
+        );
+        expect(
+          repo.createRequest(await draft(), userId: 8),
+          throwsRule('assigned'),
+        );
+        expect(
+          repo.createRequest(await draft(qty: 0), userId: 4),
+          throwsRule('greater than 0'),
+        );
+        expect(
+          repo.createRequest(
+            await draft(neededBy: DateTime(2026, 10, 1)),
+            userId: 4,
+          ),
+          throwsRule('past'),
+        );
+      },
+    );
+
+    test('materials on site must be counted first', () async {
       expect(
-        repo.createRequest(draft(projectId: 3, categoryId: 1), userId: 8),
-        throwsRule('Ongoing'),
-      );
-      expect(repo.createRequest(draft(), userId: 8), throwsRule('assigned'));
-      expect(
-        repo.createRequest(draft(qty: 0), userId: 4),
-        throwsRule('greater than 0'),
-      );
-      expect(
-        repo.createRequest(draft(neededBy: DateTime(2026, 10, 1)), userId: 4),
-        throwsRule('past'),
+        repo.createRequest(await draft(counted: false), userId: 4),
+        throwsRule('Count the'),
       );
     });
 
-    test('within budget: owner approval approves', () async {
-      final r = await repo.approveRequest(3, userId: 3, role: AppRole.owner);
-      expect(r.status, MaterialRequestStatus.approved);
-    });
-
-    test('over budget: flagged, and the owner can still approve', () async {
-      // 2,000 bags × ₱260 = ₱520,000 against Pillars' remaining ~₱306,150.
-      final created = await repo.createRequest(draft(qty: 2000), userId: 4);
-      final check = await repo.checkBudget(2, [
-        (materialId: 1, quantity: 2000),
-      ]);
-      expect(check.exceedsBudget, isTrue);
-      final approved = await repo.approveRequest(
-        created.id,
-        userId: 3,
-        role: AppRole.owner,
-      );
-      expect(approved.status, MaterialRequestStatus.approved);
-      expect(
-        repo.approveRequest(created.id, userId: 3, role: AppRole.owner),
-        throwsRule('cannot be approved'),
-      );
+    test('the request keeps the typed items and the site count', () async {
+      final d = await draft();
+      final r = await repo.createRequest(d, userId: 4);
+      final detail = (await repo.getRequest(r.id))!;
+      expect(detail.items.single.description, 'Cement 40kg bags');
+      expect(r.categoryId, isNull);
+      expect(detail.counts, hasLength(d.counts.length));
+      expect(r.status, MaterialRequestStatus.pending);
     });
 
     test('rejecting needs a reason', () {
@@ -98,83 +121,165 @@ void main() {
     });
   });
 
-  group('purchase orders', () {
-    test('owner places one PO per supplier, released right away', () async {
-      final detail = (await repo.getRequest(4))!;
-      final sheets = detail.items.firstWhere((i) => i.materialId == 10);
-      final wire = detail.items.firstWhere((i) => i.materialId == 9);
-      final orders = await repo.createPurchaseOrders(4, [
-        OrderLine(
-          requestItemId: sheets.id,
-          source: MaterialSource.external,
-          supplierId: 4,
-          unitPrice: 450,
-        ),
-        OrderLine(
-          requestItemId: wire.id,
-          source: MaterialSource.ownStore,
-          supplierId: 1,
-          unitPrice: 95,
-        ),
-      ], userId: 3);
-      expect(orders, hasLength(2));
-      final roofing = orders.firstWhere((o) => o.supplierId == 4);
-      expect(roofing.totalAmount, 99000);
+  group('orders', () {
+    test('own store: catalog items delivered to an address', () async {
       expect(
-        orders.map((o) => o.status),
-        everyElement(PurchaseOrderStatus.released),
+        repo.placeOrder(
+          OrderDraft.ownStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [line(9, 'Tie wire #16', 10, 95)],
+            deliveryAddress: ' ',
+          ),
+          userId: 3,
+        ),
+        throwsRule('delivery address'),
       );
-      expect(roofing.approvedBy, 3);
+      final o = await repo.placeOrder(
+        OrderDraft.ownStore(
+          requestId: 4,
+          categoryId: 3,
+          lines: [line(9, 'Tie wire #16', 10, 95)],
+          deliveryAddress: 'Lot 4, Manolo Fortich',
+        ),
+        userId: 3,
+      );
+      expect(o.source, MaterialSource.ownStore);
+      expect(o.status, PurchaseOrderStatus.released);
+      expect(o.totalAmount, 950);
+      expect(o.deliveryAddress, 'Lot 4, Manolo Fortich');
+      expect(o.categoryId, 3);
       expect(
         (await repo.getRequest(4))!.request.status,
         MaterialRequestStatus.ordered,
       );
+      expect((await repo.getPayables()).any((p) => p.order.id == o.id), isTrue);
     });
 
-    test('only the project owner places orders', () async {
-      final item = (await repo.getRequest(4))!.items.first;
+    test('other store: needs OR and photo, paid so not a payable', () async {
       expect(
-        repo.createPurchaseOrders(4, [
-          OrderLine(
-            requestItemId: item.id,
-            source: MaterialSource.external,
-            supplierId: 4,
-            unitPrice: 450,
+        repo.placeOrder(
+          OrderDraft.otherStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [line(null, 'Long-span roof sheet 0.5 mm', 220, 450)],
+            storeName: 'Southern Roofing',
+            orNumber: 'OR 1182',
+            receiptPhotoUrl: '',
           ),
-        ], userId: 4),
+          userId: 3,
+        ),
+        throwsRule('photo'),
+      );
+      final o = await repo.placeOrder(
+        OrderDraft.otherStore(
+          requestId: 4,
+          categoryId: 3,
+          lines: [line(null, 'long-span roof sheet 0.5 mm', 220, 450)],
+          storeName: 'Southern Roofing',
+          orNumber: 'OR 1182',
+          receiptPhotoUrl: '/tmp/receipt.jpg',
+        ),
+        userId: 3,
+      );
+      expect(o.status, PurchaseOrderStatus.purchased);
+      expect(o.orNumber, 'OR 1182');
+      expect(o.totalAmount, 99000);
+      // A typed name on the price list links to that material.
+      expect((await repo.getPurchaseOrder(o.id))!.items.single.materialId, 10);
+      expect(
+        (await repo.getPayables()).any((p) => p.order.id == o.id),
+        isFalse,
+      );
+      expect(
+        repo.cancelPurchaseOrder(o.id, userId: 3),
+        throwsRule('cannot be cancelled'),
+      );
+    });
+
+    test('one request split between own store and another store', () async {
+      // MR-0004: item 11 roof sheets, item 12 tie wire.
+      final own = await repo.placeOrder(
+        OrderDraft.ownStore(
+          requestId: 4,
+          categoryId: 3,
+          lines: [line(9, 'Tie wire #16', 10, 95)],
+          coversItemIds: const [12],
+          deliveryAddress: 'Site',
+        ),
+        userId: 3,
+      );
+      expect(
+        repo.placeOrder(
+          OrderDraft.ownStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [line(9, 'Tie wire #16', 10, 95)],
+            coversItemIds: const [12],
+            deliveryAddress: 'Site',
+          ),
+          userId: 3,
+        ),
+        throwsRule('already covered'),
+      );
+      final other = await repo.placeOrder(
+        OrderDraft.otherStore(
+          requestId: 4,
+          categoryId: 3,
+          lines: [line(10, 'Long-span roof sheet 0.5 mm', 220, 450)],
+          coversItemIds: const [11],
+          storeName: 'Southern Roofing',
+          orNumber: 'OR 1182',
+          receiptPhotoUrl: '/tmp/r.jpg',
+        ),
+        userId: 3,
+      );
+      var items = (await repo.getRequest(4))!.items;
+      expect(items.firstWhere((i) => i.id == 12).purchaseOrderId, own.id);
+      expect(items.firstWhere((i) => i.id == 11).purchaseOrderId, other.id);
+
+      // Cancelling the own-store order opens its item again.
+      await repo.cancelPurchaseOrder(own.id, userId: 3);
+      items = (await repo.getRequest(4))!.items;
+      expect(items.firstWhere((i) => i.id == 12).isCovered, isFalse);
+    });
+
+    test('only the project owner orders', () {
+      expect(
+        repo.placeOrder(
+          OrderDraft.ownStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [line(9, 'Tie wire #16', 10, 95)],
+            deliveryAddress: 'Site',
+          ),
+          userId: 4,
+        ),
         throwsRule('Only the owner'),
       );
     });
 
-    test('source must match the supplier', () async {
-      final item = (await repo.getRequest(4))!.items.first;
-      expect(
-        repo.createPurchaseOrders(4, [
-          OrderLine(
-            requestItemId: item.id,
-            source: MaterialSource.ownStore,
-            supplierId: 4,
-            unitPrice: 1,
-          ),
-        ], userId: 3),
-        throwsRule('own store'),
-      );
+    test('budget warning counts what is already ordered', () async {
+      final check = await repo.checkBudget(2, 10000000);
+      expect(check.committed, greaterThan(0));
+      expect(check.exceedsBudget, isTrue);
     });
 
-    test('cancelling frees the items for reordering', () async {
-      final item = (await repo.getRequest(4))!.items.first;
-      final orders = await repo.createPurchaseOrders(4, [
-        OrderLine(
-          requestItemId: item.id,
-          source: MaterialSource.external,
-          supplierId: 4,
-          unitPrice: 450,
+    test('cancelling the only order sends the request back', () async {
+      final o = await repo.placeOrder(
+        OrderDraft.ownStore(
+          requestId: 4,
+          categoryId: 3,
+          lines: [line(9, 'Tie wire #16', 10, 95)],
+          deliveryAddress: 'Site',
         ),
-      ], userId: 3);
-      await repo.cancelPurchaseOrder(orders.single.id, userId: 3);
-      final again = (await repo.getRequest(4))!;
-      expect(again.request.status, MaterialRequestStatus.approved);
-      expect(again.items.every((i) => i.status.name == 'pending'), isTrue);
+        userId: 3,
+      );
+      await repo.cancelPurchaseOrder(o.id, userId: 3);
+      expect(
+        (await repo.getRequest(4))!.request.status,
+        MaterialRequestStatus.pending,
+      );
     });
   });
 
@@ -222,6 +327,29 @@ void main() {
       expect(onHand(1), 70 + 48 + 30);
     });
 
+    test('items bought outside the price list are tracked by name', () async {
+      final o = await repo.placeOrder(
+        OrderDraft.otherStore(
+          requestId: 4,
+          categoryId: 3,
+          lines: [line(null, 'Roof screws', 500, 2)],
+          storeName: 'Ace Hardware',
+          orNumber: 'OR 7',
+          receiptPhotoUrl: '/tmp/r.jpg',
+        ),
+        userId: 3,
+      );
+      final item = (await repo.getPurchaseOrder(o.id))!.items.single;
+      await repo.confirmDelivery(o.id, [
+        (poItemId: item.id, received: 500, damaged: 0),
+      ], userId: 4);
+      final screws = (await repo.getSiteInventory(
+        1,
+      )).firstWhere((l) => l.name == 'Roof screws');
+      expect(screws.materialId, isNull);
+      expect(screws.onHand, 500);
+    });
+
     test('payments cannot exceed the delivered balance', () async {
       final payables = await repo.getPayables();
       final po3 = payables.firstWhere((p) => p.order.id == 3);
@@ -250,68 +378,100 @@ void main() {
     });
   });
 
-  testWidgets('site engineer requests materials without seeing costs', (
+  testWidgets('site engineer counts the site, then requests materials', (
     tester,
   ) async {
     await pumpApp(tester);
     await signInAs(tester, 'ana@example.ph');
     await goTo(tester, '/material-requests/new?projectId=1');
-    await tester.tap(
-      find.widgetWithText(
-        DropdownButtonFormField<int>,
-        'Category (budget it draws from)',
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Roofing').last);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.widgetWithText(DropdownButtonFormField<int>, 'Material'),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Portland cement 40 kg (bag)').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Budget check'), findsNothing);
+    // Items are typed: no category, material or unit pickers.
+    expect(find.textContaining('Category'), findsNothing);
+    expect(find.widgetWithText(TextFormField, 'Unit'), findsNothing);
+    final counts = find.widgetWithText(TextFormField, 'Counted');
+    expect(counts, findsWidgets);
+    for (var i = 0; i < counts.evaluate().length; i++) {
+      await tester.enterText(counts.at(i), '5');
+    }
+    await tester.enterText(find.widgetWithText(TextFormField, 'Item'), 'Nails');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Qty'), '3');
     expect(find.textContaining('₱'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('Send to owner'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
     await tester.tap(find.text('Send to owner'));
     await tester.pumpAndSettle();
     expect(find.text('Request sent to the owner.'), findsOneWidget);
     expect(find.text('Waiting for owner'), findsOneWidget);
+    expect(find.text('Site count before this request'), findsOneWidget);
   });
 
-  testWidgets('owner orders an approved request', (tester) async {
+  testWidgets('owner orders a request from the own store', (tester) async {
     await pumpApp(tester);
     await signInAs(tester, 'ramon@example.ph');
     await goTo(tester, '/purchasing/requests');
-    expect(find.textContaining('MR-0004'), findsOneWidget);
     await tester.tap(find.textContaining('MR-0004'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Create purchase orders'));
+    expect(find.text('Other store'), findsOneWidget);
+    await tester.tap(find.text('Own hardware store'));
     await tester.pumpAndSettle();
-    // Long-span sheets from an external supplier.
-    await tester.tap(find.text('Other supplier').first);
-    await tester.pumpAndSettle();
+    expect(find.text('Order from own hardware store'), findsOneWidget);
+    expect(find.text('Requested by the site engineer'), findsOneWidget);
     await tester.tap(
-      find.widgetWithText(DropdownButtonFormField<int>, 'Supplier').first,
+      find.widgetWithText(DropdownButtonFormField<int>, 'Charge to category'),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Southern Roofing Corp.').last);
+    await tester.tap(find.text('Roofing').last);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.widgetWithText(FilledButton, 'Create purchase orders'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create purchase orders'),
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Search name or SKU'),
+      'tie',
     );
     await tester.pumpAndSettle();
-    expect(find.text('2 purchase order(s) created.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Add to order'));
+    await tester.pumpAndSettle();
+    // Tick the requested item this order covers.
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Tie wire'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Send order'));
+    await tester.pumpAndSettle();
+    // Qty starts empty, so the form asks for it first.
+    expect(find.text('Quantity must be greater than 0.'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Qty'), '10');
+    await tester.tap(find.text('Send order'));
+    await tester.pumpAndSettle();
+    // Confirmation: the site engineer's list next to the order.
+    expect(find.text('Confirm order'), findsOneWidget);
+    expect(find.text('You are ordering'), findsOneWidget);
+    expect(find.text('Roof sheets (long span)'), findsWidgets);
+    await tester.tap(find.text('Back to edit'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ordered from own store'), findsNothing);
+    await tester.tap(find.text('Send order'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirm and send'));
+    await tester.pumpAndSettle();
+    // Back on the request: the rest can go to another store.
+    expect(
+      find.text(
+        'Ordered from own store. Add another order for the rest if needed.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Covered by PO-'), findsOneWidget);
+    expect(find.text('Not ordered yet'), findsOneWidget);
+    expect(find.text('Other store'), findsOneWidget);
+  });
+
+  testWidgets('the other-store page shows the requested list', (
+    tester,
+  ) async {
+    // Tall enough to build the whole form.
+    await pumpApp(tester, size: const Size(1400, 2600));
+    await signInAs(tester, 'ramon@example.ph');
+    await goTo(tester, '/material-requests/4');
+    await tester.tap(find.text('Other store'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bought from other store'), findsOneWidget);
+    expect(find.text('Requested by the site engineer'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'OR number'), findsOneWidget);
+    expect(find.text('Attach receipt photo'), findsOneWidget);
   });
 
   testWidgets('site engineer confirms a partial delivery', (tester) async {

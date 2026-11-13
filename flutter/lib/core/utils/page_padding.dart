@@ -9,5 +9,5 @@ EdgeInsets pagePadding(BuildContext context, {double bottom = AppSpacing.xxl}) {
   final side = width > AppSpacing.maxContentWidth + 2 * AppSpacing.xl
       ? (width - AppSpacing.maxContentWidth) / 2
       : AppSpacing.lg;
-  return EdgeInsets.fromLTRB(side, AppSpacing.lg, side, bottom);
+  return EdgeInsets.fromLTRB(side, AppSpacing.xl, side, bottom);
 }

@@ -10,6 +10,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_pdf_button.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_info_row.dart';
 import '../../../shared/widgets/app_photo_tile.dart';
@@ -62,6 +63,7 @@ class DailyReportDetailPage extends StatelessWidget {
                   style: textTheme.headlineSmall,
                 ),
                 DailyReportsStatusChip(status: r.status),
+                AppPdfButton(build: vm.pdfReport),
               ],
             ),
             Text(
