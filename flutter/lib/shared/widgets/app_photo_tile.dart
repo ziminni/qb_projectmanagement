@@ -1,24 +1,61 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_radii.dart';
 import '../../core/constants/app_spacing.dart';
+import '../../core/di/service_locator.dart';
+import '../../core/network/private_file_loader.dart';
 
-/// Site photo thumbnail. Mock photos (`mock://`) show a placeholder until
-/// file storage exists; real URLs load over the network.
+/// Site photo thumbnail. Demo photos (`mock://`) show a placeholder; a stored
+/// photo comes from the private API, so it is fetched with the JWT client
+/// ([PrivateFileLoader]) instead of `Image.network`, which cannot send one.
 class AppPhotoTile extends StatelessWidget {
   const AppPhotoTile({
     super.key,
-    required this.fileUrl,
+    this.fileUrl,
+    this.bytes,
     this.caption,
     this.subtitle,
     this.onRemove,
   });
 
-  final String fileUrl;
+  /// The stored photo's URL, when it has one.
+  final String? fileUrl;
+
+  /// A photo that is not uploaded yet (picked on this machine).
+  final Uint8List? bytes;
+
   final String? caption;
   final String? subtitle;
   final VoidCallback? onRemove;
+
+  Widget _image(Widget placeholder) {
+    final url = fileUrl;
+    if (bytes != null) {
+      return Image.memory(
+        bytes!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => placeholder,
+      );
+    }
+    if (url == null || url.isEmpty || url.startsWith('mock://')) {
+      return placeholder;
+    }
+    return FutureBuilder<Uint8List>(
+      future: getIt<PrivateFileLoader>().bytes(url),
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        if (data == null) return placeholder;
+        return Image.memory(
+          data,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => placeholder,
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,13 +84,7 @@ class AppPhotoTile extends StatelessWidget {
                   ),
                   child: AspectRatio(
                     aspectRatio: 4 / 3,
-                    child: fileUrl.startsWith('mock://')
-                        ? placeholder
-                        : Image.network(
-                            fileUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => placeholder,
-                          ),
+                    child: _image(placeholder),
                   ),
                 ),
                 if (onRemove != null)

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/daily_report.dart';
 import '../models/equipment_log.dart';
 import '../models/issue.dart';
@@ -5,6 +7,7 @@ import '../models/report_manpower.dart';
 import '../models/report_material_usage.dart';
 import '../models/report_photo.dart';
 import '../models/todo.dart';
+import '../services/business_rule_exception.dart';
 
 /// A report with everything recorded on it.
 class DailyReportDetail {
@@ -31,6 +34,31 @@ class DailyReportDetail {
   int get totalHeadcount => manpower.fold(0, (s, m) => s + m.headcount);
 }
 
+/// The draft itself was stored but a photo upload failed; [saved] is that
+/// report, so a retry updates it instead of creating a second one.
+class DailyReportSaveException extends BusinessRuleException {
+  const DailyReportSaveException(
+    super.message,
+    this.saved, {
+    required this.photos,
+    this.uncertain = false,
+  });
+
+  final DailyReport saved;
+
+  /// The draft's photos carrying the id of every photo the save stored. A
+  /// retry sends this list back: the server deletes the photos a draft omits.
+  final List<PhotoDraft> photos;
+
+  /// A photo upload failed in a way that may still have reached the server,
+  /// so the report's photos must be read back before saving again.
+  final bool uncertain;
+}
+
+/// A saved draft with its photos, each one the server confirmed carrying the
+/// id the next save must send back.
+typedef SavedDraft = ({DailyReport report, List<PhotoDraft> photos});
+
 class IssueDraft {
   const IssueDraft({
     required this.type,
@@ -47,18 +75,27 @@ class IssueDraft {
 
 class PhotoDraft {
   const PhotoDraft({
-    required this.fileUrl,
+    this.id,
+    this.fileUrl,
     this.caption,
     this.latitude,
     this.longitude,
     this.takenAt,
+    this.bytes,
   });
 
-  final String fileUrl;
+  /// Set for a photo already stored on the server; a draft keeps it by id.
+  final int? id;
+
+  /// The stored photo's URL, when it has one.
+  final String? fileUrl;
   final String? caption;
   final double? latitude;
   final double? longitude;
   final DateTime? takenAt;
+
+  /// A new photo's content: the server stores bytes, not a file name.
+  final Uint8List? bytes;
 }
 
 /// What the site engineer fills in. Saving replaces the report's child rows.
@@ -102,7 +139,7 @@ abstract interface class DailyReportRepository {
   Future<DailyReportDetail?> getDetail(int id);
 
   /// Creates or updates a Draft (or Returned) report.
-  Future<DailyReport> saveDraft(DailyReportDraft draft, {required int userId});
+  Future<SavedDraft> saveDraft(DailyReportDraft draft, {required int userId});
 
   /// Sends the report to the PM and marks its to-dos done.
   Future<DailyReport> submit(int id, {required int userId});

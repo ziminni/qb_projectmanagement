@@ -114,4 +114,22 @@ void main() {
     );
     expect(p.plannedProgress, closeTo(0.5, 1e-9));
   });
+
+  test('falls back to the server weight when budgets are redacted', () {
+    // What a site engineer or client receives: no budget, a weight instead.
+    final cats = [
+      for (final c in categories)
+        Category(
+          id: c.id,
+          projectId: c.projectId,
+          name: c.name,
+          sortOrder: c.sortOrder,
+          weight: c.budget! / 2000000,
+        ),
+    ];
+    final p = compute(cats: cats);
+    expect(p.categories.map((c) => c.category.budget), everyElement(isNull));
+    expect(p.progress, closeTo(0.37, 1e-9));
+    expect(p.categories.first.weight, closeTo(0.25, 1e-9));
+  });
 }

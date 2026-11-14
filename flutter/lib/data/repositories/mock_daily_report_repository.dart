@@ -83,7 +83,7 @@ class MockDailyReportRepository implements DailyReportRepository {
   }
 
   @override
-  Future<DailyReport> saveDraft(
+  Future<SavedDraft> saveDraft(
     DailyReportDraft draft, {
     required int userId,
   }) async {
@@ -219,7 +219,9 @@ class MockDailyReportRepository implements DailyReportRepository {
         ReportPhoto(
           id: _next(_photos.map((x) => x.id)),
           dailyReportId: id,
-          fileUrl: p.fileUrl,
+          fileUrl:
+              p.fileUrl ??
+              'mock://photos/${DateTime.now().microsecondsSinceEpoch}',
           caption: p.caption,
           latitude: p.latitude,
           longitude: p.longitude,
@@ -240,7 +242,7 @@ class MockDailyReportRepository implements DailyReportRepository {
         await _schedule.setReportLink(t.id, null);
       }
     }
-    return report;
+    return (report: report, photos: draft.photos);
   }
 
   @override

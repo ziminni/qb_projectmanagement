@@ -487,11 +487,20 @@ class MockBillingRepository implements BillingRepository {
         totalBilled: _totalBilled(vo.projectId),
       ),
     );
-    await _projects.applyVariation(
-      vo.projectId,
-      amountDelta: vo.amount,
-      daysImpact: vo.daysImpact,
-    );
+    try {
+      await _projects.applyVariation(
+        vo.projectId,
+        amountDelta: vo.amount,
+        daysImpact: vo.daysImpact,
+      );
+    } on UnsupportedError {
+      // Phase 4 owns the server-side VO application; until then this flow is
+      // unavailable in API mode and says so instead of crashing.
+      throw const BusinessRuleException(
+        'Approving a variation order is not available yet. It arrives with '
+        'billing in Phase 4.',
+      );
+    }
     _vos[i] = vo.copyWith(
       status: VariationOrderStatus.approved,
       approvedByClient: () => userId,

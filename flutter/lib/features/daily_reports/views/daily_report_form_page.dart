@@ -300,6 +300,7 @@ class _DailyReportFormPageState extends State<DailyReportFormPage> {
                                   for (final (i, p) in vm.photos.indexed)
                                     AppPhotoTile(
                                       fileUrl: p.fileUrl,
+                                      bytes: p.bytes,
                                       caption: p.caption,
                                       onRemove: () {
                                         vm.photos.removeAt(i);

@@ -52,7 +52,7 @@ class ProjectDocumentsPage extends StatelessWidget {
                         vm.upload(
                           name: input.name,
                           type: input.type,
-                          fileName: input.fileName,
+                          filePath: input.filePath,
                         ),
                         success: 'Document uploaded.',
                       );
@@ -78,10 +78,13 @@ class ProjectDocumentsPage extends StatelessWidget {
                       DocumentsTile(
                         document: d,
                         uploadedBy: vm.userName(d.uploadedBy),
-                        onOpen: () => showAppMessage(
-                          context,
-                          '${d.fileName}: file preview arrives with file storage.',
-                        ),
+                        onOpen: () async {
+                          await reportAction(
+                            context,
+                            vm.open(d),
+                            success: 'Opened ${d.fileName}.',
+                          );
+                        },
                         onDelete: vm.canDelete(d)
                             ? () async {
                                 final ok = await showAppConfirmDialog(

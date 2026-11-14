@@ -70,6 +70,10 @@ class DailyReportFormViewModel extends ChangeNotifier with ActionRunner {
   final todoIds = <int>{};
   String? remarks;
 
+  /// A saved photo upload failed without telling the client whether it
+  /// landed, so the report's photos must be read back before the next save.
+  bool _photosUncertain = false;
+
   bool get isLoading => _loading;
   String? get error => _error;
   bool get isNew => reportId == null;
@@ -129,6 +133,8 @@ class DailyReportFormViewModel extends ChangeNotifier with ActionRunner {
         photos.addAll([
           for (final p in detail.photos)
             PhotoDraft(
+              // A stored photo is kept by id; the server owns its file.
+              id: p.id,
               fileUrl: p.fileUrl,
               caption: p.caption,
               latitude: p.latitude,
@@ -216,31 +222,75 @@ class DailyReportFormViewModel extends ChangeNotifier with ActionRunner {
       );
     }
     final userId = _session.user!.id;
-    final saved = await _reports.saveDraft(
-      DailyReportDraft(
-        id: reportId,
-        projectId: projectId!,
-        reportDate: reportDate,
-        weather: weather,
-        toolboxMeetingHeld: toolboxMeetingHeld,
-        manpower: [
-          for (final m in manpower) (trade: m.trade!, headcount: m.headcount),
-        ],
-        materials: [
-          for (final m in materialRows)
-            (materialId: m.itemId!, quantity: m.quantity),
-        ],
-        equipment: [
-          for (final e in equipmentRows)
-            (equipmentId: e.itemId!, hours: e.quantity),
-        ],
-        issues: issues,
-        photos: photos,
-        todoIds: todoIds.toList(),
-      ),
-      userId: userId,
-    );
-    if (submit) await _reports.submit(saved.id, userId: userId);
-    _savedId = saved.id;
+    if (_photosUncertain) await _reconcilePhotos();
+    final SavedDraft saved;
+    try {
+      saved = await _reports.saveDraft(
+        DailyReportDraft(
+          // After a save that failed on a photo, the draft is already stored:
+          // the retry updates it instead of creating a second one.
+          id: _savedId ?? reportId,
+          projectId: projectId!,
+          reportDate: reportDate,
+          weather: weather,
+          toolboxMeetingHeld: toolboxMeetingHeld,
+          manpower: [
+            for (final m in manpower) (trade: m.trade!, headcount: m.headcount),
+          ],
+          materials: [
+            for (final m in materialRows)
+              (materialId: m.itemId!, quantity: m.quantity),
+          ],
+          equipment: [
+            for (final e in equipmentRows)
+              (equipmentId: e.itemId!, hours: e.quantity),
+          ],
+          issues: issues,
+          photos: photos,
+          todoIds: todoIds.toList(),
+        ),
+        userId: userId,
+      );
+    } on DailyReportSaveException catch (error) {
+      _savedId = error.saved.id;
+      // Keep the ids the save confirmed: the next PUT deletes every photo it
+      // does not carry, so a retry must send the stored ones back.
+      photos
+        ..clear()
+        ..addAll(error.photos);
+      _photosUncertain = error.uncertain;
+      rethrow;
+    }
+    // A later save of this form sends these ids back instead of re-uploading
+    // and, by omitting them, deleting the photos the server now holds.
+    photos
+      ..clear()
+      ..addAll(saved.photos);
+    _photosUncertain = false;
+    _savedId = saved.report.id;
+    if (submit) await _reports.submit(saved.report.id, userId: userId);
   });
+
+  /// Adds the photos the server holds that this form has never seen, by id.
+  /// Never by caption or capture time: two different photos share both.
+  Future<void> _reconcilePhotos() async {
+    final id = _savedId;
+    if (id == null) return;
+    final detail = await _reports.getDetail(id);
+    if (detail == null) return;
+    final known = {for (final p in photos) p.id};
+    photos.addAll([
+      for (final p in detail.photos)
+        if (!known.contains(p.id))
+          PhotoDraft(
+            id: p.id,
+            fileUrl: p.fileUrl,
+            caption: p.caption,
+            latitude: p.latitude,
+            longitude: p.longitude,
+            takenAt: p.takenAt,
+          ),
+    ]);
+    _photosUncertain = false;
+  }
 }

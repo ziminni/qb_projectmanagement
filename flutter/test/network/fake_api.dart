@@ -48,6 +48,25 @@ ResponseBody json(Object? body, {int status = 200}) => ResponseBody.fromString(
 
 ResponseBody noContent() => ResponseBody.fromString('', 204);
 
+/// A private file's bytes (a document or a site photo).
+ResponseBody bytesBody(List<int> body, {int status = 200}) =>
+    ResponseBody.fromBytes(
+      body,
+      status,
+      headers: {
+        Headers.contentTypeHeader: ['application/octet-stream'],
+      },
+    );
+
+/// A `302` pointing at [location], as a proxy or Django's `APPEND_SLASH` would.
+ResponseBody redirectTo(String location) => ResponseBody.fromString(
+  '',
+  302,
+  headers: {
+    'location': [location],
+  },
+);
+
 /// The body a repository sent, decoded back into a map.
 Map<String, dynamic> sentBody(RequestOptions options) =>
     (options.data as Map).cast<String, dynamic>();

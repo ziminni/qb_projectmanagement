@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     'apps.requisitions',
     'apps.financials',
     'apps.master_data',
+    'apps.site_reports',
 ]
 
 MIDDLEWARE = [
@@ -163,6 +164,31 @@ TIME_ZONE = 'Asia/Manila'
 USE_I18N = True
 
 USE_TZ = True
+
+
+# =============================================
+# Private uploads — project documents and report photos
+# =============================================
+# Files live outside STATIC_ROOT and are served only by the API, which re-checks
+# the JWT, the active role and the project scope on every download (contract
+# "Uploads"). MEDIA_URL is deliberately not mounted in config/urls.py, so this
+# path answers 404.
+MEDIA_ROOT = Path(os.environ.get('DJANGO_MEDIA_ROOT', str(BASE_DIR / 'private_media')))
+MEDIA_URL = '/api/v1/private-media/'
+
+# Caps from decision 06 #7: documents 25 MB, report photos 10 MB.
+DOCUMENT_UPLOAD_MAX_BYTES = env_int('DOCUMENT_UPLOAD_MAX_BYTES', 25 * 1024 * 1024)
+PHOTO_UPLOAD_MAX_BYTES = env_int('PHOTO_UPLOAD_MAX_BYTES', 10 * 1024 * 1024)
+
+# Refuse an oversized body before Django buffers it; the per-view size check
+# adds the exact refusal text. Files above FILE_UPLOAD_MAX_MEMORY_SIZE spool to
+# a temporary file instead of RAM.
+DATA_UPLOAD_MAX_MEMORY_SIZE = env_int(
+    'DATA_UPLOAD_MAX_MEMORY_SIZE', DOCUMENT_UPLOAD_MAX_BYTES + 2 * 1024 * 1024,
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = env_int(
+    'FILE_UPLOAD_MAX_MEMORY_SIZE', 2_621_440,
+)
 
 
 # =============================================

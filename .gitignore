@@ -12,6 +12,8 @@ __pycache__/
 htmlcov/
 db.sqlite3
 staticfiles/
+# Private uploads (documents, report photos) — never committed
+private_media/
 
 # =====================
 # Environment secrets

@@ -40,4 +40,12 @@ void main() {
       );
     });
   });
+
+  group('repository mode', () {
+    test('the HTTP repositories stay off until USE_API is set', () {
+      // Mocks stay the default: only `--dart-define=USE_API=true` swaps in the
+      // HTTP repositories, so a test or demo run never reaches the server.
+      expect(useApi, isFalse);
+    });
+  });
 }

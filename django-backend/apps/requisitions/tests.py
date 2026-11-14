@@ -32,7 +32,7 @@ class RequisitionFixtures(TestCase):
             code='PRJ-900',
             name='Tower A',
             site=cls.site,
-            status=ProjectStatus.IN_PROGRESS,
+            status=ProjectStatus.ONGOING,
         )
         cls.engineer = User.objects.create_user(
             email='eng1@example.com', password=FIXTURE_PASSWORD,

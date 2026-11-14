@@ -178,7 +178,15 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
       final clientUser = _clientList
           .firstWhere((c) => c.id == clientId)
           .userId!;
-      await _projects.assign(saved.id, _session.user!.id, AppRole.owner);
+      // The server adds the creator as the project's owner inside the create
+      // (decision 06, ruling 6), so that call is only needed offline.
+      if (!await _projects.isAssigned(
+        saved.id,
+        _session.user!.id,
+        AppRole.owner,
+      )) {
+        await _projects.assign(saved.id, _session.user!.id, AppRole.owner);
+      }
       await _projects.assign(saved.id, clientUser, AppRole.client);
       await _projects.assign(saved.id, siteEngineerId!, AppRole.siteEngineer);
       for (final (i, (name, budget)) in categories.indexed) {

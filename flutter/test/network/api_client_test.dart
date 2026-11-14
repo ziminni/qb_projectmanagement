@@ -1,11 +1,16 @@
 import 'dart:async';
 
+import 'package:buildpro_frontend/core/network/api_config.dart';
 import 'package:buildpro_frontend/data/models/app_role.dart';
 import 'package:buildpro_frontend/data/services/business_rule_exception.dart';
 import 'package:buildpro_frontend/data/services/session_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_api.dart';
+
+/// The origin every authenticated request must stay on.
+final Uri apiOrigin = Uri.parse(apiBaseUrl);
+final String nextPageUrl = '$apiBaseUrl/users/?page=2';
 
 void main() {
   group('api client', () {
@@ -108,7 +113,7 @@ void main() {
         final second = options.uri.queryParameters['page'] == '2';
         return json({
           'count': 2,
-          'next': second ? null : 'http://cpms.test/api/v1/users/?page=2',
+          'next': second ? null : nextPageUrl,
           'previous': null,
           'results': [
             {'id': second ? 2 : 1},
@@ -147,11 +152,8 @@ void main() {
 
     test('refuses a list that never ends', () async {
       final api = FakeApi(
-        (options) => json({
-          'count': 1,
-          'next': 'http://cpms.test/api/v1/users/?page=2',
-          'results': <Object>[],
-        }),
+        (options) =>
+            json({'count': 1, 'next': nextPageUrl, 'results': <Object>[]}),
       );
       final client = testClient(
         api: api,
@@ -275,6 +277,132 @@ void main() {
         client.get('users/99/'),
         throwsA(isA<BusinessRuleException>()),
       );
+    });
+
+    test('reads a private file from the API origin with the token', () async {
+      final api = FakeApi((options) => bytesBody([1, 2, 3]));
+      final client = testClient(
+        api: api,
+        tokens: InMemoryTokenStore(access: testAccess, refresh: testRefresh),
+      );
+
+      final bytes = await client.getBytes(
+        '${apiOrigin.origin}/api/v1/report-photos/4/file/pour.jpg',
+      );
+
+      expect(bytes, [1, 2, 3]);
+      expect(
+        api.requests.single.headers['Authorization'],
+        'Bearer $testAccess',
+      );
+    });
+
+    test('refuses a file url on another origin before any request', () async {
+      final api = FakeApi((options) => bytesBody([1]));
+      final client = testClient(
+        api: api,
+        tokens: InMemoryTokenStore(access: testAccess, refresh: testRefresh),
+      );
+
+      await expectLater(
+        client.getBytes('https://files.example.ph/report-photos/4/file/a.jpg'),
+        throwsA(
+          isA<BusinessRuleException>().having(
+            (e) => e.message,
+            'message',
+            contains('different site'),
+          ),
+        ),
+      );
+
+      expect(api.requests, isEmpty);
+    });
+
+    test('refuses a protocol-relative or foreign-port url', () async {
+      final api = FakeApi((options) => json([]));
+      final client = testClient(
+        api: api,
+        tokens: InMemoryTokenStore(access: testAccess, refresh: testRefresh),
+      );
+
+      await expectLater(
+        client.get('//files.example.ph/api/v1/users/'),
+        throwsA(isA<BusinessRuleException>()),
+      );
+      await expectLater(
+        client.getBytes('${apiOrigin.replace(port: 8443)}/api/v1/x/file.pdf'),
+        throwsA(isA<BusinessRuleException>()),
+      );
+      await expectLater(
+        client.delete('http://files.example.ph/api/v1/documents/1/'),
+        throwsA(isA<BusinessRuleException>()),
+      );
+
+      expect(api.requests, isEmpty);
+    });
+
+    test('does not send the token to a redirect on another origin', () async {
+      final api = FakeApi((options) {
+        if (options.path == 'documents/1/file/a.pdf') {
+          return redirectTo('https://files.example.ph/a.pdf');
+        }
+        return bytesBody([9]);
+      });
+      final client = testClient(
+        api: api,
+        tokens: InMemoryTokenStore(access: testAccess, refresh: testRefresh),
+      );
+
+      await expectLater(
+        client.getBytes('documents/1/file/a.pdf'),
+        throwsA(isA<BusinessRuleException>()),
+      );
+
+      // Only the API got a request; the foreign hop was never sent.
+      expect(api.requests, hasLength(1));
+    });
+
+    test('follows a redirect that stays on the API origin', () async {
+      final api = FakeApi((options) {
+        if (options.path == 'documents/1/file/a.pdf') {
+          return redirectTo('/api/v1/documents/1/file/b.pdf');
+        }
+        return bytesBody([4, 5]);
+      });
+      final client = testClient(
+        api: api,
+        tokens: InMemoryTokenStore(access: testAccess, refresh: testRefresh),
+      );
+
+      final bytes = await client.getBytes('documents/1/file/a.pdf');
+
+      expect(bytes, [4, 5]);
+      expect(api.requests, hasLength(2));
+      expect(api.requests.last.headers['Authorization'], 'Bearer $testAccess');
+    });
+
+    test('a cross-origin next page is refused, not followed', () async {
+      final api = FakeApi(
+        (options) => json({
+          'count': 2,
+          'next': 'https://files.example.ph/api/v1/users/?page=2',
+          'previous': null,
+          'results': [
+            {'id': 1},
+          ],
+        }),
+      );
+      final client = testClient(
+        api: api,
+        tokens: InMemoryTokenStore(access: testAccess, refresh: testRefresh),
+      );
+
+      await expectLater(
+        client.getRows('users/'),
+        throwsA(isA<BusinessRuleException>()),
+      );
+
+      expect(api.requests, hasLength(1));
     });
   });
 }

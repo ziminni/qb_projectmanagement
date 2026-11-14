@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/network/api_config.dart';
+import '../../../core/platform/desktop_files.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/document.dart';
@@ -61,19 +63,28 @@ class ProjectDocumentsViewModel extends ChangeNotifier with ActionRunner {
     notifyListeners();
   }
 
+  /// Uploads the file at [filePath]. The demo keeps its name-only placeholder;
+  /// the API sends the file's bytes, refusing an unreadable path.
   Future<String?> upload({
     required String name,
     required DocumentType type,
-    required String fileName,
+    required String filePath,
   }) => runAction(() async {
+    final path = filePath.trim();
     await _documents.upload(
       projectId: projectId,
       name: name,
       type: type,
-      fileName: fileName,
+      fileName: safeFileName(path),
+      bytes: useApi ? await readFileBytes(path) : null,
       userId: _session.user!.id,
     );
     _items = await _visible();
+  });
+
+  /// Fetches the private file with the JWT and hands it to the desktop.
+  Future<String?> open(Document d) => runAction(() async {
+    await saveAndOpenFile(d.fileName, await _documents.download(d));
   });
 
   Future<String?> delete(Document d) => runAction(() async {

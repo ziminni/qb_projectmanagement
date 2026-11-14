@@ -80,15 +80,15 @@ void main() {
 
       expect(await progress(), closeTo(0.37, 1e-9));
       final saved = await repo.saveDraft(draft(todoIds: [9]), userId: 4);
-      await repo.submit(saved.id, userId: 4);
+      await repo.submit(saved.report.id, userId: 4);
       final todo9 = (await schedule.getTodos(1)).firstWhere((t) => t.id == 9);
       expect(todo9.isDone, isTrue);
-      expect(todo9.dailyReportId, saved.id);
+      expect(todo9.dailyReportId, saved.report.id);
       // Done but unverified: progress unchanged.
       expect(await progress(), closeTo(0.37, 1e-9));
 
-      expect(repo.approve(saved.id, userId: 4), throwsRule('owner'));
-      await repo.approve(saved.id, userId: 3);
+      expect(repo.approve(saved.report.id, userId: 4), throwsRule('owner'));
+      await repo.approve(saved.report.id, userId: 3);
       // Pillars 4 of 5 → 80% × 20% weight: +4 points.
       expect(await progress(), closeTo(0.41, 1e-9));
 
@@ -96,7 +96,7 @@ void main() {
       expect(
         repo.saveDraft(
           DailyReportDraft(
-            id: saved.id,
+            id: saved.report.id,
             projectId: 1,
             reportDate: DateTime(2026, 10, 25),
             weather: Weather.cloudy,

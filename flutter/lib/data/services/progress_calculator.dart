@@ -116,6 +116,12 @@ ProjectProgress computeProjectProgress({
 
   final usesBudgetWeights =
       sorted.isNotEmpty && sorted.every((c) => c.hasBudget);
+  // A role that may not see budgets still receives the server's share of the
+  // project as `weight`, so its progress bar matches the owner's.
+  final usesServerWeights =
+      sorted.isNotEmpty &&
+      !usesBudgetWeights &&
+      sorted.every((c) => (c.weight ?? 0) > 0);
   final totalBudget = sorted.fold<double>(
     0,
     (sum, c) => sum + (c.hasBudget ? c.budget! : 0),
@@ -146,6 +152,8 @@ ProjectProgress computeProjectProgress({
               total;
     final weight = usesBudgetWeights
         ? category.budget! / totalBudget
+        : usesServerWeights
+        ? category.weight!
         : 1 / sorted.length;
 
     progress += weight * categoryProgress;

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/app_role.dart';
 import '../models/document.dart';
 import '../services/business_rule_exception.dart';
@@ -89,6 +91,7 @@ class MockDocumentRepository implements DocumentRepository {
     required String name,
     required DocumentType type,
     required String fileName,
+    Uint8List? bytes,
     required int userId,
   }) async {
     if (!await _canUpload(projectId, userId)) {
@@ -128,6 +131,13 @@ class MockDocumentRepository implements DocumentRepository {
     _docs.add(doc);
     return doc;
   }
+
+  /// Demo documents are placeholders (`mock://`); there is no file to read.
+  @override
+  Future<Uint8List> download(Document document) async =>
+      throw const BusinessRuleException(
+        'The demo documents are placeholders; there is no file to open.',
+      );
 
   @override
   Future<void> delete(int id, {required int userId}) async {

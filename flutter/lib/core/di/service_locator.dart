@@ -4,9 +4,14 @@ import '../../data/repositories/audit_log_repository.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/http_audit_log_repository.dart';
 import '../../data/repositories/http_auth_repository.dart';
+import '../../data/repositories/http_client_repository.dart';
 import '../../data/repositories/http_company_repository.dart';
+import '../../data/repositories/http_daily_report_repository.dart';
+import '../../data/repositories/http_document_repository.dart';
 import '../../data/repositories/http_master_data_repository.dart';
 import '../../data/repositories/http_notification_repository.dart';
+import '../../data/repositories/http_project_repository.dart';
+import '../../data/repositories/http_schedule_repository.dart';
 import '../../data/repositories/http_user_repository.dart';
 import '../../data/repositories/mock_auth_repository.dart';
 import '../../data/repositories/billing_repository.dart';
@@ -43,6 +48,7 @@ import '../../data/services/project_cost_service.dart';
 import '../../data/services/session_service.dart';
 import '../network/api_client.dart';
 import '../network/api_config.dart';
+import '../network/private_file_loader.dart';
 import '../network/token_store.dart';
 
 final getIt = GetIt.instance;
@@ -59,6 +65,12 @@ void setupServiceLocator() {
   _registerAccountRepositories();
   getIt
     ..registerLazySingleton<ProjectRepository>(() {
+      if (useApi) {
+        final repo = HttpProjectRepository(getIt<ApiClient>());
+        // Still-mocked Phase 3/4 repositories find recipients through this.
+        getIt<NotificationService>().projects = repo;
+        return repo;
+      }
       final repo = MockProjectRepository(
         users: getIt<UserRepository>(),
         auditLog: getIt<AuditLogRepository>(),
@@ -80,13 +92,22 @@ void setupServiceLocator() {
     ..registerLazySingleton<StoreCatalogRepository>(
       MockStoreCatalogRepository.new,
     )
-    ..registerLazySingleton<ClientRepository>(MockClientRepository.new)
+    ..registerLazySingleton<PrivateFileLoader>(
+      () => PrivateFileLoader(useApi ? getIt<ApiClient>() : null),
+    )
+    ..registerLazySingleton<ClientRepository>(
+      () => useApi
+          ? HttpClientRepository(getIt<ApiClient>())
+          : MockClientRepository(),
+    )
     ..registerLazySingleton<ScheduleRepository>(
-      () => MockScheduleRepository(
-        projects: getIt<ProjectRepository>(),
-        auditLog: getIt<AuditLogRepository>(),
-        notifications: getIt<NotificationService>(),
-      ),
+      () => useApi
+          ? HttpScheduleRepository(getIt<ApiClient>())
+          : MockScheduleRepository(
+              projects: getIt<ProjectRepository>(),
+              auditLog: getIt<AuditLogRepository>(),
+              notifications: getIt<NotificationService>(),
+            ),
     )
     ..registerLazySingleton<ApprovalInbox>(
       () => ApprovalInbox([
@@ -107,7 +128,9 @@ void setupServiceLocator() {
       ),
     )
     ..registerLazySingleton<DocumentRepository>(
-      () => MockDocumentRepository(projects: getIt()),
+      () => useApi
+          ? HttpDocumentRepository(getIt<ApiClient>())
+          : MockDocumentRepository(projects: getIt()),
     )
     ..registerLazySingleton<ProjectCostService>(
       () => ProjectCostService(
@@ -137,12 +160,16 @@ void setupServiceLocator() {
       ),
     )
     ..registerLazySingleton<DailyReportRepository>(
-      () => MockDailyReportRepository(
-        projects: getIt(),
-        schedule: getIt(),
-        auditLog: getIt(),
-        notifications: getIt(),
-      ),
+      // In API mode the report IS the server's: the mock's to-do linking and
+      // its unsupported `setReportLink` call never run.
+      () => useApi
+          ? HttpDailyReportRepository(getIt<ApiClient>())
+          : MockDailyReportRepository(
+              projects: getIt(),
+              schedule: getIt(),
+              auditLog: getIt(),
+              notifications: getIt(),
+            ),
     );
 }
 

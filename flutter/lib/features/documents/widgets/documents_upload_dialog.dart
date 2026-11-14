@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_spacing.dart';
+import '../../../core/network/api_config.dart';
 import '../../../data/models/document.dart';
 
 class DocumentsUploadInput {
-  const DocumentsUploadInput(this.name, this.type, this.fileName);
+  const DocumentsUploadInput(this.name, this.type, this.filePath);
 
   final String name;
   final DocumentType type;
-  final String fileName;
+
+  /// The file name in the demo; the full path of a real file to upload.
+  final String filePath;
 }
 
-/// Adds a project document. File picking arrives with file storage; until
-/// then the file name is typed in and stored as a placeholder.
+/// Adds a project document. The API uploads the file itself, so the field
+/// takes the file's path on this machine; the demo still stores the name.
 class DocumentsUploadDialog extends StatefulWidget {
   const DocumentsUploadDialog({super.key, required this.types});
 
@@ -79,11 +82,15 @@ class _DocumentsUploadDialogState extends State<DocumentsUploadDialog> {
               const SizedBox(height: AppSpacing.md),
               TextFormField(
                 controller: _file,
-                decoration: const InputDecoration(
-                  labelText: 'File',
-                  hintText: 'electrical-e1-e4.pdf',
-                  helperText:
-                      'File upload arrives with storage; type the file name.',
+                decoration: InputDecoration(
+                  labelText: useApi ? 'File path' : 'File',
+                  hintText: useApi
+                      ? '/home/you/plans/electrical-e1-e4.pdf'
+                      : 'electrical-e1-e4.pdf',
+                  helperText: useApi
+                      ? 'Paste the full path; the file is uploaded from this '
+                            'machine.'
+                      : 'File upload arrives with storage; type the file name.',
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Choose a file.' : null,

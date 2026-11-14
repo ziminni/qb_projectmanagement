@@ -1,3 +1,4 @@
+import 'package:buildpro_frontend/core/network/api_config.dart';
 import 'package:buildpro_frontend/data/models/app_role.dart';
 import 'package:buildpro_frontend/data/models/user.dart';
 import 'package:buildpro_frontend/data/repositories/http_user_repository.dart';
@@ -47,7 +48,7 @@ void main() {
         final second = options.uri.queryParameters['page'] == '2';
         return json({
           'count': 3,
-          'next': second ? null : 'http://cpms.test/api/v1/users/?page=2',
+          'next': second ? null : '$apiBaseUrl/users/?page=2',
           'results': [
             if (!second) userRow(1),
             if (!second) userRow(2),

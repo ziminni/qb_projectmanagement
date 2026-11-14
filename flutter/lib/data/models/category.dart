@@ -8,6 +8,7 @@ class Category {
     required this.projectId,
     required this.name,
     this.budget,
+    this.weight,
     required this.sortOrder,
     this.createdAt,
     this.updatedAt,
@@ -19,6 +20,11 @@ class Category {
 
   /// Optional; categories without a budget fall back to equal weights.
   final double? budget;
+
+  /// The category's share of the project (0–1), computed by the server from
+  /// the budget so a role that may not see budgets still gets the same
+  /// progress bar. Null offline, where [budget] carries the weight instead.
+  final double? weight;
   final int sortOrder;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -36,6 +42,7 @@ class Category {
     projectId: projectId,
     name: name ?? this.name,
     budget: budget != null ? budget() : this.budget,
+    weight: weight,
     sortOrder: sortOrder ?? this.sortOrder,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -46,6 +53,7 @@ class Category {
     projectId: json['project_id'] as int,
     name: json['name'] as String,
     budget: JsonUtils.toDoubleOrNull(json['budget']),
+    weight: JsonUtils.toDoubleOrNull(json['weight']),
     sortOrder: json['sort_order'] as int,
     createdAt: JsonUtils.toDateOrNull(json['created_at']),
     updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
@@ -56,6 +64,7 @@ class Category {
     'project_id': projectId,
     'name': name,
     'budget': budget,
+    'weight': weight,
     'sort_order': sortOrder,
     'created_at': JsonUtils.fromDateTimeOrNull(createdAt),
     'updated_at': JsonUtils.fromDateTimeOrNull(updatedAt),

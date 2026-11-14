@@ -74,9 +74,11 @@ class Project {
     latitude: JsonUtils.toDoubleOrNull(json['latitude']),
     longitude: JsonUtils.toDoubleOrNull(json['longitude']),
     clientId: json['client_id'] as int,
-    contractAmount: JsonUtils.toDouble(json['contract_amount']),
-    downPaymentPct: JsonUtils.toDouble(json['down_payment_pct']),
-    retentionPct: JsonUtils.toDouble(json['retention_pct']),
+    // The server omits these for roles that may not see money; an absent key
+    // is 0 rather than a crash (decision 06, ruling 1).
+    contractAmount: JsonUtils.toDouble(json['contract_amount'] ?? 0),
+    downPaymentPct: JsonUtils.toDouble(json['down_payment_pct'] ?? 0),
+    retentionPct: JsonUtils.toDouble(json['retention_pct'] ?? 0),
     startDate: JsonUtils.toDate(json['start_date']),
     targetEndDate: JsonUtils.toDate(json['target_end_date']),
     actualEndDate: JsonUtils.toDateOrNull(json['actual_end_date']),

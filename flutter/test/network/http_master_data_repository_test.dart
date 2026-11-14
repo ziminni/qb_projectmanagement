@@ -1,3 +1,4 @@
+import 'package:buildpro_frontend/core/network/api_config.dart';
 import 'package:buildpro_frontend/data/models/equipment.dart';
 import 'package:buildpro_frontend/data/models/material_item.dart';
 import 'package:buildpro_frontend/data/models/supplier.dart';
@@ -50,9 +51,7 @@ void main() {
         final second = options.uri.queryParameters['page'] == '2';
         return json({
           'count': 2,
-          'next': second
-              ? null
-              : 'http://cpms.test/api/v1/master-data/materials/?page=2',
+          'next': second ? null : '$apiBaseUrl/master-data/materials/?page=2',
           'results': [if (!second) materialRow(1), if (second) materialRow(2)],
         });
       });
@@ -65,7 +64,7 @@ void main() {
       expect(materials.map((m) => m.id), [1, 2]);
       expect(api.paths, [
         'master-data/materials/',
-        'http://cpms.test/api/v1/master-data/materials/?page=2',
+        '$apiBaseUrl/master-data/materials/?page=2',
       ]);
       expect(materials.first.defaultUnitCost, 250);
     });
