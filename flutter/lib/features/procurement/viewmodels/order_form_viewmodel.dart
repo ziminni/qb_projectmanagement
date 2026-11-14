@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/network/api_config.dart';
+import '../../../core/platform/desktop_files.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
@@ -230,6 +232,11 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
       );
     }
     final orderLines = [for (final l in lines) l.toOrderLine()];
+    // The server stores the receipt file, never a path (Phase 3 decision 2):
+    // the bytes of the picked photo travel with the order in API mode.
+    final receiptBytes = useApi && receiptPhotoPath != null
+        ? await readFileBytes(receiptPhotoPath!)
+        : null;
     final draft = isOwnStore
         ? OrderDraft.ownStore(
             requestId: requestId,
@@ -246,6 +253,7 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
             storeName: storeName,
             orNumber: orNumber,
             receiptPhotoUrl: receiptPhotoPath ?? '',
+            receiptPhotoBytes: receiptBytes,
           );
     final order = await _procurement.placeOrder(
       draft,

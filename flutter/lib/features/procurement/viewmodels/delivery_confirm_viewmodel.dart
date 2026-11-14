@@ -1,5 +1,9 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ChangeNotifier;
+import 'package:image_picker/image_picker.dart';
+
+import '../../../core/network/api_config.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/purchase_order_item.dart';
@@ -19,6 +23,17 @@ class ReceiptLine {
   double get remaining => item.quantity - alreadyReceived;
 }
 
+/// The file picker the API mode uses: the same gallery pick as the Phase 2
+/// daily-report photo dialog, which works on the desktop build too.
+Future<Uint8List?> _pickWithImagePicker() async {
+  final picked = await ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    maxWidth: 1600,
+    imageQuality: 80,
+  );
+  return picked?.readAsBytes();
+}
+
 /// Site engineer confirms what actually arrived, including damage.
 class DeliveryConfirmViewModel extends ChangeNotifier with ActionRunner {
   DeliveryConfirmViewModel({
@@ -26,23 +41,36 @@ class DeliveryConfirmViewModel extends ChangeNotifier with ActionRunner {
     required SessionService session,
     required ProcurementRepository procurement,
     required this.lookups,
+    bool? usesApi,
+    Future<Uint8List?> Function()? pickPhoto,
   }) : _session = session,
-       _procurement = procurement;
+       _procurement = procurement,
+       _usesApi = usesApi ?? useApi,
+       _pickPhoto = pickPhoto ?? _pickWithImagePicker;
 
   final int orderId;
   final SessionService _session;
   final ProcurementRepository _procurement;
   final ProcurementLookups lookups;
+  final bool _usesApi;
+  final Future<Uint8List?> Function() _pickPhoto;
 
   bool _loading = true;
   String? _error;
   PurchaseOrderDetail? _detail;
   List<ReceiptLine> lines = const [];
+
+  /// The demo's placeholder toggle: with no file storage it only claims a
+  /// photo was taken. The API mode sends [receiptPhotoBytes] instead.
   bool receiptPhoto = false;
+
+  /// The picked receipt file, uploaded with the confirmation.
+  Uint8List? receiptPhotoBytes;
 
   bool get isLoading => _loading;
   String? get error => _error;
   PurchaseOrderDetail? get detail => _detail;
+  bool get usesApi => _usesApi;
 
   Future<void> load() async {
     try {
@@ -80,6 +108,19 @@ class DeliveryConfirmViewModel extends ChangeNotifier with ActionRunner {
     notifyListeners();
   }
 
+  /// Picks the receipt file the API uploads; a cancelled pick changes nothing.
+  Future<void> pickReceiptPhoto() async {
+    final bytes = await _pickPhoto();
+    if (bytes == null || bytes.isEmpty) return;
+    receiptPhotoBytes = bytes;
+    notifyListeners();
+  }
+
+  void clearReceiptPhoto() {
+    receiptPhotoBytes = null;
+    notifyListeners();
+  }
+
   void changed() => notifyListeners();
 
   Future<String?> confirm() => runAction(
@@ -90,9 +131,10 @@ class DeliveryConfirmViewModel extends ChangeNotifier with ActionRunner {
           (poItemId: l.item.id, received: l.received, damaged: l.damaged),
       ],
       userId: _session.user!.id,
-      receiptPhotoUrl: receiptPhoto
+      receiptPhotoUrl: !_usesApi && receiptPhoto
           ? 'mock://receipts/${DateTime.now().microsecondsSinceEpoch}'
           : null,
+      receiptPhotoBytes: _usesApi ? receiptPhotoBytes : null,
     ),
   );
 }

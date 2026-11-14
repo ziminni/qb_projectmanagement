@@ -28,18 +28,26 @@ class PurchaseOrderItem {
 
   double get amount => quantity * unitPrice;
 
-  factory PurchaseOrderItem.fromJson(Map<String, dynamic> json) =>
-      PurchaseOrderItem(
-        id: json['id'] as int,
-        purchaseOrderId: json['purchase_order_id'] as int,
-        materialId: json['material_id'] as int?,
-        description: json['description'] as String,
-        unit: json['unit'] as String? ?? '',
-        quantity: JsonUtils.toDouble(json['quantity']),
-        unitPrice: JsonUtils.toDouble(json['unit_price']),
-        createdAt: JsonUtils.toDateOrNull(json['created_at']),
-        updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
-      );
+  /// [financeKeysOmitted] is what a role without finance access receives: the
+  /// server drops `unit_price` rather than sending a fictional zero (decision
+  /// 06, ruling 1).
+  factory PurchaseOrderItem.fromJson(
+    Map<String, dynamic> json, {
+    bool financeKeysOmitted = false,
+  }) => PurchaseOrderItem(
+    id: json['id'] as int,
+    purchaseOrderId: json['purchase_order_id'] as int,
+    materialId: json['material_id'] as int?,
+    description: json['description'] as String,
+    unit: json['unit'] as String? ?? '',
+    quantity: JsonUtils.toDouble(json['quantity']),
+    unitPrice: JsonUtils.toFinanceDouble(
+      json['unit_price'],
+      omitted: financeKeysOmitted,
+    ),
+    createdAt: JsonUtils.toDateOrNull(json['created_at']),
+    updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,

@@ -31,8 +31,8 @@ from ..projects.rules import NotAllowed, RuleRefused
 from ..projects.views import ScopedViewSet
 from ..site_reports import uploads as upload_rules
 from ..users import capabilities
+from . import pos_worker, rules
 from . import procurement_services as services
-from . import rules
 from .inventory import site_inventory
 from .models import (
     Delivery,
@@ -49,6 +49,7 @@ from .procurement_serializers import (
     PurchaseOrderItemSerializer,
     PurchaseOrderSerializer,
     SiteCountSerializer,
+    pos_status_payload,
 )
 
 
@@ -264,6 +265,24 @@ class PurchaseOrderViewSet(ScopedViewSet):
             ).data,
             status=http_status.HTTP_201_CREATED,
         )
+
+    # --- POS bridge (task 3.1b) -----------------------------------------
+    @action(detail=True, methods=['get'], url_path='pos-status')
+    def pos_status(self, request, pk=None):
+        """The cached store snapshot — a read, so it never writes anything."""
+        role = self.role()
+        require_procurement(role)
+        order = self.get_object()
+        return Response(pos_status_payload(order, role))
+
+    @action(detail=True, methods=['post'], url_path='pos-sync')
+    def pos_sync(self, request, pk=None):
+        """Ask the worker to retry the import, or to refresh the store status."""
+        role = self.role()
+        require_procurement(role)
+        order = self.get_object()
+        payload = pos_worker.request_sync(request.user, role, order)
+        return Response(payload, status=http_status.HTTP_202_ACCEPTED)
 
 
 class DeliveryViewSet(ScopedViewSet):

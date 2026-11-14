@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/photo_file_name.dart';
 import '../models/daily_report.dart';
 import '../models/equipment_log.dart';
 import '../models/issue.dart';
@@ -175,7 +176,7 @@ class HttpDailyReportRepository implements DailyReportRepository {
     PhotoDraft draft,
   ) async {
     final form = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: _photoName(bytes)),
+      'file': MultipartFile.fromBytes(bytes, filename: photoFileName(bytes)),
       if (draft.caption != null) 'caption': draft.caption,
       if (draft.latitude != null) 'latitude': draft.latitude,
       if (draft.longitude != null) 'longitude': draft.longitude,
@@ -187,31 +188,6 @@ class HttpDailyReportRepository implements DailyReportRepository {
         await _client.post('daily-reports/$reportId/photos/', body: form),
       ),
     );
-  }
-
-  /// The server checks jpg/jpeg/png/webp by content, so the name follows the
-  /// bytes (a WebP named `.jpg` is refused as "does not look like a jpg file").
-  static String _photoName(Uint8List bytes) {
-    if (bytes.length > 3 &&
-        bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4E &&
-        bytes[3] == 0x47) {
-      return 'photo.png';
-    }
-    // WebP is a RIFF container with `WEBP` at byte 8, exactly like the server.
-    if (bytes.length >= 12 &&
-        bytes[0] == 0x52 &&
-        bytes[1] == 0x49 &&
-        bytes[2] == 0x46 &&
-        bytes[3] == 0x46 &&
-        bytes[8] == 0x57 &&
-        bytes[9] == 0x45 &&
-        bytes[10] == 0x42 &&
-        bytes[11] == 0x50) {
-      return 'photo.webp';
-    }
-    return 'photo.jpg';
   }
 
   @override

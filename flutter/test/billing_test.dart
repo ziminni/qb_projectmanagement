@@ -1,9 +1,11 @@
 import 'package:buildpro_frontend/core/di/service_locator.dart';
+import 'package:buildpro_frontend/core/utils/app_messages.dart';
 import 'package:buildpro_frontend/data/models/payment_method.dart';
 import 'package:buildpro_frontend/data/models/progress_billing.dart';
 import 'package:buildpro_frontend/data/models/variation_order.dart';
 import 'package:buildpro_frontend/data/repositories/mock_audit_log_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_billing_repository.dart';
+import 'package:buildpro_frontend/data/repositories/procurement_repository.dart';
 import 'package:buildpro_frontend/data/repositories/project_repository.dart';
 import 'package:buildpro_frontend/data/services/business_rule_exception.dart';
 import 'package:flutter/material.dart';
@@ -272,6 +274,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(statusChip('Rejected'), findsOneWidget);
     expect(find.textContaining('Use 0.4 mm as quoted'), findsOneWidget);
+  });
+
+  group('supplier accounting is blocked in API mode', () {
+    // API mode throws on supplier accounting (phase-3 blockers 1-2): the
+    // screens must say so and stop the spinner instead of hanging forever.
+    setUp(() async {
+      await getIt.unregister<ProcurementRepository>();
+      getIt.registerLazySingleton<ProcurementRepository>(
+        ApiLikeProcurement.new,
+      );
+    });
+
+    testWidgets('financials tab explains the block and stops loading', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await signInAs(tester, 'liza@example.ph');
+      await goTo(tester, '/projects/1/financials');
+      expect(find.text(supplierAccountingUnavailable), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('expense reports explain the block and stop loading', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await signInAs(tester, 'liza@example.ph');
+      await goTo(tester, '/expense-reports');
+      expect(find.text(supplierAccountingUnavailable), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
   });
 
   testWidgets('financials tab and expense report', (tester) async {

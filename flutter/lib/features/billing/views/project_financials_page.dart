@@ -7,6 +7,7 @@ import '../../../core/di/service_locator.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_figure.dart';
 import '../../../shared/widgets/app_progress_bar.dart';
 import '../../../shared/widgets/app_section_card.dart';
@@ -37,6 +38,7 @@ class ProjectFinancialsPage extends StatelessWidget {
         if (vm.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
+        if (vm.error != null) return AppEmptyState(message: vm.error!);
         final r = vm.report!;
         final p = r.project;
         const gap = SizedBox(height: AppSpacing.lg);

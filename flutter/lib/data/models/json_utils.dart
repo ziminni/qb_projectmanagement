@@ -10,6 +10,14 @@ abstract final class JsonUtils {
   static double? toDoubleOrNull(Object? value) =>
       value == null ? null : toDouble(value);
 
+  /// A finance-only amount. The server omits the key for a role that cannot
+  /// see finances and always sends it for one that can, so an omitted key
+  /// decodes as zero only when [omitted] says the caller is redacted (decision
+  /// 06, ruling 1); for a finance role its absence is a broken response, not a
+  /// zero the screens may show.
+  static double toFinanceDouble(Object? value, {required bool omitted}) =>
+      value == null && omitted ? 0 : toDouble(value);
+
   static DateTime toDate(Object? value) => DateTime.parse(value as String);
 
   static DateTime? toDateOrNull(Object? value) =>

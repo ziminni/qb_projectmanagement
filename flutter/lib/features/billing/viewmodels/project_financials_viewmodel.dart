@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/utils/app_messages.dart';
 import '../../../data/models/payment.dart';
 import '../../../data/models/progress_billing.dart';
 import '../../../data/models/variation_order.dart';
@@ -25,6 +26,7 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
   final CostReportBuilder _builder;
 
   bool _loading = true;
+  String? _error;
   CostReport? report;
   List<ProgressBilling> billings = const [];
   List<Payment> payments = const [];
@@ -33,23 +35,30 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
   double retentionHeld = 0;
 
   bool get isLoading => _loading;
+  String? get error => _error;
 
   double get approvedVoTotal => variationOrders
       .where((v) => v.status == VariationOrderStatus.approved)
       .fold(0, (s, v) => s + v.amount);
 
   Future<void> load() async {
-    final project = (await _projects.getProject(projectId))!;
-    report = await _builder.build(project);
-    billings = await _billing.getBillings(projectIds: [projectId]);
-    payments = await _billing.getPayments(projectIds: [projectId]);
-    variationOrders = await _billing.getVariationOrders(
-      projectIds: [projectId],
-    );
-    summary = await _billing.billedSummary(projectIds: [projectId]);
-    final r = await _billing.retentionFor(projectId);
-    retentionHeld = r.held - r.released;
-    _loading = false;
-    notifyListeners();
+    try {
+      final project = (await _projects.getProject(projectId))!;
+      report = await _builder.build(project);
+      billings = await _billing.getBillings(projectIds: [projectId]);
+      payments = await _billing.getPayments(projectIds: [projectId]);
+      variationOrders = await _billing.getVariationOrders(
+        projectIds: [projectId],
+      );
+      summary = await _billing.billedSummary(projectIds: [projectId]);
+      final r = await _billing.retentionFor(projectId);
+      retentionHeld = r.held - r.released;
+    } on UnsupportedError {
+      // Delivered-value costing is blocked in API mode (blocker 1).
+      _error = supplierAccountingUnavailable;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
   }
 }

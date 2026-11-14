@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/app_role.dart';
 import '../models/delivery.dart';
 import '../models/delivery_item.dart';
@@ -68,7 +70,8 @@ class OrderDraft {
   }) : source = MaterialSource.ownStore,
        storeName = null,
        orNumber = null,
-       receiptPhotoUrl = null;
+       receiptPhotoUrl = null,
+       receiptPhotoBytes = null;
 
   const OrderDraft.otherStore({
     required this.requestId,
@@ -78,6 +81,7 @@ class OrderDraft {
     required String this.storeName,
     required String this.orNumber,
     required String this.receiptPhotoUrl,
+    this.receiptPhotoBytes,
   }) : source = MaterialSource.external,
        deliveryAddress = null;
 
@@ -93,7 +97,13 @@ class OrderDraft {
   final String? deliveryAddress;
   final String? storeName;
   final String? orNumber;
+
+  /// The photo on this machine, which the demo shows in place of a stored
+  /// file. The server never reads a URL: it stores [receiptPhotoBytes].
   final String? receiptPhotoUrl;
+
+  /// The receipt photo itself; an other-store order needs it on the server.
+  final Uint8List? receiptPhotoBytes;
 }
 
 class DeliveryDetail {
@@ -142,7 +152,56 @@ class Payable {
   double get balance => deliveredValue - paid;
 }
 
+/// Cached operational snapshot only; no gateway identity or money is retained.
+class PosStatus {
+  const PosStatus({
+    required this.syncStatus,
+    required this.storeStatus,
+    required this.lastCheckedAt,
+    required this.stale,
+    required this.detail,
+    required this.declineReason,
+    required this.closePending,
+    required this.closeNeedsReview,
+  });
+
+  final String syncStatus;
+  final String? storeStatus;
+  final DateTime? lastCheckedAt;
+  final bool stale;
+  final String detail;
+  final String declineReason;
+  final bool closePending;
+  final bool closeNeedsReview;
+
+  factory PosStatus.fromJson(Map<String, dynamic> json) => PosStatus(
+    syncStatus: json['pos_sync_status'] as String,
+    storeStatus: json['pos_status'] as String?,
+    lastCheckedAt: json['last_checked_at'] == null
+        ? null
+        : DateTime.parse(json['last_checked_at'] as String),
+    stale: json['stale'] as bool,
+    detail: json['detail'] as String? ?? '',
+    declineReason: json['decline_reason'] as String? ?? '',
+    closePending: json['close_pending'] as bool,
+    closeNeedsReview: json['close_needs_review'] as bool,
+  );
+}
+
 abstract interface class ProcurementRepository {
+  bool get supportsPosStatus;
+
+  /// Reads the backend cache; never polls the store.
+  Future<PosStatus> getPosStatus(int id);
+
+  /// Queues worker work only; successful completion does not mean synced.
+  Future<PosStatus> retryPosSync(int id);
+
+  /// Whether supplier payments can be recorded and read back. False against
+  /// the API while the ledger that owns POS debt is undecided (phase-3
+  /// contract, blocker 2), so the screens hide what they cannot know.
+  bool get supportsPayments;
+
   Future<List<MaterialRequest>> getRequests({
     List<int>? projectIds,
     List<MaterialRequestStatus>? statuses,
@@ -179,12 +238,15 @@ abstract interface class ProcurementRepository {
 
   Future<PurchaseOrder> cancelPurchaseOrder(int id, {required int userId});
 
-  /// Site engineer confirms a delivery receipt.
+  /// Site engineer confirms a delivery receipt. [receiptPhotoUrl] is the path
+  /// the demo shows; the server stores the uploaded [receiptPhotoBytes] file
+  /// instead and never fetches a URL.
   Future<Delivery> confirmDelivery(
     int purchaseOrderId,
     List<({int poItemId, double received, double damaged})> lines, {
     required int userId,
     String? receiptPhotoUrl,
+    Uint8List? receiptPhotoBytes,
   });
 
   /// Newest first, with the PO each belongs to.

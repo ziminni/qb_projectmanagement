@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+/// What the accounting screens say while the ledger that owns POS debt is
+/// undecided (phase-3 contract, blockers 1 and 2).
+const supplierAccountingUnavailable =
+    'Supplier accounting is not available yet. It is waiting on the ledger '
+    'decision.';
+
 /// Shows a short message at the bottom of the screen.
 void showAppMessage(BuildContext context, String message) {
   ScaffoldMessenger.of(context)

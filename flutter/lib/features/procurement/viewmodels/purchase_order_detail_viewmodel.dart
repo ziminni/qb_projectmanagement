@@ -5,6 +5,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/purchase_order.dart';
+import '../../../data/models/material_source.dart';
+import '../../../data/services/business_rule_exception.dart';
 import '../../../data/repositories/procurement_repository.dart';
 import '../../../data/services/session_service.dart';
 import '../../../shared/pdf/pdf_report.dart';
@@ -38,6 +40,56 @@ class PurchaseOrderDetailViewModel extends ChangeNotifier with ActionRunner {
   double get paid =>
       _detail?.payments.fold<double>(0, (s, p) => s + p.amount) ?? 0;
 
+  /// Whether supplier payments exist here at all; the API blocks them, so a
+  /// paid amount would be a fabricated zero.
+  bool get supportsPayments => _procurement.supportsPayments;
+
+  PosStatus? _posStatus;
+  PosStatus? get posStatus => _posStatus;
+  bool posBusy = false;
+  bool posQueued = false;
+  String? posError;
+
+  bool get supportsPosStatus =>
+      _procurement.supportsPosStatus &&
+      order?.source == MaterialSource.ownStore &&
+      _error == null;
+
+  bool get canRetryStoreSync =>
+      supportsPosStatus &&
+      role == AppRole.owner &&
+      (order?.status != PurchaseOrderStatus.cancelled ||
+          (_posStatus?.closeNeedsReview ?? false));
+
+  Future<void> refreshPosStatus() => _readPosStatus(queue: false);
+  Future<void> retryStoreSync() => _readPosStatus(queue: true);
+
+  Future<void> _readPosStatus({required bool queue}) async {
+    if (!supportsPosStatus ||
+        posBusy ||
+        isBusy ||
+        (queue && !canRetryStoreSync)) {
+      return;
+    }
+    posBusy = true;
+    posError = null;
+    posQueued = false;
+    notifyListeners();
+    try {
+      _posStatus = queue
+          ? await _procurement.retryPosSync(orderId)
+          : await _procurement.getPosStatus(orderId);
+      posQueued = queue;
+    } on BusinessRuleException catch (e) {
+      posError = e.message;
+    } catch (_) {
+      posError = 'Could not load store sync status. Try again.';
+    } finally {
+      posBusy = false;
+      notifyListeners();
+    }
+  }
+
   bool get canCancel =>
       role == AppRole.owner &&
       _detail != null &&
@@ -49,6 +101,7 @@ class PurchaseOrderDetailViewModel extends ChangeNotifier with ActionRunner {
       role == AppRole.siteEngineer && (order?.status.awaitsDelivery ?? false);
 
   Future<void> load() async {
+    _error = null;
     try {
       await lookups.load(_session.user!.id, role);
       _detail = await _procurement.getPurchaseOrder(orderId);
@@ -66,13 +119,22 @@ class PurchaseOrderDetailViewModel extends ChangeNotifier with ActionRunner {
     } finally {
       _loading = false;
       notifyListeners();
+      if (supportsPosStatus) await refreshPosStatus();
     }
   }
 
-  Future<String?> cancel() => runAction(() async {
-    await _procurement.cancelPurchaseOrder(orderId, userId: _session.user!.id);
-    _detail = await _procurement.getPurchaseOrder(orderId);
-  });
+  Future<String?> cancel() async {
+    if (isBusy || posBusy) return null;
+    final error = await runAction(() async {
+      await _procurement.cancelPurchaseOrder(
+        orderId,
+        userId: _session.user!.id,
+      );
+      _detail = await _procurement.getPurchaseOrder(orderId);
+    });
+    if (error == null) await refreshPosStatus();
+    return error;
+  }
 
   /// The order slip: what the site asked for and what was ordered or
   /// bought. Prices only for roles that see finances.

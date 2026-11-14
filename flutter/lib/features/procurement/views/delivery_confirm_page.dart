@@ -89,15 +89,44 @@ class _DeliveryConfirmPageState extends State<DeliveryConfirmPage> {
                           ),
                           const SizedBox(height: AppSpacing.sm),
                         ],
-                        SwitchListTile(
-                          title: const Text('Delivery receipt photo taken'),
-                          subtitle: const Text(
-                            'Camera upload arrives with file storage; a placeholder '
-                            'is attached for now.',
+                        // With the API the receipt is a real file the
+                        // server keeps; the demo keeps its placeholder toggle.
+                        if (vm.usesApi)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Wrap(
+                              spacing: AppSpacing.sm,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: vm.pickReceiptPhoto,
+                                  icon: const Icon(
+                                    Icons.photo_library_outlined,
+                                  ),
+                                  label: Text(
+                                    vm.receiptPhotoBytes == null
+                                        ? 'Attach receipt photo'
+                                        : 'Replace receipt photo',
+                                  ),
+                                ),
+                                if (vm.receiptPhotoBytes != null)
+                                  TextButton(
+                                    onPressed: vm.clearReceiptPhoto,
+                                    child: const Text('Remove photo'),
+                                  ),
+                              ],
+                            ),
+                          )
+                        else
+                          SwitchListTile(
+                            title: const Text('Delivery receipt photo taken'),
+                            subtitle: const Text(
+                              'Camera upload arrives with file storage; a placeholder '
+                              'is attached for now.',
+                            ),
+                            value: vm.receiptPhoto,
+                            onChanged: vm.setReceiptPhoto,
                           ),
-                          value: vm.receiptPhoto,
-                          onChanged: vm.setReceiptPhoto,
-                        ),
                       ],
                     ),
                   ),

@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:buildpro_frontend/core/di/service_locator.dart';
+import 'package:buildpro_frontend/core/utils/app_messages.dart';
 import 'package:buildpro_frontend/data/models/app_role.dart';
+import 'package:buildpro_frontend/data/models/delivery.dart';
 import 'package:buildpro_frontend/data/models/material_request.dart';
 import 'package:buildpro_frontend/data/models/material_source.dart';
 import 'package:buildpro_frontend/data/models/payment_method.dart';
@@ -7,11 +11,50 @@ import 'package:buildpro_frontend/data/models/purchase_order.dart';
 import 'package:buildpro_frontend/data/repositories/mock_audit_log_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_procurement_repository.dart';
 import 'package:buildpro_frontend/data/repositories/procurement_repository.dart';
+import 'package:buildpro_frontend/data/repositories/user_repository.dart';
 import 'package:buildpro_frontend/data/services/business_rule_exception.dart';
+import 'package:buildpro_frontend/data/services/session_service.dart';
+import 'package:buildpro_frontend/features/procurement/viewmodels/delivery_confirm_viewmodel.dart';
+import 'package:buildpro_frontend/features/procurement/viewmodels/procurement_lookups.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'test_helpers.dart';
+
+/// Records the receipt photo a delivery confirmation carried.
+class RecordingDeliveryProcurement extends MockProcurementRepository {
+  RecordingDeliveryProcurement()
+    : super(
+        projects: getIt(),
+        schedule: getIt(),
+        masterData: getIt(),
+        reports: getIt(),
+        users: getIt(),
+        auditLog: MockAuditLogRepository(),
+      );
+
+  Uint8List? lastBytes;
+  String? lastUrl;
+
+  @override
+  Future<Delivery> confirmDelivery(
+    int purchaseOrderId,
+    List<({int poItemId, double received, double damaged})> lines, {
+    required int userId,
+    String? receiptPhotoUrl,
+    Uint8List? receiptPhotoBytes,
+  }) {
+    lastUrl = receiptPhotoUrl;
+    lastBytes = receiptPhotoBytes;
+    return super.confirmDelivery(
+      purchaseOrderId,
+      lines,
+      userId: userId,
+      receiptPhotoUrl: receiptPhotoUrl,
+      receiptPhotoBytes: receiptPhotoBytes,
+    );
+  }
+}
 
 void main() {
   setUp(resetServices);
@@ -459,9 +502,7 @@ void main() {
     expect(find.text('Other store'), findsOneWidget);
   });
 
-  testWidgets('the other-store page shows the requested list', (
-    tester,
-  ) async {
+  testWidgets('the other-store page shows the requested list', (tester) async {
     // Tall enough to build the whole form.
     await pumpApp(tester, size: const Size(1400, 2600));
     await signInAs(tester, 'ramon@example.ph');
@@ -491,5 +532,86 @@ void main() {
       find.text('Delivery confirmed. Site inventory updated.'),
       findsOneWidget,
     );
+  });
+
+  group('payment figures are not fabricated in API mode', () {
+    setUp(() async {
+      await getIt.unregister<ProcurementRepository>();
+      getIt.registerLazySingleton<ProcurementRepository>(
+        ApiLikeProcurement.new,
+      );
+    });
+
+    testWidgets('the order page hides the Paid row', (tester) async {
+      await pumpApp(tester);
+      await signInAs(tester, 'ramon@example.ph');
+      await goTo(tester, '/purchase-orders/5');
+      // The total is real; a paid amount would be an invented zero.
+      expect(find.text('Total'), findsOneWidget);
+      expect(find.text('Paid'), findsNothing);
+    });
+  });
+
+  testWidgets('mock mode still shows the Paid row', (tester) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'ramon@example.ph');
+    await goTo(tester, '/purchase-orders/5');
+    expect(find.text('Paid'), findsOneWidget);
+  });
+
+  testWidgets('payables explains the blocked ledger and stops loading', (
+    tester,
+  ) async {
+    await getIt.unregister<ProcurementRepository>();
+    getIt.registerLazySingleton<ProcurementRepository>(ApiLikeProcurement.new);
+    await pumpApp(tester);
+    await signInAs(tester, 'liza@example.ph');
+    await goTo(tester, '/payables');
+    expect(find.text(supplierAccountingUnavailable), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  group('delivery receipt photo', () {
+    final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
+    late RecordingDeliveryProcurement procurement;
+
+    setUp(() async {
+      final users = await getIt<UserRepository>().getUsers();
+      getIt<SessionService>().signIn(users.firstWhere((u) => u.id == 4), [
+        AppRole.siteEngineer,
+      ], activeRole: AppRole.siteEngineer);
+      procurement = RecordingDeliveryProcurement();
+    });
+
+    DeliveryConfirmViewModel vm({
+      required bool usesApi,
+      Future<Uint8List?> Function()? pickPhoto,
+    }) => DeliveryConfirmViewModel(
+      orderId: 5,
+      session: getIt(),
+      procurement: procurement,
+      lookups: ProcurementLookups.fromServices(),
+      usesApi: usesApi,
+      pickPhoto: pickPhoto,
+    );
+
+    test('API mode uploads the picked photo bytes', () async {
+      final model = vm(usesApi: true, pickPhoto: () async => png);
+      await model.load();
+      await model.pickReceiptPhoto();
+      expect(model.receiptPhotoBytes, png);
+      expect(await model.confirm(), isNull);
+      expect(procurement.lastBytes, png);
+      expect(procurement.lastUrl, isNull);
+    });
+
+    test('mock mode keeps the placeholder toggle', () async {
+      final model = vm(usesApi: false);
+      await model.load();
+      model.setReceiptPhoto(true);
+      expect(await model.confirm(), isNull);
+      expect(procurement.lastBytes, isNull);
+      expect(procurement.lastUrl, startsWith('mock://receipts/'));
+    });
   });
 }

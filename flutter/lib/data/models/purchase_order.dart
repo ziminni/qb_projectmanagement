@@ -50,6 +50,7 @@ class PurchaseOrder {
     this.approvedBy,
     this.createdAt,
     this.updatedAt,
+    this.financeKeysOmitted = false,
   });
 
   final int id;
@@ -80,8 +81,15 @@ class PurchaseOrder {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  /// Paid at the counter when bought, so it is never a payable.
-  bool get paidOnPurchase => orNumber != null;
+  /// True when the server withheld the finance keys for this row.
+  final bool financeKeysOmitted;
+
+  /// Paid at the counter when bought, so it is never a payable. `or_number`
+  /// is finance-only, so a role it was redacted from decides by the source,
+  /// which the server never hides.
+  bool get paidOnPurchase =>
+      source == MaterialSource.external &&
+      (financeKeysOmitted || orNumber != null);
 
   PurchaseOrder copyWith({
     PurchaseOrderStatus? status,
@@ -103,9 +111,16 @@ class PurchaseOrder {
     approvedBy: approvedBy != null ? approvedBy() : this.approvedBy,
     createdAt: createdAt,
     updatedAt: DateTime.now(),
+    financeKeysOmitted: financeKeysOmitted,
   );
 
-  factory PurchaseOrder.fromJson(Map<String, dynamic> json) => PurchaseOrder(
+  /// [financeKeysOmitted] is what a role without finance access receives: the
+  /// server drops `total_amount` rather than sending a fictional zero
+  /// (decision 06, ruling 1).
+  factory PurchaseOrder.fromJson(
+    Map<String, dynamic> json, {
+    bool financeKeysOmitted = false,
+  }) => PurchaseOrder(
     id: json['id'] as int,
     poNo: json['po_no'] as String,
     projectId: json['project_id'] as int,
@@ -115,13 +130,17 @@ class PurchaseOrder {
     storeName: json['store_name'] as String?,
     source: MaterialSource.fromJson(json['source']),
     status: PurchaseOrderStatus.fromJson(json['status']),
-    totalAmount: JsonUtils.toDouble(json['total_amount']),
+    totalAmount: JsonUtils.toFinanceDouble(
+      json['total_amount'],
+      omitted: financeKeysOmitted,
+    ),
     deliveryAddress: json['delivery_address'] as String?,
     orNumber: json['or_number'] as String?,
     receiptPhotoUrl: json['receipt_photo_url'] as String?,
     approvedBy: json['approved_by'] as int?,
     createdAt: JsonUtils.toDateOrNull(json['created_at']),
     updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
+    financeKeysOmitted: financeKeysOmitted,
   );
 
   Map<String, dynamic> toJson() => {

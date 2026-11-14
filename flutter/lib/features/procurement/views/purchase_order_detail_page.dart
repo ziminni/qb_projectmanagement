@@ -18,6 +18,7 @@ import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/procurement_lookups.dart';
 import '../viewmodels/purchase_order_detail_viewmodel.dart';
 import '../widgets/procurement_po_status_chip.dart';
+import '../widgets/procurement_pos_status_panel.dart';
 import '../widgets/procurement_receipt_photo.dart';
 
 class PurchaseOrderDetailPage extends StatelessWidget {
@@ -73,7 +74,7 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                   ),
                 if (vm.canCancel)
                   OutlinedButton.icon(
-                    onPressed: vm.isBusy
+                    onPressed: vm.isBusy || vm.posBusy
                         ? null
                         : () async {
                             final ok = await showAppConfirmDialog(
@@ -120,7 +121,13 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                       label: 'Total',
                       value: Formatters.peso(o.totalAmount),
                     ),
-                    AppInfoRow(label: 'Paid', value: Formatters.peso(vm.paid)),
+                    // Payments are blocked in API mode (3.1a decision 10): a
+                    // paid amount there would be a fabricated zero.
+                    if (vm.supportsPayments)
+                      AppInfoRow(
+                        label: 'Paid',
+                        value: Formatters.peso(vm.paid),
+                      ),
                   ],
                   if (o.approvedBy != null)
                     AppInfoRow(
@@ -130,6 +137,10 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                 ],
               ),
             ),
+            if (vm.supportsPosStatus) ...[
+              gap,
+              ProcurementPosStatusPanel(vm: vm),
+            ],
             if (o.receiptPhotoUrl != null) ...[
               gap,
               AppSectionCard(
@@ -188,7 +199,7 @@ class PurchaseOrderDetailPage extends StatelessWidget {
                 ],
               ),
             ),
-            if (finance && d.payments.isNotEmpty) ...[
+            if (finance && vm.supportsPayments && d.payments.isNotEmpty) ...[
               gap,
               AppSectionCard(
                 title: 'Supplier payments',

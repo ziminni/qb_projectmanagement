@@ -30,6 +30,7 @@ class ExpenseReportsPage extends StatelessWidget {
         if (vm.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
+        if (vm.error != null) return AppEmptyState(message: vm.error!);
         final r = vm.report;
         return ListView(
           padding: pagePadding(context),

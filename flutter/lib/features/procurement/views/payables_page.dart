@@ -30,6 +30,7 @@ class PayablesPage extends StatelessWidget {
         if (vm.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
+        if (vm.error != null) return AppEmptyState(message: vm.error!);
         final l = vm.lookups;
         return ListView(
           padding: pagePadding(context),

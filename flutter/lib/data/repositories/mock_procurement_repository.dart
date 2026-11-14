@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../routes/routes.dart';
 import '../models/app_role.dart';
 import '../models/category.dart';
@@ -53,6 +55,22 @@ class MockProcurementRepository implements ProcurementRepository {
   final AuditLogRepository _auditLog;
   final NotificationService? _notifications;
   final DateTime Function() _clock;
+
+  /// The demo records supplier payments itself, so the screens keep showing
+  /// paid amounts and the Pay button.
+  @override
+  bool get supportsPayments => true;
+
+  @override
+  bool get supportsPosStatus => false;
+
+  @override
+  Future<PosStatus> getPosStatus(int id) async =>
+      throw UnsupportedError('Store sync status is unavailable in demo mode.');
+
+  @override
+  Future<PosStatus> retryPosSync(int id) async =>
+      throw UnsupportedError('Store sync is unavailable in demo mode.');
 
   final _requests = [...MockProcurementData.requests];
   final _requestItems = [...MockProcurementData.requestItems];
@@ -515,6 +533,7 @@ class MockProcurementRepository implements ProcurementRepository {
     List<({int poItemId, double received, double damaged})> lines, {
     required int userId,
     String? receiptPhotoUrl,
+    Uint8List? receiptPhotoBytes,
   }) async {
     final oi = _orderIndex(purchaseOrderId);
     final order = _orders[oi];

@@ -10,6 +10,7 @@ import '../../data/repositories/http_daily_report_repository.dart';
 import '../../data/repositories/http_document_repository.dart';
 import '../../data/repositories/http_master_data_repository.dart';
 import '../../data/repositories/http_notification_repository.dart';
+import '../../data/repositories/http_procurement_repository.dart';
 import '../../data/repositories/http_project_repository.dart';
 import '../../data/repositories/http_schedule_repository.dart';
 import '../../data/repositories/http_user_repository.dart';
@@ -149,15 +150,20 @@ void setupServiceLocator() {
       ),
     )
     ..registerLazySingleton<ProcurementRepository>(
-      () => MockProcurementRepository(
-        projects: getIt(),
-        schedule: getIt(),
-        masterData: getIt(),
-        reports: getIt(),
-        users: getIt(),
-        auditLog: getIt(),
-        notifications: getIt(),
-      ),
+      // In API mode the server owns every rule and every amount: the mock's
+      // local approval and payment paths never run, and the financially
+      // blocked methods refuse instead of faking a ledger.
+      () => useApi
+          ? HttpProcurementRepository(getIt<ApiClient>())
+          : MockProcurementRepository(
+              projects: getIt(),
+              schedule: getIt(),
+              masterData: getIt(),
+              reports: getIt(),
+              users: getIt(),
+              auditLog: getIt(),
+              notifications: getIt(),
+            ),
     )
     ..registerLazySingleton<DailyReportRepository>(
       // In API mode the report IS the server's: the mock's to-do linking and

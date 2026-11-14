@@ -255,11 +255,32 @@ CORS_ALLOWED_ORIGINS = [
 # POS integration (Repo #1)
 # host.docker.internal is wired via docker-compose extra_hosts so the CPMS
 # container can reach the POS API published on the host.
+#
+# Task 3.1b (contract `phase-3-procurement.md` "3.1b Built as"): the bridge
+# authenticates as the POS `CPMS Service` account with a rotating JWT minted
+# from these service credentials. There is deliberately **no static
+# `POS_API_TOKEN`** any more — the legacy client that used it is gone.
 # =============================================
 POS_API_BASE_URL = os.environ.get('POS_API_BASE_URL', 'http://host.docker.internal:8000')
 POS_API_TIMEOUT = env_int('POS_API_TIMEOUT', 15)
-POS_API_TOKEN = os.environ.get('POS_API_TOKEN', '')
 POS_API_VERIFY_SSL = env_bool('POS_API_VERIFY_SSL', True)
+POS_API_SERVICE_USERNAME = os.environ.get('POS_API_SERVICE_USERNAME', '')
+POS_API_SERVICE_PASSWORD = os.environ.get('POS_API_SERVICE_PASSWORD', '')
+# HTTPS is required; plain http is accepted only for a local/LAN host when this
+# is set explicitly (dev convenience, never for a public origin).
+POS_API_ALLOW_INSECURE_LOCAL = env_bool('POS_API_ALLOW_INSECURE_LOCAL', False)
+# Optional deployment gateway header (backend-only; never logged, never sent to
+# the desktop client). Not a replacement for the JWT.
+POS_API_GATEWAY_HEADER_NAME = os.environ.get('POS_API_GATEWAY_HEADER_NAME', '')
+POS_API_GATEWAY_HEADER_VALUE = os.environ.get('POS_API_GATEWAY_HEADER_VALUE', '')
+
+# Durable outbox behaviour (management command `run_pos_outbox`).
+POS_OUTBOX_MAX_ATTEMPTS = env_int('POS_OUTBOX_MAX_ATTEMPTS', 5)
+POS_OUTBOX_BACKOFF_SECONDS = env_int('POS_OUTBOX_BACKOFF_SECONDS', 30)
+POS_OUTBOX_BACKOFF_MAX_SECONDS = env_int('POS_OUTBOX_BACKOFF_MAX_SECONDS', 3600)
+POS_OUTBOX_POLL_SECONDS = env_int('POS_OUTBOX_POLL_SECONDS', 30)
+# A read-back older than this is reported `stale` on `pos-status/`.
+POS_STATUS_STALE_AFTER_SECONDS = env_int('POS_STATUS_STALE_AFTER_SECONDS', 300)
 
 # Lifetime of a digitally generated material release token.
 RELEASE_TOKEN_TTL_HOURS = env_int('RELEASE_TOKEN_TTL_HOURS', 72)

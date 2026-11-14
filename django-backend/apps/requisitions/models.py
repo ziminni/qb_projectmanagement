@@ -130,6 +130,9 @@ class PosOutboxOperation(models.TextChoices):
 
     IMPORT = 'import', 'Import the order at the store'
     CLOSE = 'close', 'Close the abandoned remainder'
+    # Added in 3.1b: `pos-sync/` can also ask for a fresh read-back, because a
+    # read never writes the snapshot (the contract forbids write-on-read).
+    REFRESH = 'refresh', 'Refresh the store status'
 
 
 class PosOutboxState(models.TextChoices):
@@ -138,7 +141,9 @@ class PosOutboxState(models.TextChoices):
     PENDING = 'pending', 'Pending'
     CANCELLED = 'cancelled', 'Cancelled before sending'
     DONE = 'done', 'Done'
-    FAILED = 'failed', 'Failed'
+    #: A permanent refusal (409/4xx, identity mismatch) or an exhausted bounded
+    #: retry stops here: nothing retries it automatically until an owner asks.
+    FAILED = 'failed', 'Needs review'
 
 
 class RequestPriority(models.TextChoices):
@@ -826,3 +831,48 @@ class PosOutboxJob(models.Model):
 
     def __str__(self):
         return f'{self.operation} PO#{self.purchase_order_id} ({self.state})'
+
+
+class PosRequestSnapshot(models.Model):
+    """The last POS read-back for one order, kept apart from CPMS's own status.
+
+    `pos_status` is the store's **raw** string (`WAITING`, `ACCEPTED`,
+    `PARTIALLY_RELEASED`, a legacy state, …) and is never folded into a CPMS
+    enum: an unknown upstream state must stay visible, not be guessed. The
+    amount is the store's live budget estimate (`expected_amount`, nullable —
+    null means unknown, never free goods), never invoice evidence.
+
+    One row per order; `stale` says the last refresh attempt failed, and a read
+    older than `POS_STATUS_STALE_AFTER_SECONDS` is reported stale too.
+    """
+
+    purchase_order = models.OneToOneField(
+        PurchaseOrder,
+        on_delete=models.CASCADE,
+        related_name='pos_snapshot',
+    )
+    pos_status = models.CharField(max_length=32, blank=True, default='')
+    decline_reason = models.TextField(blank=True, default='')
+    expected_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='The store\'s budget estimate; null means unknown.',
+    )
+    #: `[{code, requested, released, outstanding, available, decline_reason}]`
+    lines = models.JSONField(default=list, blank=True)
+    #: Human note for the UI (a refusal reason). Never a token or a raw body.
+    detail = models.TextField(blank=True, default='')
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    stale = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'POS Request Snapshot'
+        verbose_name_plural = 'POS Request Snapshots'
+
+    def __str__(self):
+        return f'PO#{self.purchase_order_id}: {self.pos_status or "unknown"}'

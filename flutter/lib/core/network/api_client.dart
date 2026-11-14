@@ -65,6 +65,10 @@ class ApiClient {
   /// The refresh in flight, so ten failing requests share one refresh.
   Future<void>? _refreshing;
 
+  /// The active role as the server sees it (sent as `X-Active-Role`), so a
+  /// repository can tell an omitted finance key from a broken response.
+  bool get seesFinance => _session.activeRole?.seesFinance ?? false;
+
   Future<Object?> get(
     String path, {
     Map<String, dynamic>? query,

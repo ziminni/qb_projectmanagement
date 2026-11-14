@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/utils/action_runner.dart';
+import '../../../core/utils/app_messages.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/repositories/procurement_repository.dart';
 import '../../../data/services/procurement_rules.dart';
@@ -22,10 +23,12 @@ class PayablesViewModel extends ChangeNotifier with ActionRunner {
   final ProcurementLookups lookups;
 
   bool _loading = true;
+  String? _error;
   List<Payable> _all = const [];
   bool _unpaidOnly = true;
 
   bool get isLoading => _loading;
+  String? get error => _error;
   bool get unpaidOnly => _unpaidOnly;
   bool get canPay => _session.activeRole == AppRole.accountant;
 
@@ -40,13 +43,21 @@ class PayablesViewModel extends ChangeNotifier with ActionRunner {
   }
 
   Future<void> _refresh() async {
-    _all =
-        await _procurement.getPayables(
-            projectIds: lookups.projects.keys.toList(),
-          )
-          ..sort((a, b) => b.balance.compareTo(a.balance));
-    _loading = false;
-    notifyListeners();
+    _error = null;
+    try {
+      _all =
+          await _procurement.getPayables(
+              projectIds: lookups.projects.keys.toList(),
+            )
+            ..sort((a, b) => b.balance.compareTo(a.balance));
+    } on UnsupportedError {
+      // Supplier payables are blocked in API mode (blocker 2).
+      _all = const [];
+      _error = supplierAccountingUnavailable;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
   }
 
   void setUnpaidOnly(bool v) {

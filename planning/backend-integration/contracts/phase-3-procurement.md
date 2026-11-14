@@ -206,3 +206,105 @@ Review round 1 found two behaviours that the rules above do not permit, but that
 Review round 1 fixes (same directory): `fix-red.log` — the five new tests fail first (coverage race answered `[201, 201]`, audit detail carried `total`, `or_number` leaked to admin, `'abc'` count id raised `ValueError` → `500`, empty receipt answered `Unknown PO line.`). `fix-tests.log` — 85/85 OK in default order (`apps.requisitions.tests_procurement` 56, `apps.requisitions.tests` 14, `apps.requisitions.tests_migration_procurement` 6, `apps.projects.tests_migration` 9). `fix-check-drift.log` — `check` clean, "No changes detected".
 
 Not proven here: POS network behaviour, retry/unknown outcomes (3.1b), any financial route, Flutter clients.
+
+---
+
+## 3.1b Built as — POS client, durable worker, read-back (backend lane)
+
+**Status: built; focused tests green; not reviewed, so MAP 3.1b stays unticked.** No network call was made in the build or the tests (POS live verification is Phase 5). Untouched by this task: every financial route (`procurement-payables/`, `purchase-orders/{id}/payments/`, `delivered-value-by-category/`) and all Flutter work.
+
+### Files and data flow
+
+`PurchaseOrder` (+`PosOutboxJob`) → **`pos_worker.run_once()`** → **`pos_client.PosClient`** → POS `/api/v1/integration/cpms/*`; the answer flows back into `PurchaseOrder.pos_sync_status` / `pos_expected_amount` and the new **`PosRequestSnapshot`**. `GET purchase-orders/{id}/pos-status/` serializes that snapshot through `procurement_serializers.pos_status_payload()` and never writes; `POST purchase-orders/{id}/pos-sync/` only enqueues a job.
+
+- `apps/requisitions/pos_client.py` (new) — the six verified routes (`customers/`, `materials/`, `requests/`, `requests/{po_no}/`, `requests/{po_no}/close/`, `projects/{code}/payables/`). `project_payables()` exists for the blocked financial phase and **no CPMS route calls it**.
+- `apps/requisitions/pos_worker.py` (new) — claim, dispatch, retry/backoff, unknown-outcome reconciliation, close coordination, snapshot storage, `request_sync()`.
+- `apps/requisitions/management/commands/run_pos_outbox.py` (new) — `--once` (one pass) or a loop with `--sleep`, `--limit`.
+- `apps/requisitions/models.py` — `PosOutboxOperation.REFRESH` added; `PosOutboxState.FAILED` re-documented as **needs review / no automatic retry**; new `PosRequestSnapshot`. Additive migration `0005_pos_readback_snapshot` (AlterField ×2 + one table; no row or column dropped).
+- `apps/requisitions/procurement_views.py` / `procurement_serializers.py` — the two routes and the read shape.
+- `apps/requisitions/services.py` (**deleted**) and the two dead actions in the unrouted `apps/requisitions/views.py` — the legacy `PosAPIClient` (static `POS_API_TOKEN`, no queue, straight at POS `requisitions/`/`release-tokens/`/`collectibles/`) is **gone**, so nothing can send a CPMS write with a long-lived shared token. `POS_API_TOKEN` was removed from settings.
+- `config/settings.py` — `POS_API_SERVICE_USERNAME` / `PASSWORD`, `POS_API_ALLOW_INSECURE_LOCAL`, `POS_API_GATEWAY_HEADER_NAME` / `_VALUE`, `POS_OUTBOX_MAX_ATTEMPTS` (5), `POS_OUTBOX_BACKOFF_SECONDS` (30), `POS_OUTBOX_BACKOFF_MAX_SECONDS` (3600), `POS_OUTBOX_POLL_SECONDS` (30), `POS_STATUS_STALE_AFTER_SECONDS` (300).
+
+### Transport rules actually enforced (tests, not prose)
+
+- **Origin** validated once: absolute `http(s)` URL, **no** embedded credentials, **no** query/fragment; `https` required unless `POS_API_ALLOW_INSECURE_LOCAL` **and** the host is local/LAN (loopback, RFC1918, `host.docker.internal`, `*.local`/`*.internal`). A public host stays refused even with the flag on.
+- **No caller-supplied URL.** Callers pass an id, validated as one path segment (letters/digits/`. _ -`, ≤100 chars); `../admin/`, `PO-1/close`, spaces and empty ids are refused before a socket opens. A pagination `next` link outside the configured origin is refused too.
+- **No redirects** (`allow_redirects=False`): a `3xx` is an unknown outcome, so the bearer token is never handed to another origin.
+- **Service JWT in memory only** (`POST /api/v1/auth/login/` with `identifier`/`password`; rotation honoured from the answer). One `401` triggers exactly one `/api/v1/auth/refresh/` and one replay; a second `401` is `PosAuthError`. Nothing is persisted, and the token/POS UUIDs never enter a log line, `PosSyncLog`, a job row or any route body.
+- **TLS verification on** (`POS_API_VERIFY_SSL`, default `True`); timeouts from `POS_API_TIMEOUT`.
+- Optional gateway header sent only from backend settings, never logged, and it is **not** a replacement for the JWT.
+
+### Outcome semantics
+
+| Store answer | Result |
+|---|---|
+| `201` / `200` **and** identity+lines match | `pos_sync_status = synced`, snapshot stored, job `done` |
+| `201` / `200` naming another request, other lines or other quantities | **needs review** (`failed`, job `failed`, reason stored) — never "synced" |
+| `409 TOKEN_TAKEN` | permanent, needs review; the token is **never** regenerated |
+| other `4xx` (`UNKNOWN_MATERIAL`, `UNKNOWN_PAYER`, …) | permanent, needs review, no retry |
+| timeout / disconnect / `5xx` / redirect / unreadable 2xx | **unknown outcome**: read `GET requests/{po_no}/` back. `200` + matching lines → `synced` (nothing re-sent); `404` → the same payload and token go out again; anything else → backoff. The order stays `pending_sync` |
+| retry bound reached | job `failed` with "Gave up after N attempts"; the order stays `pending_sync` and an owner may re-arm it |
+
+Backoff is `30s × 2^(attempts-1)` capped at an hour, written to `next_attempt_at`; `attempts` and `last_error` are the durable outcome metadata. Claims use `select_for_update(skip_locked=True)` **per job row**, held across the call, so a job is delivered exactly once even with several workers (threaded test).
+
+**Close jobs** never conclude a full cancellation on their own: on a cancelled order an unsent import is cancelled first (so a fresh live request can never appear later), a close waits while another worker is mid-import (`nowait` lock probe), `404`/`409 REQUEST_CANCELLED` mean "nothing to close" (done), and a timed-out close is reconciled by reading the request back before it is retried. `pos-status` exposes `close_pending` so the UI cannot claim the store cancelled anything before that reconciliation.
+
+**A close that gave up is never invisible or unrecoverable (fix round).** Close outcomes now pass the order into `_retry`/`_failed`, so an exhausted close writes the same stale/detail note as the import path (`snapshot.stale = True`, `detail = "Gave up after N attempts: …"`). Because `close_pending` counts only queued (PENDING) closes, `pos-status` also exposes **`close_needs_review`** (a `failed` close job) and appends `"The store may still hold this request. Retry the close."` to `detail` whenever it is true — after ~5 attempts the UI can no longer show nothing owed while the store may hold a LIVE request for a cancelled PO. `POST pos-sync/` on a **cancelled** own-store order now re-arms **only** that failed close job (same stored payload, `attempts` reset to 0, order status untouched): it never re-arms an import, never creates a new import or PO, and if no failed close exists the cancelled refusal (`400 "This order was cancelled."`) stands. Owner-only with the same role→scope order, so the non-owner `403` / out-of-scope `404` matrix is unchanged.
+
+### Read-back
+
+`PosRequestSnapshot` (one row per order) keeps the store's **raw** `pos_status` string (`WAITING`, `ACCEPTED`, `PARTIAL`, `RELEASED`, `CLOSED`, `DECLINED`, legacy values) — never mapped into a CPMS enum — plus `decline_reason`, the per-line quantities, a nullable `expected_amount` budget estimate (null = unknown, never free goods), `last_checked_at`, `stale` and a human `detail`. A failed refresh keeps the last good values and flips `stale`; a read older than `POS_STATUS_STALE_AFTER_SECONDS` is reported stale on read. `PurchaseOrder.pos_expected_amount` mirrors the estimate for finance.
+
+Routes: `GET purchase-orders/{id}/pos-status/` returns `{purchase_order_id, source, pos_sync_status, pos_status, decline_reason, last_checked_at, stale, detail, close_pending, close_needs_review}` + `pos_expected_amount` **only** for `owner`/`accountant`. `POST purchase-orders/{id}/pos-sync/` (assigned owner only) enqueues a `refresh` job when the order is synced, otherwise re-arms the stored import — and on a cancelled order re-arms only a `failed` close (see above); it answers `202` with the same shape. Both routes check role first (`client` → `403`), then scope (out of scope → `404`), and an external order answers `not_applicable` / `400`. **No `pos_token`, `pos_request_id`, credential, bearer or raw upstream body appears in any response** (tested, including the new `close_needs_review`/note fields). `PosSyncLog` rows are written with `redact_payload()` (token/authorization/password/access/refresh → `***`) — the legacy unredacted-payload risk is closed by construction.
+
+### Open items and deployment notes (recorded from the 3.1b review)
+
+1. **Deploy default fails closed (Phase 5 must set it explicitly).** `POS_API_BASE_URL` defaults to `http://host.docker.internal:8000` while `POS_API_ALLOW_INSECURE_LOCAL` defaults to `False`, so the shipped default is **refused** (`PosConfigError`; `run_pos_outbox` exits). That is deliberate — a plain-http origin is never used by accident. Phase 5 deployment must set either an `https` / Cloudflare-Tunnel URL or, for a loopback/LAN store only, `POS_API_ALLOW_INSECURE_LOCAL=True` together with the insecure base URL.
+2. **`run_pos_outbox` expects a supervisor.** The loop's `PosConfigError` path raises `CommandError` and the process **exits** (it does not silently retry a store it can never reach). Run it under `Restart=always` (systemd/container policy) with backoff; `--once` is the cron/one-shot form. The command docstring says the same.
+3. **Network I/O inside `transaction.atomic()` (lock trade-off, owner-visible).** Each job is processed inside `transaction.atomic()` while holding `select_for_update` on the job row and the `PurchaseOrder` row, and the POS call (up to ~timeout plus a reconcile read) happens inside that window — so `cancel_order` on the same order blocks for its duration. Accepted for a small outbox (it is what makes claim-once and the cancel-vs-import race safe); revisit if Phase 5 live load shows lock waits.
+4. **`MaterialRequest.purpose` / `notes` are not transmitted to POS** (`notes` is sent as `''`) — the store clerk never sees the request text. Believed intended (the payload is a fixed contract shape), but this needs **owner confirmation**.
+5. `record('purchase_order_cancelled', …, {'pos_request_id': …})` keeps the operation UUID in the audit detail. It is not the bearer (`pos_token`) and is never sent to POS, so it is not a credential — tooling should just not treat `pos_request_id` as a secret.
+
+### 3.1a interim relaxations — revisited, **both left in place, owner decision still outstanding**
+
+Read-back exists now, but it cannot safely close either default yet:
+
+1. **Own-store receipts remain accepted while the PO is merely `released`.** Read-back is deliberately pull-only (`pos-status` is cached and `pos-sync` is an owner action), so a site can receive material with no snapshot at all, or with a stale one. Gating receipt authority on `released > 0` would block a site whose store is offline — the exact outage this design exists for. Re-closing this needs a freshness/evidence policy (how old a snapshot may be, and what the site does when the store is unreachable), which is an owner/accounting call, not a build-time default.
+2. **Cancelling an own-store order still reopens its covered request lines** regardless of POS release state. Refusing the cancel when a release exists would deadlock an order whose material never arrives — and CPMS has no "closed-with-shortfall" PO status to fall back on (the Flutter enum has no such value), so the correct action is undefined. Enforcing it half-way (only when a fresh snapshot proves `released > 0`) would be new business behaviour, not a re-close.
+
+Also flagged as revisable defaults: `pos-sync` will re-arm a **needs-review** import if an owner asks (the payload is immutable, so a permanent refusal returns and stays visible); an own-store order with no stored outbox payload refuses re-send rather than rebuilding one from mutable masters; and the refresh job kind is an addition (`PosOutboxOperation.REFRESH`) required by "the route enqueues, a read never writes".
+
+### Test evidence (`../temp/cpms/3.1b/`)
+
+`red-2.log` — RED first: **41** tests, 40 errors + 7 failures (client constructor/config, transport auth+redirect, worker outcomes, route payloads all unimplemented). `green-3.log` — 42/42 `apps.requisitions.tests_pos_sync` OK: happy `201`, duplicate `200`, identical-payload retry, timeout → reconcile → done, `GET 404` → same-identity retry, `409 TOKEN_TAKEN` permanent without token change, body mismatch blocked, `4xx` validation permanent, `401` refresh once (and a second `401` refusing), HTTPS/allowlist/credentials-in-URL/no-URL-id/redirect refusal, gateway header, redaction in `PosSyncLog`, cancel-before-import, close-after-synced, close-404, close-waits-for-in-flight-import, worker-drops-import-of-cancelled-order, refresh job + stale snapshot, `pos-status` cached read (zero writes), role/scope matrix, finance redaction, no-token-leakage, and a threaded claim-once race. `green-gate-tests.log` — **127/127 OK** for `apps.requisitions` + `apps.projects.tests_migration` together. `green-check-drift.log` — `check` clean, "No changes detected".
+
+Not proven: any live POS call (Phase 5), financial routes, Flutter POS-status UI (3.2), and the two interim default re-closes above.
+
+## 3.2 Built as — Flutter HTTP procurement (Flutter lane)
+
+`lib/data/repositories/http_procurement_repository.dart` implements `ProcurementRepository` against the 3.1a routes (verified against `procurement_{serializers,views}.py` + `urls.py`, not the draft). Mocks stay the default; `--dart-define=USE_API=true` (`lib/core/network/api_config.dart`, wired in `lib/core/di/service_locator.dart`) swaps in the HTTP set.
+
+### Interface additions the UI now depends on (decision 03, rule 1)
+
+| Addition | Why | Where |
+|---|---|---|
+| `OrderDraft.otherStore(receiptPhotoBytes:)` | an other-store order sends the receipt as a multipart file; the demo's `receiptPhotoUrl` is never fetched by the server (3.1a decision 2) | `data/repositories/procurement_repository.dart`, `http_procurement_repository.dart` |
+| `confirmDelivery(..., receiptPhotoBytes:)` | the delivery receipt photo is an optional uploaded file (server treats it as optional) | same |
+| `ProcurementRepository.supportsPayments` | capability flag: `true` for the mock, `false` for the HTTP repository, because payables/payments are financially blocked (3.1a decision 10) | same |
+| `PurchaseOrder.financeKeysOmitted` | remembers that the server withheld the finance keys, so a getter can decide without a fake zero (decision 06, ruling 1) | `data/models/purchase_order.dart` |
+| Finance-blocked error copy `supplierAccountingUnavailable` | one sentence the accountant/owner sees instead of an endless spinner | `core/utils/app_messages.dart` |
+
+### Screens changed
+
+- **Finance-blocked accounting (warnings W1).** `ProjectFinancialsViewModel`, `ExpenseReportsViewModel` and `PayablesViewModel` catch the `UnsupportedError` their repository throws in API mode, stop loading and expose `error`; `ProjectFinancialsPage`, `ExpenseReportsPage` and `PayablesPage` render it (`AppEmptyState`). Copy: *"Supplier accounting is not available yet. It is waiting on the ledger decision."* Mock mode never reaches it.
+- **No fabricated paid amount (W2).** `PurchaseOrderDetailViewModel.supportsPayments` mirrors the repository flag; `PurchaseOrderDetailPage` hides the `Paid` row and the supplier-payments card while payments are blocked. Mock mode renders exactly as before.
+- **`paidOnPurchase` for redacted roles (W3).** `PurchaseOrder.paidOnPurchase` is now `source == external && (financeKeysOmitted || orNumber != null)`. `or_number` is finance-only, so a redacted role decides by the source, which is never hidden. The demo answer is unchanged when `or_number` is present; the same repository/model is used by the order slip (title, "Bought"/"Ordered" table, signature block) and `canCancel`.
+- **Delivery receipt photo (W4).** With `usesApi` the confirm page offers a real file pick (`image_picker` gallery pick, the same approach as the Phase 2 daily-report photo dialog, desktop-safe) whose bytes are uploaded; `pickPhoto` is injectable for tests. In mock mode the old "photo taken" placeholder toggle is kept and still sends the `mock://receipts/…` path.
+
+### Revisable defaults flagged
+
+The blocked copy names no date; the flag pair (`supportsPayments` / `financeKeysOmitted`) is the only client-side signal of a server decision, so it must be revisited if the ledger decision lands before 5.2. In API mode the delivery photo stays optional (the server accepts none); a required-evidence policy is a product call, not a build default.
+
+### Test evidence (`../temp/cpms/3.2/`)
+
+Build: `red.log` 26 RED → `green-4.log` 26/26 (`test/network/http_procurement_repository_test.dart`), `analyze.log` clean. Warning fix round: `fix-red.log` — 6 RED for exactly the behaviours below (temporary revert of each guard: `UnsupportedError` escaping the three view-models, `Found 1 widget with text "Paid"`, `lastBytes` null); `fix-green.log` — 65/65 across `test/billing_test.dart`, `test/procurement_test.dart`, `test/network/http_procurement_repository_test.dart`. `flutter analyze` clean.

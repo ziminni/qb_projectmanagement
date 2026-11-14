@@ -1,5 +1,10 @@
 """Requisition, release-token and POS-sync serializers."""
 
+# Pyright runs without django-stubs/DRF stubs, so `Meta` subclassing and typed
+# serializer fields are the documented false-positive class in this repo (see
+# `apps/users/serializers.py`). The test suite is the authority for this file.
+# pyright: reportIncompatibleVariableOverride=false, reportAssignmentType=false
+
 from rest_framework import serializers
 
 from .models import (

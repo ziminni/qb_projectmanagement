@@ -1,6 +1,9 @@
 import 'package:buildpro_frontend/app.dart';
 import 'package:buildpro_frontend/core/di/service_locator.dart';
+import 'package:buildpro_frontend/data/repositories/mock_audit_log_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_data.dart';
+import 'package:buildpro_frontend/data/repositories/mock_procurement_repository.dart';
+import 'package:buildpro_frontend/data/repositories/procurement_repository.dart';
 import 'package:buildpro_frontend/features/auth/widgets/login_dialog.dart';
 import 'package:buildpro_frontend/features/landing/views/landing_page.dart';
 import 'package:buildpro_frontend/shared/widgets/app_location_map.dart';
@@ -15,6 +18,31 @@ Future<void> resetServices() async {
   setupServiceLocator();
   // No network in tests: draw maps without tiles.
   AppLocationMap.showTiles = false;
+}
+
+/// The mock procurement repository shaped like the HTTP one in API mode:
+/// supplier accounting throws, and payments support is off.
+class ApiLikeProcurement extends MockProcurementRepository {
+  ApiLikeProcurement({this.supportsPayments = false, super.clock})
+    : super(
+        projects: getIt(),
+        schedule: getIt(),
+        masterData: getIt(),
+        reports: getIt(),
+        users: getIt(),
+        auditLog: MockAuditLogRepository(),
+      );
+
+  @override
+  final bool supportsPayments;
+
+  @override
+  Future<List<Payable>> getPayables({List<int>? projectIds}) async =>
+      throw UnsupportedError('Supplier payables are blocked: no ledger yet.');
+
+  @override
+  Future<Map<int, double>> deliveredValueByCategory(int projectId) async =>
+      throw UnsupportedError('Delivered-value costing is blocked.');
 }
 
 /// Pumps the app at [size] (desktop by default) on the landing page.

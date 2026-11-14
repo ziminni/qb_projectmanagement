@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/services/project_rules.dart';
 import '../../../data/models/category.dart';
@@ -137,11 +138,13 @@ class ExpenseReportsViewModel extends ChangeNotifier {
   final CostReportBuilder _builder;
 
   bool _loading = true;
+  String? _error;
   List<Project> projects = const [];
   int? _projectId;
   CostReport? _report;
 
   bool get isLoading => _loading;
+  String? get error => _error;
   int? get projectId => _projectId;
   CostReport? get report => _report;
 
@@ -169,8 +172,16 @@ class ExpenseReportsViewModel extends ChangeNotifier {
 
   Future<void> _refresh() async {
     final p = projects.where((x) => x.id == _projectId).firstOrNull;
-    _report = p == null ? null : await _builder.build(p);
-    _loading = false;
-    notifyListeners();
+    _error = null;
+    try {
+      _report = p == null ? null : await _builder.build(p);
+    } on UnsupportedError {
+      // Delivered-value costing is blocked in API mode (blocker 1).
+      _report = null;
+      _error = supplierAccountingUnavailable;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
   }
 }

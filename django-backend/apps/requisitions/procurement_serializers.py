@@ -19,7 +19,9 @@ contract shape this file:
 # Pyright runs without django-stubs/DRF stubs (untyped managers, `Meta`).
 # pyright: reportIncompatibleVariableOverride=false, reportAttributeAccessIssue=false
 
+from django.conf import settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import serializers
 
 from ..users import capabilities
@@ -28,6 +30,9 @@ from .models import (
     DeliveryItem,
     MaterialRequest,
     MaterialRequestItem,
+    PosOutboxOperation,
+    PosOutboxState,
+    PosRequestSnapshot,
     PurchaseOrder,
     PurchaseOrderItem,
     SiteCount,
@@ -163,3 +168,64 @@ class DeliveryItemSerializer(serializers.ModelSerializer):
             'qty_damaged', 'created_at', 'updated_at',
         )
         read_only_fields = fields
+
+
+#: Shown while a close job has given up but the store may still hold the
+#: request: the one sentence that keeps the UI from claiming the close landed.
+CLOSE_NEEDS_REVIEW_NOTE = 'The store may still hold this request. Retry the close.'
+
+
+def pos_status_payload(order, role, now=None):
+    """`GET purchase-orders/{id}/pos-status/` — the cached store snapshot.
+
+    Reads only: nothing here writes a row or calls the POS (the contract forbids
+    write-on-read), so a stale answer is possible and is reported as such.
+
+    Omitted keys: `pos_token`, `pos_request_id` and any raw upstream body. The
+    estimate `pos_expected_amount` is finance-only (owner / accountant).
+    """
+    now = now or timezone.now()
+    try:
+        snapshot = order.pos_snapshot
+    except PosRequestSnapshot.DoesNotExist:
+        snapshot = None
+
+    checked = snapshot.last_checked_at if snapshot is not None else None
+    stale = True
+    if snapshot is not None and not snapshot.stale and checked is not None:
+        age = (now - checked).total_seconds()
+        stale = age > settings.POS_STATUS_STALE_AFTER_SECONDS
+
+    close_pending = order.outbox_jobs.filter(
+        operation=PosOutboxOperation.CLOSE, state=PosOutboxState.PENDING,
+    ).exists()
+    # A close that gave up still owes the store an answer, so it must never
+    # drain out of sight: `close_pending` is queued work, this is review work.
+    close_needs_review = order.outbox_jobs.filter(
+        operation=PosOutboxOperation.CLOSE, state=PosOutboxState.FAILED,
+    ).exists()
+    detail = (snapshot.detail if snapshot is not None else '').strip()
+    if close_needs_review:
+        detail = f'{detail} {CLOSE_NEEDS_REVIEW_NOTE}'.strip()
+
+    payload = {
+        'purchase_order_id': order.pk,
+        'source': order.source,
+        'pos_sync_status': order.pos_sync_status,
+        # The store's own string, never folded into a CPMS enum.
+        'pos_status': (snapshot.pos_status or None) if snapshot is not None else None,
+        'decline_reason': (snapshot.decline_reason or '') if snapshot is not None else '',
+        'last_checked_at': checked if checked is not None else None,
+        'stale': stale,
+        'detail': detail,
+        # A close intent still owed: the UI must not claim the store cancelled
+        # anything until the worker has reconciled it.
+        'close_pending': close_pending,
+        # A close that gave up (needs review): the store may still hold it, and
+        # `POST pos-sync/` re-arms only this close.
+        'close_needs_review': close_needs_review,
+    }
+    if capabilities.sees_finance(role):
+        amount = snapshot.expected_amount if snapshot is not None else None
+        payload['pos_expected_amount'] = f'{amount:.2f}' if amount is not None else None
+    return payload
