@@ -25,13 +25,13 @@
 1. **When POS sync fires:**
    - Only `PurchaseOrder`s with `source == 'own_store'` sync to POS.
    - Before calling POS, CPMS atomically saves the `PurchaseOrder` with:
-     - `pos_request_id = po.po_no` (e.g. `PO-2026-0001`)
+     - `pos_request_id = <uuid4>` — CPMS's own durable operation id, minted once (3.1a build; **not** `po_no`)
      - `pos_token = str(uuid4())` (minted once, never regenerated on retry)
      - `pos_sync_status = 'pending_sync'`
-   - CPMS `PosAPIClient` posts to `POST /api/v1/integration/cpms/requests/` with `cpms_request_id = po.po_no`, `token = po.pos_token`, `project = {cpms_project_id: project.code, name: project.name, payer: project.pos_payer_id}`, `requester_name`, `approver_name`, and `items = [{code: item.pos_code, quantity: str(item.quantity)}]`.
-   - On HTTP 200/201, `pos_sync_status` becomes `'synced'`. On network/timeout error (e.g. store internet down), the PO remains saved with `pos_sync_status = 'pending_sync'` and can be retried manually ("Retry POS sync") or by a background/on-read retry hook using the **exact same** `pos_request_id` and `pos_token`.
+   - CPMS `PosAPIClient` posts to `POST /api/v1/integration/cpms/requests/` with **`cpms_request_id = po.po_no`** (e.g. `PO-2026-0001` — the wire identity POS idempotency keys on; `pos_request_id` is never sent), `token = po.pos_token`, `project = {cpms_project_id: project.code, name: project.name, payer: project.pos_payer_id}`, `requester_name`, `approver_name`, and `items = [{code: item.pos_code, quantity: str(item.quantity)}]`.
+   - On HTTP 200/201, `pos_sync_status` becomes `'synced'`. On network/timeout error (e.g. store internet down), the PO remains saved with `pos_sync_status = 'pending_sync'` and can be retried manually ("Retry POS sync") or by a background/on-read retry hook using the **exact same** `cpms_request_id` (`po_no`) and `pos_token`.
 2. **Read-back & cancellation:**
-   - Viewing an Own-Store PO or refreshing POS status calls `GET /api/v1/integration/cpms/requests/{po_no}/` to update `pos_status` (`WAITING`, `ACCEPTED`, `DECLINED`, `PARTIAL`, `RELEASED`, `CLOSED`), `pos_expected_amount`, and per-line released quantities.
+   - Viewing an Own-Store PO or refreshing POS status calls `GET /api/v1/integration/cpms/requests/{po_no}/` (that is the `cpms_request_id`) to update `pos_status` (`WAITING`, `ACCEPTED`, `DECLINED`, `PARTIAL`, `RELEASED`, `CLOSED`), `pos_expected_amount`, and per-line released quantities.
    - Cancelling an Own-Store PO in CPMS (before site delivery) calls `POST /api/v1/integration/cpms/requests/{po_no}/close/` on POS.
 3. **Network topology between Cloud CPMS and Local POS:**
    - CPMS connects to `POS_API_BASE_URL` over HTTPS (configurable via env var / Admin Settings).

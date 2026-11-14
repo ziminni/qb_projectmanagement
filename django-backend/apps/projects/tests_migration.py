@@ -37,6 +37,10 @@ from .models import (
 LEGACY = [('apps_projects', '0003_alter_project_manager')]
 # The real leaf after 2.2's FK conversion; keeping the suite at the latest
 # schema stops this test from leaving the database at an older migration.
+# Restore **every** app's leaf, not just `apps_projects`: rolling projects back
+# unapplies each dependent app's migrations (e.g. `apps_requisitions` and
+# `apps_site_reports`, whose FKs point at `Category`/`Project`), and migrating
+# only this app forward would leave them unapplied for the rest of the suite.
 LATEST = [('apps_projects', '0006_todo_daily_report_fk')]
 # Demo-only password for the legacy manager row in this suite.
 DEMO_PASSWORD = 's3cret-pass-123'  # noqa: S105 - test fixture, not a credential
@@ -118,7 +122,7 @@ class LegacyProjectDataPreservationTests(TransactionTestCase):
         self.milestone_count = OldMilestone.objects.count()
 
         executor = MigrationExecutor(connection)
-        executor.migrate(LATEST)
+        executor.migrate(executor.loader.graph.leaf_nodes())
 
     def project(self, key):
         return Project.objects.get(pk=self.legacy_ids[key])

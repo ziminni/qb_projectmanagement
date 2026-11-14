@@ -96,7 +96,7 @@ POS project `total` sums ledger original_amount; `balance` sums balance_due; `pa
 
 ## Durable identity, retry and history
 
-Future order transaction saves immutable `pos_request_id = po_no`, UUID minted once, stable `cpms_project_id` mapping (decision 04 uses project code), complete normalized import payload and durable outbox before network I/O. Snapshot **all** payload fields, including payer/project names, requester/approver, notes, codes and quantities; don't rebuild retry from mutable masters. POS accepts same request ID with changed valid payload but returns first stored copy unchanged: identity alone does not prove new payload applied. New project imports may update POS project name/payer; reassignment/rebilling needs controlled history, not accidental retry mutation.
+Future order transaction saves an immutable `pos_request_id` — a UUID minted once, **not** `po_no` (3.1a build, decision 04) — plus `pos_token` (UUID, minted once, never regenerated), the stable `cpms_project_id` mapping (decision 04 uses project code), the complete normalized import payload and a durable outbox row before any network I/O. **The identity 3.1b must send on the wire is `cpms_request_id = po.po_no`** (e.g. `PO-2026-0001`, the human, unique order number); `pos_request_id` is CPMS's own durable operation id and is never sent as `cpms_request_id`. Read-back and close therefore address `requests/{po_no}/` and `requests/{po_no}/close/`. Both values are unique and stable, so neither may be regenerated on retry. Snapshot **all** payload fields, including payer/project names, requester/approver, notes, codes and quantities; don't rebuild retry from mutable masters. POS accepts same request ID with changed valid payload but returns first stored copy unchanged: identity alone does not prove new payload applied. New project imports may update POS project name/payer; reassignment/rebilling needs controlled history, not accidental retry mutation.
 
 Use `pending_sync | synced | failed` independently from POS status, plus durable attempt/outcome/next-attempt metadata. Timeout, disconnect, invalid success body or lost worker acknowledgment = **unknown outcome**, not safe failure. Reconcile GET by fixed ID and retry exact stored payload/token; a GET 404 after unknown outcome permits only same-identity retry, not new PO/token. Persist attempts/backoff; serialize claims per operation; retry bounded transient failures, refresh backend auth safely; permanent validation/token conflicts require review. Never regenerate token on 409 TOKEN_TAKEN. Validate 200/201 body identity/lines before reporting synced; mismatches block reconciliation.
 
@@ -122,3 +122,87 @@ Use Phase 2 `projects_for` and capability helpers with `X-Active-Role`; pending/
 - Confirm local payment scope (external purchases already paid are excluded by mock), payment evidence uploads, duplicate-submission keys and private photo visibility. Draft route reservations do not enable these operations.
 
 **Preparation acceptance:** only this file changed by this task; no suites/DB/API calls run. Later implementation must prove role/project isolation, nonfinite and zero-write refusals, concurrent receipts/coverage, immutable retry and unknown outcomes, partial close preservation, stale/null POS amounts, credit-inclusive paid semantics and legacy-history preservation before activation.
+
+---
+
+## 3.1a Built as — operational procurement (backend lane, review round 1 fixed)
+
+**Status: built; focused tests green; review round 1 returned CHANGES_REQUIRED and those fixes are in — awaiting re-review, NOT ticked.** Scope is the operational half of this contract only. **Not built here:** the POS HTTP client and its retry worker (task 3.1b), payables / supplier payments / `delivered-value-by-category` (financial blockers below), and all Flutter work (task 3.2). `released` still means "order sent to the own store" — nothing in this build claims a physical release, a POS status, or a debt.
+
+### Data model — additive, history kept (`requisitions/migrations/0003` + `0004_legacy_procurement_data`)
+
+Same rule as Phase 2's `0004/0005`: the existing tables are extended in place, no table, row or column is dropped, and every unmappable legacy value is retained verbatim.
+
+- `MaterialRequest`: `status` moved to the Flutter enum (`pending | rejected | ordered`), plus `category`, `needed_by`, `approved_by` and `legacy_status`. The pre-Phase-3 status code is copied into `legacy_status`; `needed_date → needed_by` (the same fact); `reviewed_by → approved_by` **only** for rows that map to `ordered`, because `approved_by` means "the owner who answered with an order". Mapping: `DRAFT/PENDING/APPROVED/PARTIALLY_APPROVED → pending`, `REJECTED/CANCELLED → rejected`, `RELEASED → ordered`. `request_no` is kept and now nullable for new rows (the wire number is derived: `MR-{id:04d}`).
+- `MaterialRequestItem`: `quantity_requested` is the wire `quantity`; `item_sku` became optional; `purchase_order` added for coverage. `quantity_approved`, `quantity_released` and `unit_cost` stay as legacy columns and are **never serialized** (they carry prices).
+- New: `SiteCount`, `PurchaseOrder`, `PurchaseOrderItem`, `Delivery`, `DeliveryItem`, `PosOutboxJob`.
+- `PurchaseOrder` POS fields exist from day one: `pos_request_id` (UUID, minted once), `pos_token` (UUID, **never serialized**), `pos_sync_status` (`not_applicable | pending_sync | synced | failed`), `pos_expected_amount` (null until read-back; never invoice evidence).
+- `ReleaseToken` / `PosSyncLog` rows are untouched; their **routes are retired** (below).
+
+### Routes shipped
+
+| Route | Role | Result |
+|---|---|---|
+| `GET material-requests/?project=&status=` | staff, scoped | `[MaterialRequest]`, newest first, projects intersected server-side |
+| `GET material-requests/{id}/` | staff, scoped | `MaterialRequestDetail {request, items, counts}` |
+| `POST material-requests/` | assigned `site_engineer`, ongoing project | `201 MaterialRequest` |
+| `POST material-requests/{id}/reject/` | assigned `owner` | `MaterialRequest` |
+| `GET purchase-orders/?project=&status=` / `GET purchase-orders/{id}/` | staff, scoped | rows / `{order, items, deliveries, payments: [], request_id}` |
+| `POST purchase-orders/` | assigned `owner` | `201 PurchaseOrder` |
+| `POST purchase-orders/{id}/cancel/` | assigned `owner` | `PurchaseOrder` |
+| `POST purchase-orders/{id}/deliveries/` | assigned `site_engineer` | `201 Delivery` |
+| `GET deliveries/?project=` | staff, scoped | `[{delivery: DeliveryDetail, order}]` |
+| `GET projects/{id}/site-inventory/` | staff, scoped | `[InventoryLine]`, derived, zero writes |
+| `GET categories/{id}/procurement-budget/?amount=` | `owner` / `accountant`, scoped | `BudgetCheck {budget, committed, request_cost}`, advisory, zero writes |
+| `GET purchase-orders/{id}/receipt/{name}` / `GET deliveries/{id}/receipt/{name}` | finance roles, scoped | private receipt evidence (`attachment`, `no-store`) |
+
+**Retired on purpose:** `requisitions/`, `requisition-items/`, `release-tokens/` (including the `redeem/` callback — a bearer secret any authenticated caller could redeem) and `pos-sync-logs/`. They bypassed Phase 2 project scoping entirely; their models and rows stay, and the retired paths now answer `404` (tested).
+
+### Security actually enforced
+
+- **Scope first, role second, rule third**: out-of-scope objects are `404` (never "not yours"), in-scope-but-wrong-role is `403`, business refusals are `400 {detail}`.
+- **Role matrix**: `client` gets `403` on every procurement route; `site_engineer` writes requests and receipts only; `owner` places/cancels orders and rejects requests; `accountant` reads and checks budgets; pure `admin` reads only and is **not** a finance role.
+- **Finance redaction** (omitted, never zero-filled): `unit_price`, `total_amount`, `or_number` and `receipt_photo_url` for `admin` and `site_engineer` (OR evidence is finance-sensitive per the access section). Receipt files answer `404` for them.
+- **No money in the audit trail**: `AuditLog.details` carries ids, counts and source only (`{request_id, lines, source, pos_request_id}`), because pure `admin` — not a finance role — can read `/audit-logs/`. Notification texts never carry an amount either.
+- **Server-owned**: `status`, `totals`, `po_no`, `approved_by`, `requested_by`, `pos_*`, timestamps are read-only; a body trying to set them changes nothing (tested).
+- **Uploads**: external receipt evidence and delivery photos go through the Phase 2 photo validator (extension + magic bytes + 10 MB) into the private media root with a random stored name; a refused upload writes nothing.
+- **Zero-write refusals**: every refusal happens before the first write; the receipt file is deleted again if a later step fails, so no orphan files or half-orders.
+
+### Receipt and order rules proven by test
+
+Unique PO lines per delivery, at least one `received > 0` (checked before the per-line ids, matching the mock's order), `damaged ≤ received`, cumulative `received + already ≤ ordered`, and PO/lines re-read under `select_for_update()` — a threaded test races two receipts for the last 10 bags and exactly one wins. Damaged goods never enter inventory or delivered-good value. Cancellation refuses once any delivery exists or the purchase was paid at the store; it reopens coverage, returns a request with no live order to `pending`, drops a never-sent POS import, and records a close intent when a POS import already exists.
+
+Coverage is locked, not just pre-checked: `place_order` validates item membership before any write, then re-reads the covered item rows under `select_for_update()` **inside** the transaction, after the request row lock, so two concurrent orders cannot both cover one item — a threaded test (`OrderCoverageConcurrencyTests`) races two orders for the same item, asserts exactly `[201, 400]`, one covering order and one outbox row.
+
+### Decisions taken in 3.1a (each a **revisable default**)
+
+1. **`pos_request_id` is a UUID** minted once at placing (task brief), **not** `po_no`; decision 04 and this contract's "Durable identity" paragraph were updated in place. **3.1b must send `cpms_request_id = po.po_no`** (the human, unique order number) with `token = pos_token`; `pos_request_id` stays CPMS's internal durable operation id and never goes on the wire. Read-back/close address `requests/{po_no}/`. Both values are unique and stable; neither is ever regenerated on retry.
+2. **Receipt evidence is an uploaded file, not a URL.** The draft's `receipt_photo_url` body key is ignored; `receipt_photo` (multipart) is required for external orders. Serialized back as a scoped download URL. No arbitrary URL is ever fetched.
+3. **Receipt evidence is finance-only** (owner/accountant). The site engineer who uploads a delivery photo cannot read it back; revisit if that hurts the site workflow.
+4. **Counts for material the system does not track** are stored as submitted evidence (expected = submitted); counts for tracked material always use the server snapshot and a mismatch is `409 STALE_SITE_COUNT`.
+5. **Own-store supplier must be exactly one**: zero → "Set up the own store in the supplier list first."; more than one → a new refusal text. Also new: `MISSING_POS_CODE`, `DUPLICATE_PO_LINE`, `BAD_LINES`, `CHOOSE_SOURCE`, `PRECISION`, `TOO_LARGE`, `STALE_SITE_COUNT`, `CLIENT_NO_PROCUREMENT`, `NOT_FINANCE_BUDGET`, `AMOUNT_REQUIRED`, `AMOUNT_INVALID`.
+6. **Role vs status wording for reject**: a wrong role is a `403` with the mock's PM text; a wrong status keeps the mock's exact sentence, including the caller's role label (`… cannot be rejected by a owner / project manager.`).
+7. **Cancellation of an already-synced own-store order** records a `close` outbox intent instead of refusing, because the POS may hold a release the site never received; nothing is reversed here.
+8. **Legacy status mapping** (see above) treats `APPROVED` as `pending`: approval was never an order in the new model, and saying `ordered` would claim an order exists.
+9. **Coverage and cancellation do not reopen a delivered PO's items**; only an undelivered cancelled order releases its covered request lines.
+10. **`payments` stays `[]`** in the PO detail wrapper so the Flutter detail parser keeps working while payables are blocked.
+11. **`or_number` is finance-only** (owner/accountant), like receipt evidence: the operational roles get the order row without the OR number. Revisable default — owner may grant operational read access.
+12. **A supplied count `material_id` must be an existing price-list id** (`Pick the counted material from the price list or leave it blank.` → `400`); absent/null still stores name-only evidence. This closes a `500` (junk string → `DataError`, unknown id → `ForeignKeyViolation`).
+13. **The owner notification link `/deliveries/confirm/{po_id}` is a real Flutter route** (`flutter/lib/routes/routes.dart` → `AppRoutes.deliveryConfirm`, rendered by `DeliveryConfirmPage`), so it was kept and annotated with the `AppRoutes` name like the Phase 2 link constants.
+
+### Undeclared relaxations — explicit 3.1a interim defaults (3.1b **must** re-close)
+
+Review round 1 found two behaviours that the rules above do not permit, but that must stand until a POS read-back exists. Both are **interim 3.1a defaults, not contract-compliant**:
+
+1. **Own-store receipts are accepted while the PO is merely `released`** (order sent to the store), with no reconciled POS release evidence. The contract requires reconciled released-quantity evidence before granting receipt authority; the POS client/`pos-status` read-back that would supply it is 3.1b. Until then the physical site receipt is the only evidence CPMS has, and refusing every receipt would block the site entirely.
+2. **Cancelling an own-store order reopens its covered request lines** regardless of POS release state (only a `close` outbox intent is recorded). The contract forbids reopening coverage when any released quantity exists; POS released quantities are unreadable in 3.1a.
+
+3.1b **must re-close both** the moment `pos-status` read-back exists: own-store receipt authority gated on reconciled release evidence, and coverage reopening gated on `released == 0`. **Owner confirmation is outstanding** for the interim behaviour (and for the offline-receipt evidence question in the open trade-offs).
+
+### Test evidence (`../temp/cpms/3.1a/`)
+
+`red.log` — RED first: 50 new tests, 15 failing (missing texts, nullable-FK `FOR UPDATE`, coverage parsing, multipart encoding, thread visibility). `green-4.log` — 69/69 `apps.requisitions` tests OK (50 new contract tests, 13 legacy-model tests, 6 retired-route tests, 5 migration-preservation tests). `green-5-crossapp.log` — 78/78 OK when run together with the Phase 2 migration test (this migration depends on `apps_projects.0006`, which that test rolls back). `check-drift.log` — `check` clean, `makemigrations --check --dry-run` → "No changes detected".
+
+Review round 1 fixes (same directory): `fix-red.log` — the five new tests fail first (coverage race answered `[201, 201]`, audit detail carried `total`, `or_number` leaked to admin, `'abc'` count id raised `ValueError` → `500`, empty receipt answered `Unknown PO line.`). `fix-tests.log` — 85/85 OK in default order (`apps.requisitions.tests_procurement` 56, `apps.requisitions.tests` 14, `apps.requisitions.tests_migration_procurement` 6, `apps.projects.tests_migration` 9). `fix-check-drift.log` — `check` clean, "No changes detected".
+
+Not proven here: POS network behaviour, retry/unknown outcomes (3.1b), any financial route, Flutter clients.
