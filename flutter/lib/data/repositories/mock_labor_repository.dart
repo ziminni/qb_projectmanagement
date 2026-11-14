@@ -36,6 +36,9 @@ class MockLaborRepository implements LaborRepository {
   final NotificationService? _notifications;
   final DateTime Function() _clock;
 
+  @override
+  bool get supportsPayroll => true;
+
   final _workers = [...MockLaborData.workers];
   final _attendance = MockLaborData.attendance();
   final _periods = [...MockLaborData.periods];

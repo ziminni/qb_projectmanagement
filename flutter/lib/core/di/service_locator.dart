@@ -8,6 +8,7 @@ import '../../data/repositories/http_client_repository.dart';
 import '../../data/repositories/http_company_repository.dart';
 import '../../data/repositories/http_daily_report_repository.dart';
 import '../../data/repositories/http_document_repository.dart';
+import '../../data/repositories/http_labor_repository.dart';
 import '../../data/repositories/http_master_data_repository.dart';
 import '../../data/repositories/http_notification_repository.dart';
 import '../../data/repositories/http_procurement_repository.dart';
@@ -142,12 +143,17 @@ void setupServiceLocator() {
       ),
     )
     ..registerLazySingleton<LaborRepository>(
-      () => MockLaborRepository(
-        projects: getIt(),
-        users: getIt(),
-        auditLog: getIt(),
-        notifications: getIt(),
-      ),
+      // In API mode the server owns workers, attendance and every rule: the
+      // mock's local payroll never runs, and payroll methods refuse instead
+      // of inventing periods or costs.
+      () => useApi
+          ? HttpLaborRepository(getIt<ApiClient>())
+          : MockLaborRepository(
+              projects: getIt(),
+              users: getIt(),
+              auditLog: getIt(),
+              notifications: getIt(),
+            ),
     )
     ..registerLazySingleton<ProcurementRepository>(
       // In API mode the server owns every rule and every amount: the mock's

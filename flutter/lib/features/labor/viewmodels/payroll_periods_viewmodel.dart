@@ -27,22 +27,31 @@ class PayrollPeriodsViewModel extends ChangeNotifier with ActionRunner {
   final LaborRepository _labor;
 
   bool _loading = true;
+  String? _error;
   Map<int, Project> projectsById = const {};
   List<PayrollPeriod> _items = const [];
 
   bool get isLoading => _loading;
+  String? get error => _error;
   List<PayrollPeriod> get items => _items;
   bool get canCreate => _session.activeRole == AppRole.accountant;
 
   Future<void> load() async {
-    final role = _session.activeRole!;
-    final visible = await _projects.getProjectsFor(_session.user!.id, role);
-    projectsById = {for (final p in visible) p.id: p};
-    _items = await _labor.getPeriods(
-      projectIds: projectId != null ? [projectId!] : projectsById.keys.toList(),
-    );
-    _loading = false;
-    notifyListeners();
+    try {
+      final role = _session.activeRole!;
+      final visible = await _projects.getProjectsFor(_session.user!.id, role);
+      projectsById = {for (final p in visible) p.id: p};
+      _items = await _labor.getPeriods(
+        projectIds: projectId != null
+            ? [projectId!]
+            : projectsById.keys.toList(),
+      );
+    } catch (e) {
+      _error = 'Could not load payroll. $e';
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
   }
 
   Future<String?> create(int projectId, DateTime start, DateTime end) =>

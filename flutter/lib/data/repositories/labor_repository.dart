@@ -11,6 +11,11 @@ typedef AttendanceEntry = ({
 });
 
 abstract interface class LaborRepository {
+  /// Payroll periods, processing, advances and labor cost are not built yet on
+  /// the CPMS backend (phase-4 contract, slice A): the HTTP repository refuses
+  /// them, and the screens leave them out instead of showing a fake figure.
+  bool get supportsPayroll;
+
   Future<List<Worker>> getWorkers({bool activeOnly = false});
 
   /// Creates the worker when its id is 0.

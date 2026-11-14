@@ -66,8 +66,13 @@ class WorkersPage extends StatelessWidget {
                     ListTile(
                       title: Text(w.fullName),
                       subtitle: Text(
-                        '${w.trade} · ${Formatters.peso(w.dailyRate)}/day'
-                        '${w.sssNo == null ? ' · no SSS no.' : ''}',
+                        [
+                          w.trade,
+                          // A hidden wage is not a zero wage.
+                          if (!w.dailyRateHidden)
+                            '${Formatters.peso(w.dailyRate)}/day',
+                          if (w.sssNo == null) 'no SSS no.',
+                        ].join(' · '),
                       ),
                       trailing: w.isActive
                           ? const Icon(Icons.edit_outlined)

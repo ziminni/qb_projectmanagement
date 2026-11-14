@@ -136,6 +136,8 @@ class PayrollVerificationSource implements ApprovalSource {
   @override
   Future<List<ApprovalItem>> pendingFor(int userId, AppRole role) async {
     if (role != AppRole.owner) return const [];
+    // No payroll routes on this backend yet: nothing is waiting to verify.
+    if (!_labor.supportsPayroll) return const [];
     final projects = {
       for (final p in await _projects.getProjectsFor(userId, AppRole.owner))
         p.id: p,

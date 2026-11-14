@@ -245,7 +245,7 @@ class DailyReportDraftTests(SiteReportCase):
     def test_report_date_uses_the_server_manila_clock(self):
         """20:00 UTC is already the next day in Manila (decision 06 #11)."""
         self.assertEqual(timezone.localdate(), TODAY)
-        self.assertNotEqual(date.today(), TODAY)
+        self.assertNotEqual(NOW_UTC.date(), TODAY)  # pinned UTC day, not the host clock
 
         response = self.file_draft()
 

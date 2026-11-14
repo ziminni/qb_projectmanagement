@@ -31,6 +31,7 @@ class PayrollPeriodsPage extends StatelessWidget {
         if (vm.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
+        if (vm.error != null) return AppEmptyState(message: vm.error!);
         return ListView(
           padding: pagePadding(context),
           children: [

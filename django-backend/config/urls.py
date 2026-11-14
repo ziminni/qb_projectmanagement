@@ -35,6 +35,7 @@ urlpatterns = [
     path('api/v1/', include('apps.financials.urls')),
     path('api/v1/', include('apps.master_data.urls')),
     path('api/v1/', include('apps.site_reports.urls')),
+    path('api/v1/', include('apps.labor.urls')),
     # MEDIA_URL is deliberately not mounted: uploads are only reachable through
     # the authenticated `documents/{id}/file/` and `report-photos/{id}/file/`
     # routes (contract "Uploads").

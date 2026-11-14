@@ -25,36 +25,46 @@ class ProjectLaborViewModel extends ChangeNotifier {
   final LaborRepository _labor;
 
   bool _loading = true;
+  String? _error;
   List<Worker> workers = const [];
   List<DayHeadcount> recentDays = const [];
   List<PayrollPeriod> periods = const [];
   double laborCost = 0;
 
   bool get isLoading => _loading;
+  String? get error => _error;
 
   Future<void> load() async {
-    final attendance = await _labor.getAttendance(projectId: projectId);
-    final workerIds = attendance.map((a) => a.workerId).toSet();
-    workers = (await _labor.getWorkers())
-        .where((w) => workerIds.contains(w.id))
-        .toList();
-    final byDate = <DateTime, List<Attendance>>{};
-    for (final a in attendance) {
-      byDate.putIfAbsent(a.workDate, () => []).add(a);
+    try {
+      final attendance = await _labor.getAttendance(projectId: projectId);
+      final workerIds = attendance.map((a) => a.workerId).toSet();
+      workers = (await _labor.getWorkers())
+          .where((w) => workerIds.contains(w.id))
+          .toList();
+      final byDate = <DateTime, List<Attendance>>{};
+      for (final a in attendance) {
+        byDate.putIfAbsent(a.workDate, () => []).add(a);
+      }
+      final dates = byDate.keys.toList()..sort((a, b) => b.compareTo(a));
+      recentDays = [
+        for (final d in dates.take(7))
+          DayHeadcount(
+            d,
+            byDate[d]!.where((a) => a.status == AttendanceStatus.present).length,
+            byDate[d]!.where((a) => a.status == AttendanceStatus.halfDay).length,
+            byDate[d]!.where((a) => a.status == AttendanceStatus.absent).length,
+          ),
+      ];
+      // Payroll has no routes yet: leave the figures out rather than fake them.
+      if (_labor.supportsPayroll) {
+        periods = await _labor.getPeriods(projectIds: [projectId]);
+        laborCost = await _labor.laborCost(projectId);
+      }
+    } catch (e) {
+      _error = 'Could not load labor. $e';
+    } finally {
+      _loading = false;
+      notifyListeners();
     }
-    final dates = byDate.keys.toList()..sort((a, b) => b.compareTo(a));
-    recentDays = [
-      for (final d in dates.take(7))
-        DayHeadcount(
-          d,
-          byDate[d]!.where((a) => a.status == AttendanceStatus.present).length,
-          byDate[d]!.where((a) => a.status == AttendanceStatus.halfDay).length,
-          byDate[d]!.where((a) => a.status == AttendanceStatus.absent).length,
-        ),
-    ];
-    periods = await _labor.getPeriods(projectIds: [projectId]);
-    laborCost = await _labor.laborCost(projectId);
-    _loading = false;
-    notifyListeners();
   }
 }

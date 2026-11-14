@@ -100,6 +100,12 @@ class AttendanceViewModel extends ChangeNotifier with ActionRunner {
           overtimeHours: existing[w.id]?.overtimeHours ?? 0,
         ),
     ];
+    // No payroll routes yet: there is no processed period to lock a day to.
+    if (!_labor.supportsPayroll) {
+      _lockedReason = null;
+      notifyListeners();
+      return;
+    }
     final periods = await _labor.getPeriods(projectIds: [projectId!]);
     final period = periods.where((p) => p.contains(date)).firstOrNull;
     _lockedReason = LaborRules.canEditAttendance(period);

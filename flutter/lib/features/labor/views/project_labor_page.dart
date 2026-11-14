@@ -8,6 +8,7 @@ import '../../../core/di/service_locator.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
+import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_figure.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/project_labor_viewmodel.dart';
@@ -30,6 +31,7 @@ class ProjectLaborPage extends StatelessWidget {
         if (vm.isLoading) {
           return const Center(child: CircularProgressIndicator());
         }
+        if (vm.error != null) return AppEmptyState(message: vm.error!);
         const gap = SizedBox(height: AppSpacing.lg);
         final finance = canSeeFinance();
         return ListView(

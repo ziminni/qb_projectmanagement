@@ -14,6 +14,7 @@ their routes answer 405 on `DELETE`. A trade is deleted for real (the mock does,
 # pyright: reportGeneralTypeIssues=false, reportAttributeAccessIssue=false, reportArgumentType=false
 
 from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
 from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
@@ -119,11 +120,21 @@ class TradeViewSet(
     entity = 'trade'
 
     def destroy(self, request, *args, **kwargs):
+        """Delete a trade, or refuse cleanly while a worker (or another FK) uses it.
+
+        `Worker.trade` is a protected FK, so the `ProtectedError` is a `400`
+        with a readable text — never a `500`. The audit row is inside the same
+        atomic block as the delete, so a refused delete leaves no audit.
+        """
         instance = self.get_object()
-        with transaction.atomic():
-            services.record(request.user, 'trade_deleted', self.entity,
-                            instance.pk, {'name': str(instance)})
-            instance.delete()
+        try:
+            with transaction.atomic():
+                services.record(request.user, 'trade_deleted', self.entity,
+                                instance.pk, {'name': str(instance)})
+                instance.delete()
+        except ProtectedError:
+            return Response({'detail': 'This trade is used by workers and cannot be deleted.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
