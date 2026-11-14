@@ -1,13 +1,17 @@
 """Tests for budget-vs-actuals, expense logging and the utang ledger."""
 
+# Pyright here runs without django-stubs, so model managers are untyped.
+# pyright: reportAttributeAccessIssue=false
+
 from datetime import timedelta
 from decimal import Decimal
 
 from django.test import TestCase
 from django.utils import timezone
 
+from ..company.models import Company
 from ..projects.models import Project, Site
-from ..users.models import User, UserRole
+from ..users.models import Role, User
 from .models import (
     BudgetCategory,
     Collectible,
@@ -19,6 +23,8 @@ from .models import (
     ProjectBudget,
 )
 
+FIXTURE_PASSWORD = 's3cret-pass-123'  # noqa: S105 - test fixture, not a credential
+
 
 class FinancialFixtures(TestCase):
     @classmethod
@@ -28,8 +34,9 @@ class FinancialFixtures(TestCase):
             code='PRJ-800', name='Ortigas Fitout', site=cls.site,
         )
         cls.pm = User.objects.create_user(
-            username='pm2', email='pm2@example.com', password='s3cret-pass-123',
-            role=UserRole.PROJECT_MANAGER,
+            email='pm2@example.com', password=FIXTURE_PASSWORD,
+            full_name='PM Two', company=Company.objects.first(),
+            roles=[Role.OWNER],
         )
 
 

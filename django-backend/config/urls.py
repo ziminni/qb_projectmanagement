@@ -28,8 +28,10 @@ urlpatterns = [
 
     # Domain module routes (v1 namespace for future versioning)
     path('api/v1/', include('apps.users.urls')),
+    path('api/v1/', include('apps.company.urls')),
     path('api/v1/', include('apps.projects.urls')),
     path('api/v1/', include('apps.site_inventory.urls')),
     path('api/v1/', include('apps.requisitions.urls')),
     path('api/v1/', include('apps.financials.urls')),
+    path('api/v1/', include('apps.master_data.urls')),
 ]

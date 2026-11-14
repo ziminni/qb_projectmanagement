@@ -1,5 +1,8 @@
 """Tests for material requisitions and the POS release-token contract."""
 
+# Pyright here runs without django-stubs, so model managers are untyped.
+# pyright: reportAttributeAccessIssue=false
+
 from datetime import timedelta
 from decimal import Decimal
 
@@ -7,8 +10,9 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from ..company.models import Company
 from ..projects.models import Project, ProjectStatus, Site
-from ..users.models import User, UserRole
+from ..users.models import Role, User
 from .models import (
     MaterialRequest,
     MaterialRequestItem,
@@ -16,6 +20,8 @@ from .models import (
     RequestStatus,
     TokenStatus,
 )
+
+FIXTURE_PASSWORD = 's3cret-pass-123'  # noqa: S105 - test fixture, not a credential
 
 
 class RequisitionFixtures(TestCase):
@@ -29,12 +35,14 @@ class RequisitionFixtures(TestCase):
             status=ProjectStatus.IN_PROGRESS,
         )
         cls.engineer = User.objects.create_user(
-            username='eng1', email='eng1@example.com', password='s3cret-pass-123',
-            role=UserRole.ENGINEER,
+            email='eng1@example.com', password=FIXTURE_PASSWORD,
+            full_name='Engineer One', company=Company.objects.first(),
+            roles=[Role.SITE_ENGINEER],
         )
         cls.pm = User.objects.create_user(
-            username='pm1', email='pm1@example.com', password='s3cret-pass-123',
-            role=UserRole.PROJECT_MANAGER,
+            email='pm1@example.com', password=FIXTURE_PASSWORD,
+            full_name='PM One', company=Company.objects.first(),
+            roles=[Role.OWNER],
         )
 
     def make_request(self, **overrides):

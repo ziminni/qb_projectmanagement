@@ -77,11 +77,13 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
 
     # BuildPro CPMS Modules (domain-driven)
+    'apps.company',
     'apps.users',
     'apps.projects',
     'apps.site_inventory',
     'apps.requisitions',
     'apps.financials',
+    'apps.master_data',
 ]
 
 MIDDLEWARE = [
@@ -173,8 +175,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 # =============================================
-# Auth — Custom User model (roles: Admin, Project Manager,
-# Site Supervisor, Engineer)
+# Auth — Custom User model (email login; roles admin, owner,
+# site_engineer, accountant, client via the user_roles junction)
 # =============================================
 AUTH_USER_MODEL = 'apps_users.User'
 
@@ -191,6 +193,11 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
+    # Caps the two endpoints an attacker would hammer (apps/users/throttles.py).
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '10/min',
+        'password_reset': '5/min',
+    },
 }
 
 

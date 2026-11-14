@@ -20,6 +20,12 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+# Pyright here runs without django-stubs, so model fields and FKs are untyped.
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false
+
+# Default display order of a phase inside its project.
+DEFAULT_SEQUENCE = 1
+
 
 class SiteStatus(models.TextChoices):
     PLANNED = 'PLANNED', 'Planned'
@@ -96,7 +102,7 @@ class Project(models.Model):
         null=True,
         blank=True,
         related_name='managed_projects',
-        limit_choices_to={'role': 'PROJECT_MANAGER'},
+        limit_choices_to={'user_roles__role': 'owner'},
         help_text='Assigned Project Manager.',
     )
     status = models.CharField(
@@ -198,7 +204,7 @@ class ProjectPhase(models.Model):
     )
     name = models.CharField(max_length=255)
     sequence = models.PositiveIntegerField(
-        default=1,
+        default=DEFAULT_SEQUENCE,
         help_text='Display / execution order within the project.',
     )
     status = models.CharField(
@@ -235,7 +241,8 @@ class ProjectPhase(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.project.code} #{self.sequence} {self.name}'
+        code = self.project.code  # pyright: ignore[reportAttributeAccessIssue]
+        return f'{code} #{self.sequence} {self.name}'
 
 
 class Milestone(models.Model):
@@ -268,7 +275,8 @@ class Milestone(models.Model):
         indexes = [models.Index(fields=['project', 'due_date'])]
 
     def __str__(self):
-        return f'{self.project.code} — {self.title}'
+        code = self.project.code  # pyright: ignore[reportAttributeAccessIssue]
+        return f'{code} — {self.title}'
 
     @property
     def is_complete(self):

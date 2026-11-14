@@ -1,39 +1,123 @@
-"""Users app views — authentication and staff management."""
+"""Users app views — authentication, staff management, audit and notifications.
 
-from django.contrib.auth import logout as django_logout
-from rest_framework import status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+Security rules enforced here (Phase 1.1 contract):
+    * no public registration — accounts are created by an admin only;
+    * `auth/me/` PATCH only accepts `full_name` and `phone`;
+    * login and password-reset-request are throttled;
+    * login never reveals whether an email exists;
+    * audit rows and notifications are written by the server, never posted.
+"""
+
+# Pyright here runs without django-stubs or DRF type stubs, so transaction.atomic()
+# and validated_data are inferred loosely; `manage.py check` and the tests are the gate.
+# pyright: reportGeneralTypeIssues=false, reportAttributeAccessIssue=false, reportArgumentType=false
+
+import hashlib
+import logging
+
+from django.db import transaction
+from django.http import Http404
+from rest_framework import generics, status, viewsets
+from rest_framework.decorators import (
+    action,
+    api_view,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User
-from .permissions import IsAdminOrReadOnly
-from .serializers import LoginSerializer, RegisterSerializer, UserSerializer, issue_tokens
+from . import capabilities, services
+from .models import AuditLog, Notification, Role, User, UserRole
+from .permissions import IsAdmin, IsAdminOrReadOnly, IsStaffOrSelfRead
+from .serializers import (
+    AuditLogSerializer,
+    MeUpdateSerializer,
+    NotificationSerializer,
+    UserRoleSerializer,
+    UserSerializer,
+    UserWriteSerializer,
+    user_payload,
+)
+from .throttles import LoginRateThrottle, PasswordResetRateThrottle
+
+WRONG_CREDENTIALS = 'Incorrect email or password.'
+DEACTIVATED = 'This account is deactivated. Contact your system admin.'
+NO_ROLE = 'This account has no role yet. Contact your system admin.'
+
+# A failed login for an unknown email has no user row to audit against
+# (AuditLog.user is non-null), so it goes to the security log as a hashed email.
+security_log = logging.getLogger('cpms.security')
+
+
+def issue_tokens(user):
+    """Return a SimpleJWT access/refresh pair for `user`."""
+    refresh = RefreshToken.for_user(user)
+    return {'access': str(refresh.access_token), 'refresh': str(refresh)}
+
+
+def _update_action(user, roles_before, active_before):
+    """Name the audit action after what the admin actually changed."""
+    if user.roles != roles_before:
+        return 'user_roles_changed'
+    if user.is_active != active_before:
+        return 'user_activated' if user.is_active else 'user_deactivated'
+    return 'user_updated'
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def register_view(request):
-    """Register a new firm user and return a JWT pair."""
-    serializer = RegisterSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    user = serializer.save()
-    return Response(
-        {'user': UserSerializer(user).data, **issue_tokens(user)},
-        status=status.HTTP_201_CREATED,
-    )
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
+@throttle_classes([LoginRateThrottle])
 def login_view(request):
-    """Exchange username/password for a JWT access + refresh pair."""
-    serializer = LoginSerializer(data=request.data, context={'request': request})
-    serializer.is_valid(raise_exception=True)
-    user = serializer.validated_data['user']
-    return Response({'user': UserSerializer(user).data, **issue_tokens(user)})
+    """Exchange email/password for a JWT pair plus the user's roles."""
+    email = str(request.data.get('email') or '').strip().lower()
+    password = request.data.get('password') or ''
+    if not email or not password:
+        return Response(
+            {'detail': 'An email and a password are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = User.objects.filter(email__iexact=email).first()
+    if user is None:
+        # Spend the same hashing time as a real check; no account enumeration.
+        User().set_password(password)
+        security_log.warning(
+            'login_failed unknown_email: email_sha256=%s ip=%s',
+            hashlib.sha256(email.encode()).hexdigest(),
+            request.META.get('REMOTE_ADDR'),
+        )
+        return Response({'detail': WRONG_CREDENTIALS}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not user.check_password(password):
+        with transaction.atomic():
+            services.record(user, 'login_failed', 'auth', user.pk,
+                            {'reason': 'incorrect_password'})
+        return Response({'detail': WRONG_CREDENTIALS}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Django's ModelBackend reports inactive accounts as bad credentials; the
+    # contract wants a distinct message, so activity is checked here.
+    if not user.is_active:
+        with transaction.atomic():
+            services.record(user, 'login_failed', 'auth', user.pk,
+                            {'reason': 'inactive'})
+        return Response({'detail': DEACTIVATED}, status=status.HTTP_403_FORBIDDEN)
+
+    roles = user.roles
+    if not roles:
+        with transaction.atomic():
+            services.record(user, 'login_failed', 'auth', user.pk,
+                            {'reason': 'no_role'})
+        return Response({'detail': NO_ROLE}, status=status.HTTP_403_FORBIDDEN)
+
+    with transaction.atomic():
+        services.record(user, 'login', 'auth', user.pk, {'roles': roles})
+    return Response({
+        **user_payload(user),
+        **issue_tokens(user),
+    })
 
 
 @api_view(['POST'])
@@ -51,35 +135,216 @@ def logout_view(request):
     except TokenError:
         # Already expired or blacklisted — the session is gone either way.
         pass
-    django_logout(request)
     return Response({'detail': 'Logged out.'})
 
 
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def me_view(request):
-    """Return (GET) or update (PATCH) the authenticated user's profile."""
+    """Return (GET) or update (PATCH) the authenticated user's own profile."""
     if request.method == 'PATCH':
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        writable = {'full_name', 'phone'}
+        rejected = sorted(set(request.data) - writable)
+        if rejected:
+            return Response(
+                {'detail': 'These fields cannot be changed: '
+                           f'{", ".join(rejected)}. Only full_name and phone are editable.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = MeUpdateSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-    return Response(UserSerializer(request.user).data)
+        with transaction.atomic():
+            serializer.save()
+            services.record(request.user, 'profile_updated', 'user', request.user.pk,
+                            {'fields': sorted(request.data)})
+    return Response(user_payload(request.user))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_view(request):
+    """Change your own password after proving you know the current one."""
+    current = str(request.data.get('current_password') or '')
+    new_password = str(request.data.get('new_password') or '')
+    if not current or not new_password:
+        return Response(
+            {'detail': 'Both the current and the new password are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not request.user.check_password(current):
+        return Response(
+            {'detail': 'Your current password is incorrect.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if new_password == current:
+        return Response(
+            {'detail': 'Choose a password different from the current one.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    problem = services.password_rules_error(new_password, request.user)
+    if problem:
+        return Response({'detail': problem}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password', 'updated_at'])
+        services.record(request.user, 'password_changed', 'user', request.user.pk)
+    return Response({'detail': 'Password changed.'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordResetRateThrottle])
+def password_reset_request_view(request):
+    """Ask an admin for a reset. Always 204: the answer never reveals an account."""
+    email = str(request.data.get('email') or '').strip().lower()
+    if email:
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if user is not None:
+            with transaction.atomic():
+                services.record(user, 'password_reset_requested', 'user', user.pk)
+                services.notify_admins(
+                    'password_reset_requested',
+                    f'{user.full_name} ({user.email}) asked for a password reset.',
+                    link='/user-management',
+                )
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    """Staff directory. Read for all authenticated users; writes for Admin."""
+    """Staff directory: reads for any staff role, writes and resets for Admin.
 
-    queryset = User.objects.all().order_by('username')
+    There is no DELETE: accounts are deactivated, never removed.
+    """
+
     serializer_class = UserSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsStaffOrSelfRead]
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        role = self.request.query_params.get('role')
+        queryset = User.objects.select_related('company').order_by('full_name', 'email')
+        # A client sees only their own row; staff filter by role/activity.
+        if capabilities.active_role(self.request) == Role.CLIENT:
+            return queryset.filter(pk=self.request.user.pk)
+
+        params = self.request.query_params
+        role = params.get('role')
         if role:
-            queryset = queryset.filter(role=role)
-        is_active = self.request.query_params.get('is_active')
+            queryset = queryset.filter(user_roles__role=role).distinct()
+        is_active = params.get('is_active')
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() in ('1', 'true', 'yes'))
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        serializer = UserWriteSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        password = services.generate_temporary_password()
+        with transaction.atomic():
+            user = serializer.save()
+            user.set_password(password)
+            user.save(update_fields=['password', 'updated_at'])
+            services.record(request.user, 'user_created', 'user', user.pk,
+                            {'roles': user.roles, 'is_active': user.is_active})
+        return Response(
+            {**user_payload(user), 'temporary_password': password},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        user = self.get_object()
+        roles_before = user.roles
+        active_before = user.is_active
+        serializer = UserWriteSerializer(
+            user, data=request.data, partial=partial, context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            user = serializer.save()
+            services.record(
+                request.user,
+                _update_action(user, roles_before, active_before),
+                'user',
+                user.pk,
+                {'roles': user.roles, 'is_active': user.is_active},
+            )
+        return Response(user_payload(user))
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin],
+            url_path='reset-password')
+    def reset_password(self, request, pk=None):
+        """Admin action: replace the password with a generated temporary one."""
+        user = self.get_object()
+        password = services.generate_temporary_password()
+        with transaction.atomic():
+            user.set_password(password)
+            user.save(update_fields=['password', 'updated_at'])
+            services.record(request.user, 'password_reset', 'user', user.pk)
+        return Response({'temporary_password': password})
+
+
+class UserRoleListView(generics.ListAPIView):
+    """Every role row, optionally `?user=<id>` (staff roles only)."""
+
+    serializer_class = UserRoleSerializer
+    permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        queryset = UserRole.objects.order_by('user_id', 'role')
+        user_id = self.request.query_params.get('user')
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        return queryset
+
+
+class AuditLogListView(generics.ListAPIView):
+    """Admin-only audit trail, newest first, `?entity=&entity_id=` filterable."""
+
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAdmin]
+
+    def get_queryset(self):
+        queryset = AuditLog.objects.order_by('-created_at', '-id')
+        entity = self.request.query_params.get('entity')
+        if entity:
+            queryset = queryset.filter(entity=entity)
+        entity_id = self.request.query_params.get('entity_id')
+        if entity_id:
+            queryset = queryset.filter(entity_id=entity_id)
+        return queryset
+
+
+class NotificationListView(generics.ListAPIView):
+    """The caller's own notifications, newest first."""
+
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by(
+            '-created_at', '-id',
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def notification_read_view(request, pk):
+    """Mark one of your own notifications as read (someone else's is a 404)."""
+    notification = Notification.objects.filter(pk=pk, user=request.user).first()
+    if notification is None:
+        raise Http404
+    if not notification.is_read:
+        notification.is_read = True
+        notification.save(update_fields=['is_read', 'updated_at'])
+    return Response(NotificationSerializer(notification).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def notifications_read_all_view(request):
+    """Mark every notification of the caller as read."""
+    updated = Notification.objects.filter(user=request.user, is_read=False).update(
+        is_read=True,
+    )
+    return Response({'detail': f'{updated} notification(s) marked as read.'})

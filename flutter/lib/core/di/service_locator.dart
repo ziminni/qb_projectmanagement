@@ -2,6 +2,12 @@ import 'package:get_it/get_it.dart';
 
 import '../../data/repositories/audit_log_repository.dart';
 import '../../data/repositories/auth_repository.dart';
+import '../../data/repositories/http_audit_log_repository.dart';
+import '../../data/repositories/http_auth_repository.dart';
+import '../../data/repositories/http_company_repository.dart';
+import '../../data/repositories/http_master_data_repository.dart';
+import '../../data/repositories/http_notification_repository.dart';
+import '../../data/repositories/http_user_repository.dart';
 import '../../data/repositories/mock_auth_repository.dart';
 import '../../data/repositories/billing_repository.dart';
 import '../../data/repositories/client_repository.dart';
@@ -35,24 +41,23 @@ import '../../data/services/approval_sources.dart';
 import '../../data/services/notification_service.dart';
 import '../../data/services/project_cost_service.dart';
 import '../../data/services/session_service.dart';
+import '../network/api_client.dart';
+import '../network/api_config.dart';
+import '../network/token_store.dart';
 
 final getIt = GetIt.instance;
 
-/// Registers services and repositories. Mock implementations are used until
-/// the API client in `core/network` exists.
+/// Registers services and repositories. Mocks by default so tests and the
+/// offline demo keep working; run with `--dart-define=USE_API=true` to talk to
+/// the backend (task 5.2 makes that the default).
 void setupServiceLocator() {
   getIt
-    ..registerLazySingleton<NotificationRepository>(
-      MockNotificationRepository.new,
-    )
     ..registerLazySingleton<NotificationService>(
       () => NotificationService(notifications: getIt()),
     )
-    ..registerLazySingleton<SessionService>(SessionService.new)
-    ..registerLazySingleton<UserRepository>(MockUserRepository.new)
-    ..registerLazySingleton<AuthRepository>(
-      () => MockAuthRepository(users: getIt<UserRepository>()),
-    )
+    ..registerLazySingleton<SessionService>(SessionService.new);
+  _registerAccountRepositories();
+  getIt
     ..registerLazySingleton<ProjectRepository>(() {
       final repo = MockProjectRepository(
         users: getIt<UserRepository>(),
@@ -62,13 +67,20 @@ void setupServiceLocator() {
       getIt<NotificationService>().projects = repo;
       return repo;
     })
-    ..registerLazySingleton<CompanyRepository>(MockCompanyRepository.new)
-    ..registerLazySingleton<MasterDataRepository>(MockMasterDataRepository.new)
+    ..registerLazySingleton<CompanyRepository>(
+      () => useApi
+          ? HttpCompanyRepository(getIt<ApiClient>())
+          : MockCompanyRepository(),
+    )
+    ..registerLazySingleton<MasterDataRepository>(
+      () => useApi
+          ? HttpMasterDataRepository(getIt<ApiClient>())
+          : MockMasterDataRepository(),
+    )
     ..registerLazySingleton<StoreCatalogRepository>(
       MockStoreCatalogRepository.new,
     )
     ..registerLazySingleton<ClientRepository>(MockClientRepository.new)
-    ..registerLazySingleton<AuditLogRepository>(MockAuditLogRepository.new)
     ..registerLazySingleton<ScheduleRepository>(
       () => MockScheduleRepository(
         projects: getIt<ProjectRepository>(),
@@ -132,4 +144,34 @@ void setupServiceLocator() {
         notifications: getIt(),
       ),
     );
+}
+
+/// The four repositories phase 1 swaps for HTTP implementations. Everything
+/// else stays mocked until its own phase ships endpoints.
+void _registerAccountRepositories() {
+  if (useApi) {
+    getIt
+      ..registerLazySingleton<TokenStore>(SecureTokenStore.new)
+      ..registerLazySingleton<ApiClient>(
+        () => ApiClient(tokens: getIt(), session: getIt()),
+      )
+      ..registerLazySingleton<UserRepository>(() => HttpUserRepository(getIt()))
+      ..registerLazySingleton<AuthRepository>(() => HttpAuthRepository(getIt()))
+      ..registerLazySingleton<NotificationRepository>(
+        () => HttpNotificationRepository(getIt()),
+      )
+      ..registerLazySingleton<AuditLogRepository>(
+        () => HttpAuditLogRepository(getIt()),
+      );
+    return;
+  }
+  getIt
+    ..registerLazySingleton<NotificationRepository>(
+      MockNotificationRepository.new,
+    )
+    ..registerLazySingleton<UserRepository>(MockUserRepository.new)
+    ..registerLazySingleton<AuthRepository>(
+      () => MockAuthRepository(users: getIt<UserRepository>()),
+    )
+    ..registerLazySingleton<AuditLogRepository>(MockAuditLogRepository.new);
 }

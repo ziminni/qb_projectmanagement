@@ -6,7 +6,7 @@
 ## Locked Rules
 
 1. **WBS, Gantt, and Progress (`Category` + `Todo`):**
-   - Replace the legacy backend `ProjectPhase` / `Milestone` mismatch with the frontend's `Category` (`project_id`, `name`, `budget`, `sort_order`) and `Todo` (`category_id`, `title`, `start_date`, `end_date`, `is_done`, `done_by`, `done_at`, `done_report_id`, `verified_by`, `verified_at`, `verification_note`).
+   - Replace the legacy backend `ProjectPhase` / `Milestone` mismatch with the frontend's `Category` (`project_id`, `name`, `budget`, `sort_order`) and `Todo` (`category_id`, `title`, `start_date`, `end_date`, `is_done`, `done_by`, `done_at`, `daily_report_id`, `verified_by`, `verified_at`) — keys per Flutter `todo.dart` (corrected by [Phase 2 contract rulings](./06-phase-2-contract-rulings.md)).
    - Progress is computed deterministically via the `computeProjectProgress` rules:
      - Only Owner-verified to-dos (`verified_at != null`) count toward `categoryProgress = verifiedTodos / totalTodos`.
      - When every category has a positive `budget`, `weight = category.budget / totalBudget` (budget-weighted progress, matching the manuscript's weighted phase requirement); otherwise equal weights (`1 / N`).

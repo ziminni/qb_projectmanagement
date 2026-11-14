@@ -1,114 +1,159 @@
-"""User serializers."""
+"""User, role, audit and notification serializers.
 
-from django.contrib.auth.password_validation import validate_password
+Shapes mirror the Flutter models in `flutter/lib/data/models/` exactly; the
+client is never reshaped to fit the backend.
+"""
+
 from rest_framework import serializers
-from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User, UserRole
+from .models import AuditLog, Notification, Role, User, UserRole
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """Read/update representation of a CPMS user."""
+    """Read representation of a CPMS user (never password/staff flags)."""
 
-    full_name = serializers.CharField(read_only=True)
-    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    company_id = serializers.IntegerField(read_only=True)
+    created_at = serializers.DateTimeField(source='date_joined', read_only=True)
 
     class Meta:
         model = User
         fields = (
             'id',
-            'username',
-            'email',
-            'first_name',
-            'last_name',
+            'company_id',
             'full_name',
-            'role',
-            'role_display',
+            'email',
             'phone',
-            'employee_no',
             'is_active',
-            'is_staff',
-            'date_joined',
-            'last_login',
+            'created_at',
+            'updated_at',
         )
-        read_only_fields = ('id', 'date_joined', 'last_login')
+        read_only_fields = fields
 
 
-class RegisterSerializer(serializers.ModelSerializer):
-    """Self-service registration for firm personnel."""
+class UserRoleSerializer(serializers.ModelSerializer):
+    """One held role row (`user_role.dart`)."""
 
-    password = serializers.CharField(write_only=True, validators=[validate_password])
-    password_confirm = serializers.CharField(write_only=True)
+    user_id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = UserRole
+        fields = ('id', 'user_id', 'role', 'created_at', 'updated_at')
+        read_only_fields = fields
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    """Audit row (`audit_log.dart`). Written by the server only."""
+
+    user_id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = AuditLog
+        fields = ('id', 'user_id', 'action', 'entity', 'entity_id', 'details',
+                  'created_at', 'updated_at')
+        read_only_fields = fields
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """Notification row (`app_notification.dart`). Created by the server only."""
+
+    user_id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Notification
+        fields = ('id', 'user_id', 'type', 'message', 'link', 'is_read',
+                  'created_at', 'updated_at')
+        read_only_fields = fields
+
+
+class MeUpdateSerializer(serializers.ModelSerializer):
+    """The only two fields a user may change on their own profile."""
+
+    full_name = serializers.CharField(max_length=200)
 
     class Meta:
         model = User
-        fields = (
-            'username',
-            'email',
-            'password',
-            'password_confirm',
-            'first_name',
-            'last_name',
-            'role',
-            'phone',
-            'employee_no',
-        )
+        fields = ('full_name', 'phone')
 
-    def validate_username(self, value):
-        if User.objects.filter(username__iexact=value).exists():
-            raise serializers.ValidationError('A user with that username already exists.')
-        return value
+
+class UserWriteSerializer(serializers.ModelSerializer):
+    """Admin create/update of a user; `roles` replaces the whole role set."""
+
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=Role.choices),
+        allow_empty=False,
+        write_only=True,
+    )
+
+    class Meta:
+        model = User
+        fields = ('full_name', 'email', 'phone', 'is_active', 'roles')
 
     def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError('A user with that email already exists.')
-        return value
+        email = value.strip().lower()
+        clash = User.objects.filter(email__iexact=email)
+        if self.instance is not None:
+            clash = clash.exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise serializers.ValidationError('Another user already has this email.')
+        return email
+
+    def validate_full_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Enter the user's full name.")
+        return value.strip()
 
     def validate(self, attrs):
-        if attrs['password'] != attrs.pop('password_confirm'):
-            raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+        self._check_lock_out_guards(attrs)
         return attrs
+
+    def _check_lock_out_guards(self, attrs):
+        """Never let the acting admin, or the last admin, lock the firm out."""
+        user = self.instance
+        if user is None or not user.is_active or not user.is_admin:
+            return
+
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None)
+        new_roles = attrs.get('roles')
+        loses_admin = new_roles is not None and Role.ADMIN not in new_roles
+        deactivated = attrs.get('is_active') is False
+        if not loses_admin and not deactivated:
+            return
+
+        if actor is not None and actor.pk == user.pk:
+            detail = ('You cannot remove your own admin role.'
+                      if loses_admin else 'You cannot deactivate your own account.')
+            raise serializers.ValidationError({'detail': detail})
+
+        other_admins = User.objects.filter(
+            is_active=True, user_roles__role=Role.ADMIN,
+        ).exclude(pk=user.pk).distinct()
+        if not other_admins.exists():
+            raise serializers.ValidationError({
+                'detail': 'The last active admin cannot lose the admin role '
+                          'or be deactivated.',
+            })
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        roles = validated_data.pop('roles')
+        user = User(**validated_data)
+        user.company = self.context['request'].user.company
+        # The view sets the generated temporary password straight after.
+        user.set_unusable_password()
+        user.save()
+        user.set_roles(roles)
+        return user
+
+    def update(self, instance, validated_data):
+        roles = validated_data.pop('roles', None)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+        if roles is not None:
+            instance.set_roles(roles)
+        return instance
 
 
-class LoginSerializer(serializers.Serializer):
-    """Username/password credentials exchanged for a JWT pair."""
-
-    username = serializers.CharField()
-    password = serializers.CharField(write_only=True)
-
-    def validate(self, attrs):
-        from django.contrib.auth import authenticate
-
-        user = authenticate(
-            request=self.context.get('request'),
-            username=attrs['username'],
-            password=attrs['password'],
-        )
-        if user is None:
-            raise serializers.ValidationError('Invalid username or password.')
-        if not user.is_active:
-            raise serializers.ValidationError('This account is inactive.')
-        attrs['user'] = user
-        return attrs
-
-
-def issue_tokens(user):
-    """Return a SimpleJWT access/refresh pair for `user`."""
-    refresh = RefreshToken.for_user(user)
-    return {
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
-    }
-
-
-# Re-exported for convenience in views/tests.
-__all__ = [
-    'UserRole',
-    'UserSerializer',
-    'RegisterSerializer',
-    'LoginSerializer',
-    'issue_tokens',
-]
+def user_payload(user):
+    """`{user, roles}` — the shape every auth/user endpoint returns."""
+    return {'user': UserSerializer(user).data, 'roles': user.roles}
