@@ -43,6 +43,25 @@ ROLE_LABELS = {
     RoleOnProject.CLIENT: 'Client',
 }
 
+# ---- Client records (task 5.3) -------------------------------------------------
+# Reads stay staff-only (`clients/` feeds the project form); the write fence.
+CLIENT_WRITE = 'Project Manager or Admin role required to change this.'
+CLIENT_NAME_TAKEN = 'A client with this name already exists.'
+CLIENT_NAME_REQUIRED = 'Enter the client name.'
+CLIENT_LOGIN_TAKEN = 'That client already has a portal login linked.'
+CLIENT_USER_REQUIRED = 'Choose the user to link.'
+CLIENT_USER_UNKNOWN = 'That user does not exist.'
+# A login is never attached by the plain create/update body.
+CLIENT_LINK_SEPARATE = 'Link a portal login with the link route.'
+CLIENT_EMAIL = 'Enter a valid email address.'
+CLIENT_FIELD_TOO_LONG = 'Use at most {limit} characters for the {label}.'
+# `Client` field -> (label, max length) for the optional text columns.
+CLIENT_TEXT_FIELDS = {
+    'contact_person': ('contact person', 255),
+    'phone': ('phone', 32),
+    'address': ('address', 1000),
+}
+
 # The owner's manual moves (`services/project_rules.dart:39-51`).
 NEXT_STATUSES = {
     ProjectStatus.ACCEPTED: [ProjectStatus.ONGOING],

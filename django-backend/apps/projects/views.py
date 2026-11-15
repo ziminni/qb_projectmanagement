@@ -32,7 +32,7 @@ from .models import (
     Site,
     Todo,
 )
-from .rules import NotAllowed, RuleRefused
+from .rules import CLIENT_WRITE, NotAllowed, RuleRefused
 from .serializers import (
     CategorySerializer,
     ClientSerializer,
@@ -355,12 +355,21 @@ class TodoViewSet(ScopedViewSet):
 
 
 class ClientViewSet(ScopedViewSet):
-    """`clients/` — read-only client records for the project form (staff only)."""
+    """`clients/` — client records for the project form and the client-link.
+
+    Reads stay staff-only (the project form picks `client_id`). Create and edit
+    are the Admin/Owner active role's, per task 5.3; the Accountant keeps read
+    access. There is no delete route: `Project.client` protects the row and a
+    login link must be removable without destroying the record.
+    """
 
     serializer_class = ClientSerializer
 
     def get_queryset(self):
         return Client.objects.select_related('user')
+
+    def _require_writer(self):
+        scoping.require_client_writer(self.role(), CLIENT_WRITE)
 
     def list(self, request):
         scoping.require_staff(self.role(), 'Client records are staff-only.')
@@ -369,6 +378,36 @@ class ClientViewSet(ScopedViewSet):
     def retrieve(self, request, pk=None):
         scoping.require_staff(self.role(), 'Client records are staff-only.')
         return Response(ClientSerializer(self.get_object()).data)
+
+    def create(self, request):
+        self._require_writer()
+        client = services.create_client(request.user, request.data)
+        return Response(
+            ClientSerializer(client).data, status=status.HTTP_201_CREATED,
+        )
+
+    def partial_update(self, request, pk=None):
+        self._require_writer()
+        client = services.update_client(request.user, self.get_object(), request.data)
+        return Response(ClientSerializer(client).data)
+
+    def update(self, request, pk=None):
+        return self.partial_update(request, pk)
+
+    @action(detail=True, methods=['post'], url_path='link-user')
+    def link_user(self, request, pk=None):
+        """Attach a client-role portal login to this client (one per client)."""
+        self._require_writer()
+        client = services.link_client_user(
+            request.user, self.get_object(), request.data.get('user_id'),
+        )
+        return Response(ClientSerializer(client).data)
+
+    @action(detail=True, methods=['post'], url_path='unlink-user')
+    def unlink_user(self, request, pk=None):
+        self._require_writer()
+        client = services.unlink_client_user(request.user, self.get_object())
+        return Response(ClientSerializer(client).data)
 
 
 class SiteViewSet(viewsets.ModelViewSet):

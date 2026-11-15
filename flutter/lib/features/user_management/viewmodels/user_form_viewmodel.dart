@@ -166,13 +166,6 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     if (isSelf && !isActive) {
       throw const BusinessRuleException('You cannot deactivate yourself.');
     }
-    if (roles.contains(AppRole.client) && !_clients.canLinkUsers) {
-      // Refuse before saving, not after: the server has no client-link route.
-      throw const BusinessRuleException(
-        'Linking a portal login to a client record is not available on the '
-        'server yet.',
-      );
-    }
     final saved = await _users.saveUser(
       User(
         id: userId ?? 0,
@@ -186,12 +179,12 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
       roles.toList(),
     );
     await _projects.setUserAssignments(saved.id, assignments);
-    if (_clients.canLinkUsers) {
-      await _clients.linkUser(
-        saved.id,
-        roles.contains(AppRole.client) ? clientId : null,
-      );
-    }
+    // The server refuses a client that already has a login, or a user without
+    // the client role; that message reaches the admin from here.
+    await _clients.linkUser(
+      saved.id,
+      roles.contains(AppRole.client) ? clientId : null,
+    );
     if (isSelf) _session.updateUser(saved);
     final wasActive = _user?.isActive;
     await _audit?.record(

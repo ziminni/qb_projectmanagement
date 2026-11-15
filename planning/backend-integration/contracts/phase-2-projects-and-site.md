@@ -293,3 +293,12 @@ All earlier questions are closed by [decision 06](../decisions/06-phase-2-contra
 | Q11 report-date clock | #11 — server `timezone.localdate()` in `Asia/Manila` |
 
 **Q12 (new, open — owner's call):** should unassigning refuse to remove the last accepted `owner` (and, once a project is `accepted`, the last accepted `site_engineer`)? 2.1 ships without the guard (R7). Default: allow — the owner can re-assign and nothing else breaks.
+
+## Addendum — client writes (5.3, delegated revisable defaults)
+
+- `POST /api/v1/clients/`, `PATCH /api/v1/clients/{id}/`, `POST /api/v1/clients/{id}/link-user/` and `.../unlink-user/`. No DELETE (405). Reads stay staff-only, unchanged.
+- Writers: active owner or admin only (`scoping.require_client_writer`); accountant and others read-only.
+- A linked user must hold the client role; one user per client; double link refused with a clean 400 using the mock's texts.
+- Audit details carry the client name (and a user id on link); no contact details.
+- Known limit: `Client.name` uniqueness is an application-level case-insensitive check, not a DB constraint, so a true simultaneous duplicate create can slip through. Add a constraint once legacy contract-folded names are reconciled.
+- The user form saves the user first and links afterwards; a refused link leaves the saved user and shows the error.

@@ -89,33 +89,119 @@ void main() {
       expect(await repo.getClientForUser(404), isNull);
     });
 
-    test('has no write route: saving and linking refuse clearly', () async {
-      final api = FakeApi((options) => json(clientRow()));
+    test('can link a portal login (5.3 writes the route)', () {
+      final repo = HttpClientRepository(
+        testClient(api: FakeApi((o) => json(clientRow())), tokens: InMemoryTokenStore()),
+      );
+
+      expect(repo.canLinkUsers, isTrue);
+    });
+
+    test('creates a client and keeps the server id', () async {
+      final api = FakeApi(
+        (options) => json(clientRow(id: 7, name: 'New Client'), status: 201),
+      );
+      final repo = HttpClientRepository(
+        testClient(api: api, tokens: InMemoryTokenStore()),
+      );
+
+      final saved = await repo.saveClient(
+        const Client(
+          id: 0,
+          name: '  New Client  ',
+          contactPerson: ' Rosa Lim ',
+          userId: 9,
+        ),
+      );
+
+      expect(api.last('clients/').method, 'POST');
+      final body = sentBody(api.last('clients/'));
+      expect(body, {
+        'name': 'New Client',
+        'contact_person': 'Rosa Lim',
+        'email': '',
+        'phone': '',
+        'address': '',
+      });
+      // The login is linked by its own route, never by create/update.
+      expect(body.containsKey('user_id'), isFalse);
+      expect(saved.id, 7);
+    });
+
+    test('updates an existing client by id', () async {
+      final api = FakeApi((options) => json(clientRow(id: 4)));
+      final repo = HttpClientRepository(
+        testClient(api: api, tokens: InMemoryTokenStore()),
+      );
+
+      final saved = await repo.saveClient(
+        const Client(id: 4, name: 'San Miguel Foods', email: 'ap@example.ph'),
+      );
+
+      expect(api.last('clients/4/').method, 'PATCH');
+      expect(sentBody(api.last('clients/4/'))['email'], 'ap@example.ph');
+      expect(saved.id, 4);
+    });
+
+    test('a server refusal reaches the caller', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'A client with this name already exists.',
+        }, status: 400),
+      );
       final repo = HttpClientRepository(
         testClient(api: api, tokens: InMemoryTokenStore()),
       );
 
       expect(
-        repo.saveClient(const Client(id: 0, name: 'New client')),
+        repo.saveClient(const Client(id: 0, name: 'San Miguel Foods')),
         throwsA(
           isA<BusinessRuleException>().having(
             (e) => e.message,
             'message',
-            contains('Client records are read-only'),
+            'A client with this name already exists.',
           ),
         ),
       );
-      expect(
-        repo.linkUser(9, 1),
-        throwsA(
-          isA<BusinessRuleException>().having(
-            (e) => e.message,
-            'message',
-            contains('Client records are read-only'),
-          ),
-        ),
+    });
+
+    test('links a portal login to the chosen client', () async {
+      final api = FakeApi((options) => json(clientRow(id: 4, userId: 9)));
+      final repo = HttpClientRepository(
+        testClient(api: api, tokens: InMemoryTokenStore()),
       );
-      expect(api.requests, isEmpty);
+
+      await repo.linkUser(9, 4);
+
+      expect(api.paths, ['clients/4/link-user/']);
+      expect(sentBody(api.last('clients/4/link-user/')), {'user_id': 9});
+    });
+
+    test('unlinks the login from whichever client holds it', () async {
+      final api = FakeApi(
+        (options) => options.method == 'POST'
+            ? json(clientRow(id: 4, userId: null))
+            : json([clientRow(id: 4, userId: 9)]),
+      );
+      final repo = HttpClientRepository(
+        testClient(api: api, tokens: InMemoryTokenStore()),
+      );
+
+      await repo.linkUser(9, null);
+
+      expect(api.paths, ['clients/', 'clients/4/unlink-user/']);
+      expect(api.last('clients/4/unlink-user/').method, 'POST');
+    });
+
+    test('unlinking an unlinked login writes nothing', () async {
+      final api = FakeApi((options) => json([clientRow(id: 4)]));
+      final repo = HttpClientRepository(
+        testClient(api: api, tokens: InMemoryTokenStore()),
+      );
+
+      await repo.linkUser(9, null);
+
+      expect(api.paths, ['clients/']);
     });
   });
 }

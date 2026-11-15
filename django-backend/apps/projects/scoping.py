@@ -14,6 +14,7 @@ serialized, so no Flutter enum ever has to parse it.
 from rest_framework.exceptions import NotFound
 
 from ..users import capabilities
+from ..users.models import Role
 from .models import Project, ProjectStatus, RequestResponse, RoleOnProject
 from .rules import NotAllowed
 
@@ -68,4 +69,15 @@ def require_owner_or_site_engineer(project, user, active_role, message):
 def require_staff(active_role, message):
     """403 for the client portal role (staff-only reads such as the team list)."""
     if active_role not in capabilities.STAFF_ROLES:
+        raise NotAllowed(message)
+
+
+def require_client_writer(active_role, message):
+    """403 unless the active role may change a client record.
+
+    Reads stay staff-wide (the project form picks `client_id`), but only the
+    Owner/Project Manager and Admin roles may create, edit or link a client.
+    The Accountant keeps read access only.
+    """
+    if active_role not in (Role.ADMIN, Role.OWNER):
         raise NotAllowed(message)

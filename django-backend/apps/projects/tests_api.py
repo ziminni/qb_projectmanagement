@@ -1309,6 +1309,344 @@ class ClientListTests(ProjectApiCase):
         self.assertEqual(portal.status_code, 403, portal.data)
 
 
+class ClientWriteTests(ProjectApiCase):
+    """`clients/` writes (task 5.3): owner/admin only, one login per client.
+
+    Closes the Phase 2.3 limit where `ClientRepository` could not leave mock
+    mode because the route only read. A client role may still only read its
+    own portal data; contact details stay staff-only (no new rule invented).
+    """
+
+    def payload(self, **overrides):
+        body = {
+            'name': 'Batangas Agri Co.',
+            'contact_person': 'Rosa Lim',
+            'email': 'rosa@example.ph',
+            'phone': '+63 917 000 0000',
+            'address': 'Lipa City',
+        }
+        body.update(overrides)
+        return body
+
+    def client_row_keys(self):
+        return {
+            'id', 'name', 'contact_person', 'email', 'phone', 'address',
+            'user_id', 'created_at', 'updated_at',
+        }
+
+    # --- create ---
+
+    def test_owner_and_admin_create_a_client(self):
+        for user, role in ((self.owner, Role.OWNER), (self.admin, Role.ADMIN)):
+            self.act_as(user, role)
+            response = self.client.post(
+                '/api/v1/clients/',
+                self.payload(name=f'{role.title()} Client'),
+                format='json',
+            )
+
+            self.assertEqual(response.status_code, 201, response.data)
+            self.assertEqual(set(response.data), self.client_row_keys())
+            self.assertEqual(response.data['name'], f'{role.title()} Client')
+            self.assertIsNone(response.data['user_id'])
+
+        self.assertEqual(Client.objects.filter(name__startswith='Owner Client').count(), 1)
+        actions = set(AuditLog.objects.filter(entity='client').values_list('action', flat=True))
+        self.assertEqual(actions, {'client_created'})
+
+    def test_create_audit_carries_the_name_only(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        self.client.post('/api/v1/clients/', self.payload(), format='json')
+
+        row = AuditLog.objects.get(action='client_created')
+        self.assertEqual(row.entity, 'client')
+        self.assertEqual(row.details, {'name': 'Batangas Agri Co.'})
+
+    def test_read_only_roles_cannot_write_clients(self):
+        for user, role in (
+            (self.accountant, Role.ACCOUNTANT),
+            (self.engineer, Role.SITE_ENGINEER),
+            (self.client_user, Role.CLIENT),
+        ):
+            self.act_as(user, role)
+            created = self.client.post('/api/v1/clients/', self.payload(), format='json')
+            renamed = self.client.patch(
+                f'/api/v1/clients/{self.client_record.pk}/',
+                {'name': 'Hijacked'},
+                format='json',
+            )
+            linked = self.client.post(
+                f'/api/v1/clients/{self.client_record.pk}/link-user/',
+                {'user_id': self.client_user.pk},
+                format='json',
+            )
+
+            for response in (created, renamed, linked):
+                self.assertEqual(response.status_code, 403, response.data)
+                self.assertEqual(
+                    response.data['detail'],
+                    'Project Manager or Admin role required to change this.',
+                )
+        self.assertFalse(Client.objects.filter(name='Batangas Agri Co.').exists())
+
+    def test_create_refuses_blank_and_duplicate_names(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        blank = self.client.post('/api/v1/clients/', self.payload(name='   '), format='json')
+        duplicate = self.client.post(
+            '/api/v1/clients/', self.payload(name='acme holdings'), format='json',
+        )
+
+        self.assertEqual(blank.status_code, 400, blank.data)
+        self.assertEqual(blank.data['detail'], 'Enter the client name.')
+        self.assertEqual(duplicate.status_code, 400, duplicate.data)
+        self.assertEqual(
+            duplicate.data['detail'], 'A client with this name already exists.',
+        )
+
+    def test_create_refuses_a_bad_email(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            '/api/v1/clients/', self.payload(email='not-an-email'), format='json',
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data['detail'], 'Enter a valid email address.')
+
+    def test_create_ignores_the_user_link_and_ids(self):
+        """A login is linked by its own route; `id`/timestamps stay server-owned."""
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            '/api/v1/clients/',
+            self.payload(id=999, created_at='2020-01-01T00:00:00Z'),
+            format='json',
+        )
+        linked = self.client.post(
+            '/api/v1/clients/',
+            self.payload(name='Other Co.', user_id=self.client_user.pk),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertNotEqual(response.data['id'], 999)
+        self.assertEqual(linked.status_code, 400, linked.data)
+        self.assertEqual(
+            linked.data['detail'], 'Link a portal login with the link route.',
+        )
+
+    # --- update ---
+
+    def test_update_renames_and_keeps_the_link(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.patch(
+            f'/api/v1/clients/{self.client_record.pk}/',
+            {'contact_person': 'Jo Cruz', 'email': ''},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['contact_person'], 'Jo Cruz')
+        self.assertEqual(response.data['email'], '')
+        self.assertEqual(response.data['user_id'], self.client_user.pk)
+        self.assertTrue(
+            AuditLog.objects.filter(action='client_updated', entity='client').exists()
+        )
+        self.assertEqual(
+            AuditLog.objects.get(action='client_updated').details,
+            {'name': 'Acme Holdings'},
+        )
+
+    def test_update_refuses_a_name_another_client_holds(self):
+        Client.objects.create(name='Second Client')
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.patch(
+            f'/api/v1/clients/{self.client_record.pk}/',
+            {'name': 'second client'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(
+            response.data['detail'], 'A client with this name already exists.',
+        )
+
+    def test_update_does_not_move_the_link(self):
+        other = make_user('link2@example.com', [Role.CLIENT])
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.patch(
+            f'/api/v1/clients/{self.client_record.pk}/',
+            {'user_id': other.pk},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(
+            response.data['detail'], 'Link a portal login with the link route.',
+        )
+        self.client_record.refresh_from_db()
+        self.assertEqual(self.client_record.user_id, self.client_user.pk)
+
+    # --- link / unlink ---
+
+    def test_link_attaches_a_client_role_login(self):
+        email_only = make_user('portal@example.com', [Role.CLIENT])
+        record = Client.objects.create(name='No Login Yet')
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            f'/api/v1/clients/{record.pk}/link-user/',
+            {'user_id': email_only.pk},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['user_id'], email_only.pk)
+        audit = AuditLog.objects.get(action='client_user_linked')
+        self.assertEqual(
+            audit.details, {'name': 'No Login Yet', 'user': email_only.pk},
+        )
+
+    def test_link_refuses_a_user_without_the_client_role(self):
+        record = Client.objects.create(name='No Login Yet')
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            f'/api/v1/clients/{record.pk}/link-user/',
+            {'user_id': self.engineer.pk},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(
+            response.data['detail'], 'The user does not hold the Client role.',
+        )
+        record.refresh_from_db()
+        self.assertIsNone(record.user_id)
+
+    def test_link_refuses_a_client_that_already_has_a_login(self):
+        second = make_user('portal@example.com', [Role.CLIENT])
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            f'/api/v1/clients/{self.client_record.pk}/link-user/',
+            {'user_id': second.pk},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(
+            response.data['detail'], 'That client already has a portal login linked.',
+        )
+        self.client_record.refresh_from_db()
+        self.assertEqual(self.client_record.user_id, self.client_user.pk)
+
+    def test_link_moves_a_login_off_its_previous_client(self):
+        record = Client.objects.create(name='New Home')
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            f'/api/v1/clients/{record.pk}/link-user/',
+            {'user_id': self.client_user.pk},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.client_record.refresh_from_db()
+        record.refresh_from_db()
+        self.assertIsNone(self.client_record.user_id)
+        self.assertEqual(record.user_id, self.client_user.pk)
+
+    def test_link_refuses_a_missing_or_unknown_user(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        missing = self.client.post(
+            f'/api/v1/clients/{self.client_record.pk}/link-user/', {}, format='json',
+        )
+        unknown = self.client.post(
+            f'/api/v1/clients/{self.client_record.pk}/link-user/',
+            {'user_id': 12345},
+            format='json',
+        )
+
+        self.assertEqual(missing.status_code, 400, missing.data)
+        self.assertEqual(missing.data['detail'], 'Choose the user to link.')
+        self.assertEqual(unknown.status_code, 400, unknown.data)
+        self.assertEqual(unknown.data['detail'], 'That user does not exist.')
+
+    def test_unlink_clears_the_login(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            f'/api/v1/clients/{self.client_record.pk}/unlink-user/', format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIsNone(response.data['user_id'])
+        self.client_record.refresh_from_db()
+        self.assertIsNone(self.client_record.user_id)
+        self.assertEqual(
+            AuditLog.objects.get(action='client_user_unlinked').details,
+            {'name': 'Acme Holdings', 'user': self.client_user.pk},
+        )
+
+    def test_unlink_is_a_no_op_for_a_client_without_a_login(self):
+        record = Client.objects.create(name='No Login Yet')
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.post(
+            f'/api/v1/clients/{record.pk}/unlink-user/', format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(
+            AuditLog.objects.filter(action='client_user_unlinked').exists()
+        )
+
+    def test_link_race_on_the_unique_login_becomes_a_refusal(self):
+        """Two requests racing past the pre-check hit the `OneToOne` index."""
+        record = Client.objects.create(name='No Login Yet')
+        self.act_as(self.owner, Role.OWNER)
+
+        with mock.patch.object(
+            Client, 'save', side_effect=IntegrityError('client_record_id_key'),
+        ):
+            response = self.client.post(
+                f'/api/v1/clients/{record.pk}/link-user/',
+                {'user_id': self.client_user.pk},
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(
+            response.data['detail'], 'That client already has a portal login linked.',
+        )
+
+    # --- no hard delete, scope ---
+
+    def test_clients_cannot_be_deleted(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.delete(f'/api/v1/clients/{self.client_record.pk}/')
+
+        self.assertEqual(response.status_code, 405, response.data)
+        self.assertTrue(Client.objects.filter(pk=self.client_record.pk).exists())
+
+    def test_a_write_is_404_for_a_client_that_does_not_exist(self):
+        self.act_as(self.owner, Role.OWNER)
+
+        response = self.client.patch(
+            '/api/v1/clients/9999/', {'name': 'Ghost'}, format='json',
+        )
+
+        self.assertEqual(response.status_code, 404, response.data)
+
+
 class QueryFilterValidationTests(ProjectApiCase):
     """A junk `?filter=` value is a `400`, never a server error (review 2.1 minor 3)."""
 

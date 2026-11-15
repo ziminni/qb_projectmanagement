@@ -1,21 +1,18 @@
 import '../../core/network/api_client.dart';
 import '../models/client.dart';
-import '../services/business_rule_exception.dart';
 import 'client_repository.dart';
 
-/// Client records, read from the CPMS backend.
+/// Client records on the CPMS backend.
 ///
-/// Phase 2.1 exposes `clients/` read-only (staff roles) so the project form
-/// can pick `client_id`; there is no client write route yet, so the two write
-/// methods refuse with a clear message instead of pretending to save.
+/// `clients/` reads are staff-only and feed the project form; create/update and
+/// the portal-login link are the Admin/Owner active role's (`POST clients/`,
+/// `PATCH clients/{id}/`, `POST clients/{id}/link-user/|unlink-user/`). The
+/// server owns ids, so a saved client carries the real `clients.id` the project
+/// form then stores in `Project.clientId`.
 class HttpClientRepository implements ClientRepository {
   HttpClientRepository(this._client);
 
   final ApiClient _client;
-
-  static const _readOnly = BusinessRuleException(
-    'Client records are read-only on the server for now.',
-  );
 
   @override
   Future<List<Client>> getClients() async => [
@@ -38,13 +35,40 @@ class HttpClientRepository implements ClientRepository {
     return null;
   }
 
-  /// Phase 2.1 exposes no route that links a portal login to a `clients` row.
   @override
-  bool get canLinkUsers => false;
+  bool get canLinkUsers => true;
 
+  /// Id 0 creates; any other id updates. Only the editable columns are sent —
+  /// the login is linked by its own route and the ids/timestamps are the
+  /// server's.
   @override
-  Future<Client> saveClient(Client client) async => throw _readOnly;
+  Future<Client> saveClient(Client client) async {
+    final body = <String, dynamic>{
+      'name': client.name.trim(),
+      'contact_person': client.contactPerson?.trim() ?? '',
+      'email': client.email?.trim() ?? '',
+      'phone': client.phone?.trim() ?? '',
+      'address': client.address?.trim() ?? '',
+    };
+    final data = client.id == 0
+        ? await _client.post('clients/', body: body)
+        : await _client.patch('clients/${client.id}/', body: body);
+    return Client.fromJson(jsonObject(data));
+  }
 
+  /// `clientId` null unlinks: the route is per client, so the record holding
+  /// this login is looked up first. A login already unlinked writes nothing.
   @override
-  Future<void> linkUser(int userId, int? clientId) async => throw _readOnly;
+  Future<void> linkUser(int userId, int? clientId) async {
+    if (clientId != null) {
+      await _client.post(
+        'clients/$clientId/link-user/',
+        body: {'user_id': userId},
+      );
+      return;
+    }
+    final current = await getClientForUser(userId);
+    if (current == null) return;
+    await _client.post('clients/${current.id}/unlink-user/');
+  }
 }

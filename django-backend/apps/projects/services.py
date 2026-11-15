@@ -12,13 +12,14 @@ assignments (R8).
 # Pyright here runs without django-stubs, so model managers/FKs are untyped.
 # pyright: reportAttributeAccessIssue=false, reportArgumentType=false, reportOptionalMemberAccess=false
 
+import re
 from typing import NoReturn
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ..users import capabilities
-from ..users.models import User
+from ..users.models import Role, User
 from ..users.services import notify, record
 from . import rules, scoping
 from .models import (
@@ -773,3 +774,138 @@ def unverify_todo(actor, todo, raw_reason):
     todo.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'updated_at'])
     record(actor, 'todo_unverified', 'todo', todo.pk, {'reason': reason})
     return todo
+
+
+# --------------------------------------------------------------------------
+# Client records (task 5.3)
+# --------------------------------------------------------------------------
+
+CLIENT_CONSTRAINT = 'client_record_id_key'   # Client.user OneToOne (unique)
+_EMAIL = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+def _require_free_name(name, exclude_pk=None):
+    taken = Client.objects.filter(name__iexact=name)
+    if exclude_pk is not None:
+        taken = taken.exclude(pk=exclude_pk)
+    if taken.exists():
+        _refuse(rules.CLIENT_NAME_TAKEN)
+    return name
+
+
+def _client_values(payload, creating):
+    """Validate the editable client columns; a blank optional column is `''`.
+
+    A create sends every column; an update only touches the keys it names, so a
+    PATCH of just the contact person never has to resend the name.
+    """
+    values = {}
+    if creating or 'name' in payload:
+        name = _text(payload.get('name'))
+        if not name:
+            _refuse(rules.CLIENT_NAME_REQUIRED)
+        values['name'] = name
+    for field in ('email', *rules.CLIENT_TEXT_FIELDS):
+        if not creating and field not in payload:
+            continue
+        value = _text(payload.get(field))
+        if field == 'email':
+            if value and not _EMAIL.match(value):
+                _refuse(rules.CLIENT_EMAIL)
+        else:
+            label, limit = rules.CLIENT_TEXT_FIELDS[field]
+            if len(value) > limit:
+                _refuse(
+                    rules.CLIENT_FIELD_TOO_LONG.format(limit=limit, label=label)
+                )
+        values[field] = value
+    return values
+
+
+def _require_link_route(payload):
+    """`user_id` is not part of the create/update body (a link has its own route)."""
+    if payload.get('user_id') not in (None, ''):
+        _refuse(rules.CLIENT_LINK_SEPARATE)
+
+
+@transaction.atomic
+def create_client(actor, payload):
+    """Create a client record; Admin/Owner only (checked by the view)."""
+    _require_link_route(payload)
+    values = _client_values(payload, creating=True)
+    _require_free_name(values['name'])
+    client = Client.objects.create(**values)
+    record(actor, 'client_created', 'client', client.pk, {'name': client.name})
+    return client
+
+
+@transaction.atomic
+def update_client(actor, client, payload):
+    """Rename / re-contact a client; the portal login is left where it is."""
+    _require_link_route(payload)
+    values = _client_values(payload, creating=False)
+    if 'name' in values:
+        _require_free_name(values['name'], exclude_pk=client.pk)
+    for field, value in values.items():
+        setattr(client, field, value)
+    client.save(update_fields=[*values, 'updated_at'])
+    record(actor, 'client_updated', 'client', client.pk, {'name': client.name})
+    return client
+
+
+def _require_client_login(raw_user_id):
+    """The user to link: exists, and holds the client role."""
+    try:
+        user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        _refuse(rules.CLIENT_USER_REQUIRED)
+    user = User.objects.filter(pk=user_id).first()
+    if user is None:
+        _refuse(rules.CLIENT_USER_UNKNOWN)
+    if Role.CLIENT not in capabilities.held_roles(user):
+        _refuse(
+            f'The user does not hold the {rules.ROLE_LABELS[RoleOnProject.CLIENT]} role.'
+        )
+    return user
+
+
+@transaction.atomic
+def link_client_user(actor, client, raw_user_id):
+    """Attach one portal login to this client; a login belongs to one client.
+
+    Assigning a login that already sits on another client moves it, which is
+    what the mock's `linkUser` does (`mock_client_repository.dart:60-73`).
+    """
+    user = _require_client_login(raw_user_id)
+    if client.user_id is not None and client.user_id != user.pk:
+        _refuse(rules.CLIENT_LOGIN_TAKEN)
+    # Release the login from any other client first (the DB allows one row).
+    Client.objects.filter(user=user).exclude(pk=client.pk).update(user=None)
+    client.user = user
+    try:
+        with transaction.atomic():
+            client.save(update_fields=['user', 'updated_at'])
+    except IntegrityError as error:
+        if not _is_unique_violation(error, CLIENT_CONSTRAINT):
+            raise
+        _refuse(rules.CLIENT_LOGIN_TAKEN)
+    record(
+        actor, 'client_user_linked', 'client', client.pk,
+        {'name': client.name, 'user': user.pk},
+    )
+    return client
+
+
+@transaction.atomic
+def unlink_client_user(actor, client):
+    """Detach the portal login; a client without one is a no-op."""
+    user_id = client.user_id
+    if user_id is None:
+        return client
+    client.user = None
+    client.save(update_fields=['user', 'updated_at'])
+    record(
+        actor, 'client_user_unlinked', 'client', client.pk,
+        {'name': client.name, 'user': user_id},
+    )
+    return client
