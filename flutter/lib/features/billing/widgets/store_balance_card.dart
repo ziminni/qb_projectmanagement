@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_spacing.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/store_balance.dart';
 import '../../../shared/widgets/app_figure.dart';
+import '../../../shared/widgets/app_progress_bar.dart';
 import '../../../shared/widgets/app_section_card.dart';
 
 /// What the project owes the company hardware store, from the store's record.
@@ -146,7 +149,7 @@ class StoreBalanceCard extends StatelessWidget {
               children: [
                 if (!b.atStore)
                   const Text('Nothing owed to the store yet.')
-                else
+                else ...[
                   Wrap(
                     spacing: 32,
                     runSpacing: 12,
@@ -155,20 +158,48 @@ class StoreBalanceCard extends StatelessWidget {
                       AppFigure(
                         label: 'Charged',
                         value: Formatters.peso(b.total),
+                        detail: b.total > 0 ? 'Store purchases' : null,
                       ),
-                      AppFigure(label: 'Paid', value: Formatters.peso(b.paid)),
+                      AppFigure(
+                        label: 'Paid',
+                        value: Formatters.peso(b.paid),
+                        detail: b.total > 0
+                            ? '${Formatters.percent((b.paid / b.total).clamp(0.0, 1.0))} settled'
+                            : null,
+                      ),
                       AppFigure(
                         label: 'Balance',
                         value: Formatters.peso(b.balance),
+                        detail: b.balance <= 0
+                            ? 'Settled'
+                            : 'Payable at store',
+                        valueColor: b.balance > 0
+                            ? AppColors.warning
+                            : AppColors.success,
                       ),
                       if (b.balance > 0 && onSubmitReceipt != null)
                         OutlinedButton.icon(
                           onPressed: () => _showSubmitDialog(context),
-                          icon: const Icon(Icons.upload_file_outlined, size: 18),
+                          icon: const Icon(
+                            Icons.upload_file_outlined,
+                            size: 18,
+                          ),
                           label: const Text('Submit payment receipt'),
                         ),
                     ],
                   ),
+                  if (b.total > 0) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    AppProgressBar(
+                      value: (b.paid / b.total).clamp(0.0, 1.0),
+                      height: 8,
+                      color: b.balance <= 0
+                          ? AppColors.success
+                          : AppColors.brandGold,
+                      semanticsLabel: 'Store balance paid',
+                    ),
+                  ],
+                ],
                 if (receipts.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text(

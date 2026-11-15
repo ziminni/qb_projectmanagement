@@ -41,6 +41,7 @@ class DashboardPage extends StatelessWidget {
         void openProject(int id) =>
             context.go(AppRoutes.projectTab(id, ProjectTab.overview));
         final waiting = vm.pendingTotal;
+        final seesFinance = vm.role.seesFinance;
 
         final tiles = [
           DashboardStatTile(
@@ -65,7 +66,7 @@ class DashboardPage extends StatelessWidget {
             icon: Icons.warning_amber_rounded,
             color: vm.behind.isEmpty ? AppColors.success : AppColors.warning,
           ),
-          if (vm.billed != null)
+          if (seesFinance && vm.billed != null)
             DashboardStatTile(
               label: 'Billed vs. collected',
               value: Formatters.pesoWhole(vm.billed!.collected),
@@ -73,17 +74,24 @@ class DashboardPage extends StatelessWidget {
                   'collected of ${Formatters.pesoWhole(vm.billed!.billed)} billed',
               icon: Icons.receipt_long_rounded,
               color: AppColors.info,
+              progress: vm.billed!.billed > 0
+                  ? vm.billed!.collected / vm.billed!.billed
+                  : 0,
               onTap: () => context.go(AppRoutes.billings),
             ),
-          DashboardStatTile(
-            label: 'Earned value (active)',
-            value: Formatters.pesoWhole(vm.activeEarnedValue),
-            detail:
-                'of ${Formatters.pesoWhole(vm.activeContractValue)} '
-                'contract value',
-            icon: Icons.trending_up_rounded,
-            color: AppColors.success,
-          ),
+          if (seesFinance)
+            DashboardStatTile(
+              label: 'Earned value (active)',
+              value: Formatters.pesoWhole(vm.activeEarnedValue),
+              detail:
+                  'of ${Formatters.pesoWhole(vm.activeContractValue)} '
+                  'contract value',
+              icon: Icons.trending_up_rounded,
+              color: AppColors.success,
+              progress: vm.activeContractValue > 0
+                  ? vm.activeEarnedValue / vm.activeContractValue
+                  : 0,
+            ),
         ];
 
         final projects = AppSectionCard(
@@ -98,7 +106,10 @@ class DashboardPage extends StatelessWidget {
           child: Column(
             children: [
               if (vm.projects.isEmpty)
-                const ListTile(title: Text('No projects yet.')),
+                const AppEmptyState(
+                  message: 'No projects yet.',
+                  icon: Icons.apartment_rounded,
+                ),
               for (final (i, p) in vm.projects.indexed) ...[
                 if (i > 0) const Divider(height: 1),
                 DashboardProjectRow(
@@ -160,7 +171,7 @@ class DashboardPage extends StatelessWidget {
             builder: (context, constraints) {
               final pad = pagePadding(context);
               final width = constraints.maxWidth - pad.horizontal;
-              final columns = (width / 165).floor().clamp(1, tiles.length);
+              final columns = (width / 210).floor().clamp(1, tiles.length);
               final tileWidth =
                   (width - AppSpacing.lg * (columns - 1)) / columns;
               final wide = width >= 900;
@@ -184,21 +195,23 @@ class DashboardPage extends StatelessWidget {
                         'Verify to-dos',
                         () => context.go(AppRoutes.todoVerification),
                       ),
-                      (
-                        Icons.receipt_long_outlined,
-                        'New billing',
-                        () => context.go(AppRoutes.billingNew),
-                      ),
+                      if (seesFinance)
+                        (
+                          Icons.receipt_long_outlined,
+                          'New billing',
+                          () => context.go(AppRoutes.billingNew),
+                        ),
                       (
                         Icons.difference_outlined,
                         'Raise a VO',
                         () => context.go(AppRoutes.variationOrderNew),
                       ),
-                      (
-                        Icons.summarize_outlined,
-                        'Expense reports',
-                        () => context.go(AppRoutes.expenseReports),
-                      ),
+                      if (seesFinance)
+                        (
+                          Icons.summarize_outlined,
+                          'Expense reports',
+                          () => context.go(AppRoutes.expenseReports),
+                        ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xl),

@@ -5,6 +5,7 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/payroll_period.dart';
 import '../../../data/services/payroll_calculator.dart';
@@ -126,14 +127,24 @@ class PayrollPeriodDetailPage extends StatelessWidget {
                 spacing: AppSpacing.xl,
                 runSpacing: AppSpacing.md,
                 children: [
-                  AppFigure(label: 'Workers', value: '${vm.lines.length}'),
+                  AppFigure(
+                    label: 'Workers',
+                    value: '${vm.lines.length}',
+                    detail:
+                        '${InputParsers.amountText(vm.lines.fold<double>(0, (s, l) => s + l.daysWorked))} total days',
+                  ),
                   AppFigure(
                     label: 'Gross pay (labor cost)',
                     value: Formatters.peso(vm.totalGross),
+                    detail:
+                        'incl. ${Formatters.peso(vm.lines.fold<double>(0, (s, l) => s + l.overtimePay))} OT',
                   ),
                   AppFigure(
                     label: 'Net pay',
                     value: Formatters.peso(vm.totalNet),
+                    detail: vm.totalGross > 0
+                        ? '${Formatters.percent(vm.totalNet / vm.totalGross)} of gross'
+                        : null,
                   ),
                 ],
               ),

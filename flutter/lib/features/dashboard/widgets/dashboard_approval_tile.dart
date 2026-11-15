@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/app_text_styles.dart';
+import '../../../core/utils/finance_access.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/services/approval_inbox.dart';
 
@@ -27,7 +29,13 @@ class DashboardApprovalTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (item.amount != null) Text(Formatters.pesoWhole(item.amount!)),
+          if (item.amount != null && canSeeFinance())
+            Text(
+              Formatters.pesoWhole(item.amount!),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.merge(AppTextStyles.numeric),
+            ),
           const Icon(Icons.chevron_right),
         ],
       ),

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
+import '../../../core/constants/app_text_styles.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/app_role.dart';
@@ -139,7 +140,11 @@ class _StatGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 900 ? 4 : 2;
+        final columns = constraints.maxWidth >= 900
+            ? 4
+            : constraints.maxWidth >= 480
+            ? 2
+            : 1;
         const gap = AppSpacing.md;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
@@ -261,7 +266,12 @@ class _RolesCard extends StatelessWidget {
                         Expanded(
                           child: Text(e.key.label, style: textTheme.bodyMedium),
                         ),
-                        Text('${e.value}', style: textTheme.titleSmall),
+                        Text(
+                          '${e.value}',
+                          style: textTheme.titleSmall?.merge(
+                            AppTextStyles.numeric,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.xs),
