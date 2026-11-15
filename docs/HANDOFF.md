@@ -4,7 +4,7 @@ State on 2026-11-15. Nothing here is pushed. History is linear, so the tip branc
 
 ## What to push
 
-Tip branch: `feat/cpms-clients-write` (commit `bfcdd72`). It is built on `frontendend-progress` (origin is one commit behind: the planning docs commit `55db64e`).
+Tip branch: `feat/cpms-clients-write` (see `git log -1`; includes every commit below). It is built on `frontendend-progress` (origin is one commit behind: the planning docs commit `55db64e`).
 
 ```bash
 cd qb_project_management_system
@@ -26,6 +26,10 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 | `6375fb5`, `bfcdd72` | Seed maps real POS barcodes; import order |
 | `e1483ce` to `0d0be7d` | Fixes from screen QA: API path slash, CORS `X-Active-Role`, no mock leaks in API mode, server-backed store catalogue, payroll notice placement, order form prefill |
 | `47e7cde`, `74edcdd` + this commit | Live store catalogue (price, stock status) and project debt read from the store (needs POS commit `36981eb`) |
+| `d44b160` | Live POS↔CPMS run of store price and store-held debt (₱780 charge, ₱300 store payment read back) |
+| `3dc70dc` | Actual project cost in API mode: outside-store materials by category + one "Materials from our store" line |
+| `e9e0483` | Payables in API mode: what each project owes our store, read from the store, read-only |
+| `c400400` | Fix: a user with no phone can be saved (admin form and own profile) |
 | `7a87455`, `4a320c7` | Billing, variation-order and payroll hand-offs now send notifications (mirrors the mock) |
 
 ## Verified (all on disposable stacks)
