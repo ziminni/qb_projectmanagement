@@ -1,3 +1,4 @@
+import '../models/store_balance.dart';
 import 'dart:typed_data';
 
 import '../../routes/routes.dart';
@@ -63,6 +64,9 @@ class MockProcurementRepository implements ProcurementRepository {
 
   @override
   bool get supportsPosStatus => false;
+
+  @override
+  Future<StoreBalance?> getStoreBalance(int projectId) async => null;
 
   @override
   Future<PosStatus> getPosStatus(int id) async =>

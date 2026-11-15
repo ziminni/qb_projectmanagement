@@ -1,3 +1,4 @@
+import '../models/store_balance.dart';
 import 'dart:typed_data';
 
 import '../models/app_role.dart';
@@ -190,6 +191,12 @@ class PosStatus {
 
 abstract interface class ProcurementRepository {
   bool get supportsPosStatus;
+
+  /// What [projectId] owes the company store, as the store's own record says
+  /// (the store holds the debt and the payments). Null when this repository has
+  /// no store to ask. Throws when the store cannot be reached or answers
+  /// something unreadable: never a made-up zero.
+  Future<StoreBalance?> getStoreBalance(int projectId);
 
   /// Reads the backend cache; never polls the store.
   Future<PosStatus> getPosStatus(int id);

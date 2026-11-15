@@ -1,3 +1,4 @@
+import '../models/store_balance.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -43,6 +44,12 @@ class HttpProcurementRepository implements ProcurementRepository {
 
   @override
   bool get supportsPosStatus => true;
+
+  @override
+  Future<StoreBalance?> getStoreBalance(int projectId) async =>
+      StoreBalance.fromJson(
+        jsonObject(await _client.get('projects/$projectId/pos-payables/')),
+      );
 
   @override
   Future<PosStatus> getPosStatus(int id) async => PosStatus.fromJson(

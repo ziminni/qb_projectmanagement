@@ -5,6 +5,8 @@ import '../../../data/models/progress_billing.dart';
 import '../../../data/models/project.dart';
 import '../../../data/models/variation_order.dart';
 import '../../../data/repositories/billing_repository.dart';
+import '../../../data/models/store_balance.dart';
+import '../../../data/repositories/procurement_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/services/business_rule_exception.dart';
 import 'expense_reports_viewmodel.dart';
@@ -17,13 +19,16 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
     required ProjectRepository projects,
     required BillingRepository billing,
     required CostReportBuilder builder,
+    required ProcurementRepository procurement,
   }) : _projects = projects,
        _billing = billing,
+       _procurement = procurement,
        _builder = builder;
 
   final int projectId;
   final ProjectRepository _projects;
   final BillingRepository _billing;
+  final ProcurementRepository _procurement;
   final CostReportBuilder _builder;
 
   bool _loading = true;
@@ -35,6 +40,14 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
   List<VariationOrder> variationOrders = const [];
   BilledSummary? summary;
   double retentionHeld = 0;
+
+  /// What the store says this project owes it; null when there is no store to
+  /// ask (the offline demo) or it could not be read, see [storeBalanceError].
+  StoreBalance? storeBalance;
+
+  /// Why the store's balance is missing. Kept apart from [error] so a store
+  /// that is down never takes the billings, payments and VOs down with it.
+  String? storeBalanceError;
 
   /// True when the derived-cost half (materials, payroll, equipment) has no
   /// route yet: the billings, payments, VOs and retention are still the
@@ -48,6 +61,16 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
       .where((v) => v.status == VariationOrderStatus.approved)
       .fold(0, (s, v) => s + v.amount);
 
+  Future<void> _loadStoreBalance() async {
+    try {
+      storeBalance = await _procurement.getStoreBalance(projectId);
+    } on BusinessRuleException catch (e) {
+      storeBalanceError = e.message;
+    } on FormatException {
+      storeBalanceError = 'The store sent an answer CPMS could not read.';
+    }
+  }
+
   Future<void> load() async {
     try {
       project = (await _projects.getProject(projectId))!;
@@ -59,6 +82,7 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
       summary = await _billing.billedSummary(projectIds: [projectId]);
       final r = await _billing.retentionFor(projectId);
       retentionHeld = r.held - r.released;
+      await _loadStoreBalance();
       report = await _builder.build(project!);
     } on UnsupportedError {
       // Derived costs have no route yet (phase-4 contract excludes them), so

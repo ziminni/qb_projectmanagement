@@ -25,6 +25,7 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 | `60220f2` | Client create/link API |
 | `6375fb5`, `bfcdd72` | Seed maps real POS barcodes; import order |
 | `e1483ce` to `0d0be7d` | Fixes from screen QA: API path slash, CORS `X-Active-Role`, no mock leaks in API mode, server-backed store catalogue, payroll notice placement, order form prefill |
+| `47e7cde`, `74edcdd` + this commit | Live store catalogue (price, stock status) and project debt read from the store (needs POS commit `36981eb`) |
 | `7a87455`, `4a320c7` | Billing, variation-order and payroll hand-offs now send notifications (mirrors the mock) |
 
 ## Verified (all on disposable stacks)
@@ -48,7 +49,7 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 ## Needs an owner decision (nothing invented)
 
 1. ~~Payroll statutory deductions~~ **Decided 2026-11-15: basic payroll for now** (gross pay less cash advances, per-worker daily rates, half-days and overtime; no SSS/PhilHealth/Pag-IBIG). Real contributions, partial-hour entry and the firm's payslip format are later improvements, listed in `contracts/phase-4-payroll.md`.
-2. Invoice valuation and who owns debt/payments between POS and CPMS (blocks payables and derived costs).
+2. ~~Invoice valuation and debt ownership~~ **Decided 2026-11-15:** the store's price is the real price and the store holds the debt; CPMS asks the store through the service account. Built: live store catalogue (price, stock status) and an "Owed to the store" card. Still open: how the derived materials cost and its per-category split should use the store's charged total (see MAP 5.10).
 3. Negative-net payroll handling; multi-project deductions.
 4. Unconfirmed defaults recorded in `planning/backend-integration/decisions/06-phase-2-contract-rulings.md` and the phase 4 contracts.
 

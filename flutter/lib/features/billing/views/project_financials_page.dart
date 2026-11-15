@@ -14,6 +14,7 @@ import '../../../shared/widgets/app_progress_bar.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/expense_reports_viewmodel.dart';
 import '../viewmodels/project_financials_viewmodel.dart';
+import '../widgets/store_balance_card.dart';
 import '../widgets/billing_cost_table.dart';
 import '../widgets/billing_tile.dart';
 import '../widgets/billing_vo_tile.dart';
@@ -33,6 +34,7 @@ class ProjectFinancialsPage extends StatelessWidget {
         projects: getIt(),
         billing: getIt(),
         builder: CostReportBuilder(costs: getIt(), schedule: getIt()),
+        procurement: getIt(),
       )..load(),
       builder: (context, _) {
         final vm = context.watch<ProjectFinancialsViewModel>();
@@ -103,6 +105,13 @@ class ProjectFinancialsPage extends StatelessWidget {
                 ],
               ),
             ),
+            if (vm.storeBalance != null || vm.storeBalanceError != null) ...[
+              gap,
+              StoreBalanceCard(
+                balance: vm.storeBalance,
+                error: vm.storeBalanceError,
+              ),
+            ],
             gap,
             AppSectionCard(
               title: 'Budget vs. actual',
