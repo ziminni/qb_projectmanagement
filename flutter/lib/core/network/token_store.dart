@@ -16,7 +16,14 @@ abstract interface class TokenStore {
 /// OS-backed storage. Never SharedPreferences or a plain file: an access
 /// token is a password for the whole company's data.
 class SecureTokenStore implements TokenStore {
-  SecureTokenStore([this._storage = const FlutterSecureStorage()]);
+  // macOS: the plain login keychain. The default data-protection keychain needs
+  // a signed app with Keychain Sharing, so an unsigned `flutter run -d macos`
+  // could never keep its login (error -34018). Same choice as the POS app.
+  SecureTokenStore([
+    this._storage = const FlutterSecureStorage(
+      mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+    ),
+  ]);
 
   final FlutterSecureStorage _storage;
   static const _accessKey = 'cpms.access';

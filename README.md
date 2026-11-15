@@ -5,47 +5,135 @@ Construction project management system for Queen Builders, paired with the Build
 - `django-backend/`: Django REST API + supervised POS outbox worker.
 - `flutter/`: Flutter desktop/web client (`buildpro_frontend`).
 
-## 1. Quick Start (Backend & POS Bridge)
+## 1. Quick Start
 
-### Option A: Same PC with BuildPro POS (Zero Configuration)
+On every `docker compose up -d`, the backend applies migrations and runs `seed_demo --auto-pos-payer`. That seeds the demo accounts and projects, and links the own-store supplier to the POS contractor. The POS bridge settings default to `django-backend/pos-bridge.defaults.env` (POS on the same computer); anything in `django-backend/.env` overrides them.
 
-When both `qb_pos_inventory_system` (port `8000`) and `qb_project_management_system` (port `8001`) run in Docker on the same machine, no `.env` file or manual customer ID lookup is required:
+If an own-store order says **the store refused this order (UNKNOWN_PAYER)**, run `docker compose restart backend` (it relinks the payer on start), then press **Retry** on the order.
 
-1. Start the POS stack first (`docker compose up -d --build` in `qb_pos_inventory_system`).
-2. Start PostgreSQL (`5434`), the CPMS API (`8001`), and the supervised POS outbox worker from this repository root:
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for hardening and backups, and [`docs/HANDOFF.md`](docs/HANDOFF.md) for verification status.
 
+## 1a. Running POS and CPMS together (one computer or two laptops)
+
+> This same guide is in both READMEs (`qb_pos_inventory_system` and `qb_project_management_system`).
+
+**How the two systems connect.** Each system runs completely on its own computer: its Docker backend plus its Flutter app. Each app only talks to the backend on the same computer (`127.0.0.1`). The only link between them is **CPMS → POS**: CPMS sends material requests to the store, and reads prices, stock, what a project owes, and the status of payment receipts. POS never calls CPMS.
+
+So in a two-laptop setup, **the POS laptop opens the tunnel** and **the CPMS laptop points at it**. It works either way round: POS on Windows with CPMS on the Mac, or the reverse.
+
+| Setup | When | Tunnel? |
+|---|---|---|
+| **A. One computer** | You run both systems yourself | No |
+| **B. Two laptops** (e.g. Windows + Mac) | Each teammate runs one system, e.g. for the adviser demo | Yes, started on the POS laptop |
+
+### Setup A: both systems on one computer
+
+1. Start POS **first**, in `qb_pos_inventory_system`: `docker compose up -d --build`
+2. Then start CPMS, in `qb_project_management_system`: `docker compose up -d --build`
+3. Check the link, in `qb_project_management_system`:
+   ```sh
+   docker compose exec backend python manage.py check_pos
+   ```
+   The last line should be `READY: own-store orders can be sent.`
+4. Run both apps (see "Run the apps" below).
+
+No `.env` file and no tunnel are needed. CPMS finds POS at `http://host.docker.internal:8000` and links itself to the POS contractor (Dela Cruz Construction in the demo data).
+
+### Setup B: two laptops (Windows + Mac)
+
+**Once, before demo day, on each laptop (needs a good internet connection; Docker downloads about 1–2 GB):**
+
+| | Windows | Mac (Apple Silicon or Intel) |
+|---|---|---|
+| Docker | Docker Desktop (WSL 2 backend) | Docker Desktop for Mac |
+| Flutter | Flutter SDK + Visual Studio 2022 with **Desktop development with C++** | Flutter SDK + Xcode (open it once and accept the licence) + `brew install cocoapods` |
+| Check tools | `flutter doctor -v` | `flutter doctor -v` |
+
+Then clone **your** system's repository and run `docker compose up -d --build` once in it, so everything is downloaded before the demo.
+
+**Step 1: POS laptop.** Start POS, then the tunnel, from the `qb_pos_inventory_system` folder:
+
+```powershell
+docker compose up -d
+.\scripts\start-tunnel.ps1     # Windows PowerShell
+```
 ```sh
-docker compose up -d --build
+docker compose up -d
+./scripts/start-tunnel.sh      # Mac
 ```
 
-On startup, `docker compose` automatically:
-- Applies all Django migrations (`python manage.py migrate --noinput`).
-- Seeds the demo accounts and projects (`python manage.py seed_demo --auto-pos-payer`).
-- Connects to POS at `http://host.docker.internal:8000` as `cpms_service` / `demo1234` (demo defaults in `django-backend/pos-bridge.defaults.env`; anything in `django-backend/.env` overrides them) and links the own-store supplier to the POS contractor customer (**Dela Cruz Construction** in the POS demo seed). If POS starts after CPMS, the outbox worker (`run_pos_outbox`) makes that link on the first request it pushes.
-
-### Option B: POS on a different computer (Cloudflare tunnel)
-
-1. On the **store PC**, in `qb_pos_inventory_system`, run `docker compose up -d`, then the tunnel helper:
-   - **Windows PowerShell:** `.\scripts\start-tunnel.ps1`
-   - **Linux / macOS:** `./scripts/start-tunnel.sh`
-
-   This exposes only a key-protected gateway (CPMS sign-in and the `/api/v1/integration/cpms/` routes), never the whole POS. The script prints four lines.
-2. On **this PC**, paste those four lines into `django-backend/.env` (create the file if needed):
+If PowerShell says scripts are disabled, run `Set-ExecutionPolicy -Scope Process Bypass` first, in the same window. The script prints four lines like:
 
 ```env
 POS_API_BASE_URL=https://<random-name>.trycloudflare.com
 POS_API_ALLOW_INSECURE_LOCAL=False
 POS_API_GATEWAY_HEADER_NAME=X-QB-Gateway-Key
-POS_API_GATEWAY_HEADER_VALUE=<key printed by the script>
+POS_API_GATEWAY_HEADER_VALUE=<48-character key>
 ```
 
-3. Run `docker compose up -d` here again.
+Send these four lines to the CPMS laptop, for example in a private chat. The key works like a password: don't post it anywhere public. Only a small gateway is exposed, never the whole POS. It allows only the CPMS sign-in and the `/api/v1/integration/cpms/` routes, and only with that key.
 
-If an own-store order says **the store refused this order (UNKNOWN_PAYER)**, the own-store supplier points at a POS customer that this POS doesn't have. Restart CPMS (`docker compose restart backend`): on start it checks the payer against POS's contractors and replaces a missing one. Then press **Retry** on the order. The retry sends the corrected payer.
+**Step 2: CPMS laptop.** Create the file `qb_project_management_system/django-backend/.env`, paste the four lines, save it, then run this in `qb_project_management_system`:
 
-The Quick Tunnel URL changes every time the tunnel restarts. When it does, rerun the script on the store PC and update `POS_API_BASE_URL`. Until then, CPMS keeps unsent requests in its outbox and retries them. The POS README (section 6) has the full guide.
+```sh
+docker compose up -d
+```
 
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for production/tunnel hardening (`DJANGO_DEBUG=False`, Cloudflare Quick Tunnel, database + `private_media/` backups) and [`docs/HANDOFF.md`](docs/HANDOFF.md) for verification status.
+How to create the file:
+- **Mac:** `nano django-backend/.env`, paste, then Ctrl+O, Enter, Ctrl+X.
+- **Windows:** Notepad → Save as → "All files (\*.\*)" → name it `.env`.
+
+`docker compose up -d` restarts the CPMS backend and its outbox worker with the new settings.
+
+**Step 3: CPMS laptop, check the link:**
+
+```sh
+docker compose exec backend python manage.py check_pos
+```
+
+`READY` means the material request flow will work. Otherwise it says exactly what's wrong (see Troubleshooting below).
+
+**Step 4: both laptops.** Run your app (see "Run the apps").
+
+**After the demo:**
+- POS laptop: `docker compose --profile tunnel stop gateway cloudflared`
+- CPMS laptop: delete the four lines from `django-backend/.env` and run `docker compose up -d`. That returns CPMS to one-computer mode.
+
+**Rehearse on one computer:** do Setup B with both systems on the same machine. The tunnel on the POS side, and the four lines in CPMS's `.env`. The traffic then goes out to Cloudflare and back, exactly as between two laptops.
+
+### Run the apps
+
+Each app connects to the backend on its own computer; no settings are needed. From the repository's `flutter` folder:
+
+| | Windows | Mac |
+|---|---|---|
+| First time | `flutter config --enable-windows-desktop` then `flutter pub get` | `flutter config --enable-macos-desktop` then `flutter pub get` |
+| Run | `flutter run -d windows` | `flutter run -d macos` |
+
+Logins: POS `manager`, `cashier`, `stocker`, `admin` (password `demo1234`). CPMS `ramon@example.ph` (owner/PM), `ana@example.ph` (site engineer), `liza@example.ph` (accountant), `maria@example.ph` (admin), `mark@example.ph` (client) (password `password123`).
+
+### Demo script (about 5 minutes)
+
+1. **CPMS, `ana`:** open project **QB-2026-014** → Material requests → new request: Portland cement 40 kg × 5.
+2. **CPMS, `ramon`:** open the request → **Own hardware store**. The picker shows the store's live price and stock. Confirm the order. Within about a minute, the order says **Sent to store**, and its "At the store" panel says *Waiting for the store manager to accept*.
+3. **POS, `manager`:** **Project requests** → the new request → **Accept**.
+4. **POS, `cashier`:** open a shift if needed → **Release materials** → **Find accepted request** → select it → **Release materials** → print the receipt.
+5. **CPMS, `ramon`:** within about a minute (or press **Check store now** on the order), the material request shows *Released — picked up from the store · released 5 of 5*. Project → **Financials** → **Owed to the store** shows the charge.
+6. **CPMS, `liza`:** on **Owed to the store** → **Submit payment receipt**. Then **POS, `manager`:** **Receivables** → **CPMS receipts** → **Approve**. The CPMS balance goes down, and POS **Payment history** lists it as *CPMS receipt …*.
+
+### Troubleshooting
+
+| What you see | Fix |
+|---|---|
+| `check_pos`: *could not be reached* | The POS laptop is off, asleep or offline, or its tunnel stopped. Turn off sleep on the POS laptop for the demo, rerun the tunnel script, and copy the new URL. |
+| It worked, then stopped after the POS laptop restarted | The tunnel URL changes on every restart. Rerun the script on the POS laptop, update `POS_API_BASE_URL` in CPMS's `.env`, then `docker compose up -d` on the CPMS laptop. The key stays the same. |
+| `check_pos`: 403 / *refused* | The key in CPMS's `.env` doesn't match. Copy all four lines again. |
+| `check_pos`: *payer … is not a contractor* | Run `docker compose restart backend` on the CPMS laptop; it relinks to the store's contractor on start. |
+| `check_pos`: *material codes the store does not sell* | Fix those codes in CPMS **Master lists → Materials**, or use materials that are mapped. |
+| School or office Wi-Fi blocks the tunnel | Put the POS laptop (or both laptops) on a phone hotspot. |
+| Mac: `docker: command not found` / cannot connect | Open Docker Desktop first and wait until it says it is running. |
+| Mac: the app opens but login doesn't stick | Pull the latest code; the CPMS Mac keychain fix is in the commit that added this guide. |
+| CPMS order picker says *Store offline* | Same as "could not be reached": CPMS can't reach POS right now. Orders made while offline are sent automatically once it can. |
 
 ## 2. Run the Flutter Client
 
@@ -61,6 +149,10 @@ flutter pub get
 ```sh
 # Windows (PowerShell, requires Visual Studio with "Desktop development with C++")
 flutter run -d windows
+
+# macOS (requires Xcode + CocoaPods: brew install cocoapods)
+flutter config --enable-macos-desktop
+flutter run -d macos
 
 # Linux (requires clang, cmake, ninja-build, pkg-config, libgtk-3-dev, libsecret-1-dev + keyring)
 flutter run -d linux
