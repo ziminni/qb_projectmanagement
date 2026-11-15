@@ -41,7 +41,11 @@ from .serializers import (
     UserWriteSerializer,
     user_payload,
 )
-from .throttles import LoginRateThrottle, PasswordResetRateThrottle
+from .throttles import (
+    AccountLoginRateThrottle,
+    LoginRateThrottle,
+    PasswordResetRateThrottle,
+)
 
 WRONG_CREDENTIALS = 'Incorrect email or password.'
 DEACTIVATED = 'This account is deactivated. Contact your system admin.'
@@ -69,7 +73,7 @@ def _update_action(user, roles_before, active_before):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-@throttle_classes([LoginRateThrottle])
+@throttle_classes([LoginRateThrottle, AccountLoginRateThrottle])
 def login_view(request):
     """Exchange email/password for a JWT pair plus the user's roles."""
     email = str(request.data.get('email') or '').strip().lower()

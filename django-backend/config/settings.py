@@ -45,10 +45,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # =============================================
 # Security
 # =============================================
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-cpms-dev-only-key-change-me-in-production',
-)
+# Outside DEBUG this value is refused (see "Production mode" below), so a
+# copy-pasted .env can never reach a public host.
+DEV_INSECURE_SECRET_KEY = 'django-insecure-cpms-dev-only-key-change-me-in-production'  # noqa: S105 - shipped dev default, refused in production
+
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', DEV_INSECURE_SECRET_KEY)
 
 DEBUG = env_bool('DJANGO_DEBUG', True)
 
@@ -220,10 +221,19 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
-    # Caps the two endpoints an attacker would hammer (apps/users/throttles.py).
+    # Baseline caps for every endpoint; the auth routes add their own scopes
+    # (apps/users/throttles.py). Rates are env-overridable so a demo host can be
+    # loosened without a code change.
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
     'DEFAULT_THROTTLE_RATES': {
-        'login': '10/min',
-        'password_reset': '5/min',
+        'anon': os.environ.get('THROTTLE_ANON', '60/min'),
+        'user': os.environ.get('THROTTLE_USER', '1000/hour'),
+        'login': os.environ.get('THROTTLE_LOGIN', '10/min'),
+        'login_email': os.environ.get('THROTTLE_LOGIN_EMAIL', '5/min'),
+        'password_reset': os.environ.get('THROTTLE_PASSWORD_RESET', '5/min'),
     },
 }
 
@@ -242,7 +252,7 @@ SIMPLE_JWT = {
 
 # =============================================
 # CORS — allows the Flutter client and the POS service to call this API.
-# Dev-only convenience; switch to CORS_ALLOWED_ORIGINS in production.
+# Wildcard is the dev convenience; production must name its origins.
 # =============================================
 CORS_ALLOW_ALL_ORIGINS = env_bool('CORS_ALLOW_ALL_ORIGINS', True)
 CORS_ALLOWED_ORIGINS = [
@@ -250,6 +260,53 @@ CORS_ALLOWED_ORIGINS = [
     for o in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')
     if o.strip()
 ]
+
+
+# =============================================
+# Production mode — fail closed
+# =============================================
+# DEBUG is the only switch. With DJANGO_DEBUG=false the dev conveniences above
+# are refused loudly at import time instead of quietly shipping an open API.
+if not DEBUG:
+    problems = []
+    if not os.environ.get('DJANGO_SECRET_KEY', '').strip() \
+            or SECRET_KEY == DEV_INSECURE_SECRET_KEY:
+        problems.append(
+            'DJANGO_SECRET_KEY is unset or still the shipped dev default. Generate one: '
+            "python -c 'import secrets; print(secrets.token_urlsafe(64))'"
+        )
+    if '*' in ALLOWED_HOSTS or not ALLOWED_HOSTS:
+        problems.append(
+            'DJANGO_ALLOWED_HOSTS is "*" (or empty). Name the host(s) that serve the API, '
+            'e.g. DJANGO_ALLOWED_HOSTS=cpms.example.com'
+        )
+    if CORS_ALLOW_ALL_ORIGINS:
+        problems.append(
+            'CORS_ALLOW_ALL_ORIGINS is true. Set CORS_ALLOW_ALL_ORIGINS=False and list '
+            'CORS_ALLOWED_ORIGINS=https://<host>'
+        )
+    if problems:
+        raise ImproperlyConfigured(
+            'Refusing to start with DJANGO_DEBUG=false until every problem below is fixed:\n- '
+            + '\n- '.join(problems)
+        )
+
+    # Cloudflare Quick Tunnel terminates TLS and forwards plain http with
+    # X-Forwarded-Proto, so Django must trust that header to see the request as
+    # secure. https://docs.djangoproject.com/en/5.2/ref/settings/#secure-proxy-ssl-header
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = env_int('SECURE_HSTS_SECONDS', 31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
+    SECURE_HSTS_PRELOAD = False
+    # No SECURE_SSL_REDIRECT: the tunnel origin and the internal health probe
+    # speak plain http, and a redirect would break both. TLS ends at Cloudflare.
+else:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SECURE_HSTS_SECONDS = 0
+    SECURE_PROXY_SSL_HEADER = None
 
 
 # =============================================

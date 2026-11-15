@@ -159,9 +159,7 @@ class HttpLaborRepository implements LaborRepository {
 
   @override
   Future<List<PayrollLine>> getLines(int periodId) async => [
-    for (final row in await _client.getRows(
-      'payroll-periods/$periodId/lines/',
-    ))
+    for (final row in await _client.getRows('payroll-periods/$periodId/lines/'))
       PayrollLine.fromJson(row),
   ];
 

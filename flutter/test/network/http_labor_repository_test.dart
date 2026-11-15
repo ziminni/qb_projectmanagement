@@ -335,9 +335,7 @@ void main() {
 
   group('payroll periods', () {
     test('reads the cut-off calendar of one project', () async {
-      final api = FakeApi(
-        (options) => json([payrollPeriodRow(projectId: 3)]),
-      );
+      final api = FakeApi((options) => json([payrollPeriodRow(projectId: 3)]));
 
       final periods = await laborRepoFor(
         api,
@@ -393,15 +391,13 @@ void main() {
         (options) => json(payrollPeriodRow(id: 9), status: 201),
       );
 
-      final created = await laborRepoFor(
-        api,
-        active: AppRole.accountant,
-      ).createPeriod(
-        3,
-        DateTime(2026, 10, 1),
-        DateTime(2026, 10, 15),
-        userId: 3,
-      );
+      final created = await laborRepoFor(api, active: AppRole.accountant)
+          .createPeriod(
+            3,
+            DateTime(2026, 10, 1),
+            DateTime(2026, 10, 15),
+            userId: 3,
+          );
 
       final request = api.last('payroll-periods/');
       expect(request.method, 'POST');
@@ -493,23 +489,26 @@ void main() {
       expect(lines.first.cashAdvance, 100);
     });
 
-    test('an unconfigured deductions policy is kept, not zeroed away', () async {
-      final api = FakeApi((options) => json([payrollLineRow()]));
+    test(
+      'an unconfigured deductions policy is kept, not zeroed away',
+      () async {
+        final api = FakeApi((options) => json([payrollLineRow()]));
 
-      final line = (await laborRepoFor(
-        api,
-        active: AppRole.accountant,
-      ).getLines(4)).single;
+        final line = (await laborRepoFor(
+          api,
+          active: AppRole.accountant,
+        ).getLines(4)).single;
 
-      expect(line.deductionsPolicy, PayrollLine.deductionsUnconfigured);
-      // The server deducts nothing yet, and the screens must say why rather
-      // than present three columns of zero contributions as compliance.
-      expect(line.statutoryDeductions, 0);
-      expect(line.sss, 0);
-      expect(line.philhealth, 0);
-      expect(line.pagibig, 0);
-      expect(line.netPay, 4593.75);
-    });
+        expect(line.deductionsPolicy, PayrollLine.deductionsUnconfigured);
+        // The server deducts nothing yet, and the screens must say why rather
+        // than present three columns of zero contributions as compliance.
+        expect(line.statutoryDeductions, 0);
+        expect(line.sss, 0);
+        expect(line.philhealth, 0);
+        expect(line.pagibig, 0);
+        expect(line.netPay, 4593.75);
+      },
+    );
 
     test('a line without its gross pay is a parse error', () async {
       final row = payrollLineRow()..remove('gross_pay');
@@ -549,12 +548,10 @@ void main() {
         (options) => json(payrollLineRow(id: 11, cashAdvance: '250.00')),
       );
 
-      await laborRepoFor(api, active: AppRole.accountant).setCashAdvance(
-        4,
-        2,
-        250,
-        userId: 3,
-      );
+      await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).setCashAdvance(4, 2, 250, userId: 3);
 
       final request = api.last('payroll-periods/4/cash-advance/');
       expect(request.method, 'POST');
@@ -565,8 +562,9 @@ void main() {
 
     test('an over-gross advance reaches the user unchanged', () async {
       final api = FakeApi(
-        (options) =>
-            json({'detail': 'Cash advance cannot exceed gross pay.'}, status: 400),
+        (options) => json({
+          'detail': 'Cash advance cannot exceed gross pay.',
+        }, status: 400),
       );
 
       expect(

@@ -661,15 +661,15 @@ class NotificationApiTests(ApiTestCase):
 
 
 class ThrottleTests(ApiTestCase):
-    def test_login_attempts_are_throttled(self):
-        make_user('maria@example.com', [Role.ADMIN])
-
+    def test_login_attempts_are_throttled_per_ip(self):
+        # Distinct emails, so only the per-IP scope can answer 429
+        # (the per-account scope is covered in tests_throttling.py).
         statuses = [
             self.client.post(
-                LOGIN_URL, {'email': 'maria@example.com', 'password': 'wrong-pass-1'},
+                LOGIN_URL, {'email': f'ghost{n}@example.com', 'password': 'wrong-pass-1'},
                 format='json',
             ).status_code
-            for _ in range(11)
+            for n in range(11)
         ]
 
         self.assertEqual(statuses[:10], [400] * 10)
