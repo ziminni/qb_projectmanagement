@@ -426,14 +426,14 @@ class PosClient:
         return self._pages(f'{INTEGRATION_PREFIX}/customers/')
 
     def list_materials(self):
-        """`GET materials/` — `{code, product, unit}` selling units."""
+        """`GET materials/` — `{code, product, unit, price, stock_status}` selling units."""
         return self._pages(f'{INTEGRATION_PREFIX}/materials/')
 
     def project_payables(self, cpms_project_id):
-        """`GET projects/{cpms_project_id}/payables/` — project debt.
+        """`GET projects/{cpms_project_id}/payables/` — what the project owes the store.
 
-        Kept for the blocked financial work: **no CPMS route calls this today**
-        (contract blockers 1–2). It exists so the financial phase is additive.
+        The store holds the debt record (owner decision 2026-11-15); CPMS reads it
+        through `pos_live_views.pos_payables_view`, never keeps its own copy.
         """
         return self._call(
             'GET',
