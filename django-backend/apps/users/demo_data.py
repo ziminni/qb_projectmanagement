@@ -8,10 +8,18 @@ Keep this file in step with the app it mirrors:
                                                           suppliers, trades, equipment
     flutter/lib/data/repositories/mock_labor_data.dart    workers, attendance
 
-`pos_code` is *not* in the mocks: the 7 materials that carry a `store_sku` are the
-ones a POS selling unit can be mapped to, numbered `QB000001`–`QB000007`
-(`planning/backend-integration/MAP.md`, task 5.1). The other 5 stay unmapped, so
-procurement cannot bill an own-store PO against a material POS cannot sell.
+`pos_code` is *not* in the mocks. It is the POS selling unit with the same product
+identity, written as the barcode POS's own `seed_demo` derives for that unit
+(`QB{id:06}-{check digit}`, e.g. `QB000001-7`; see POS `apps/inventory/models.py`,
+`planning/backend-integration/MAP.md`, task 5.1).
+
+Only two demo materials have a POS equivalent: **Portland cement 40 kg**
+(`QB000001-7`) and **Tile adhesive 25 kg**, which maps to the BAG unit `QB000010-9`
+— never to the loose KG unit `QB000009-3`. The other ten stay `pos_code=None`,
+because POS sells no such product: a made-up code comes back from the bridge as
+`UNKNOWN_MATERIAL`, whereas a null one is refused by CPMS before the import
+(`MISSING_POS_CODE`). Verify the codes against a live `GET integration/cpms/materials/`
+whenever the POS demo catalog changes.
 
 Money is written as `Decimal` strings, never floats, so no amount can arrive as
 `Infinity`/`NaN`.
@@ -68,29 +76,29 @@ CLIENTS = [
 
 MATERIALS = [
     {'name': 'Portland cement 40 kg', 'unit': 'bag', 'default_unit_cost': '260.00',
-     'store_sku': 'CEM-40', 'pos_code': 'QB000001'},
+     'store_sku': 'CEM-40', 'pos_code': 'QB000001-7'},  # POS Portland Cement 40kg
     {'name': 'Deformed bar 10 mm × 6 m', 'unit': 'pc', 'default_unit_cost': '230.00',
-     'store_sku': 'RB-10', 'pos_code': 'QB000002'},
+     'store_sku': 'RB-10', 'pos_code': None},
     {'name': 'Deformed bar 12 mm × 6 m', 'unit': 'pc', 'default_unit_cost': '330.00',
-     'store_sku': 'RB-12', 'pos_code': 'QB000003'},
+     'store_sku': 'RB-12', 'pos_code': None},
     {'name': 'Washed sand', 'unit': 'cu.m', 'default_unit_cost': '1300.00',
      'store_sku': None, 'pos_code': None},
     {'name': 'Gravel 3/4"', 'unit': 'cu.m', 'default_unit_cost': '1500.00',
      'store_sku': None, 'pos_code': None},
     {'name': 'CHB 4"', 'unit': 'pc', 'default_unit_cost': '18.00',
-     'store_sku': 'CHB-4', 'pos_code': 'QB000004'},
+     'store_sku': 'CHB-4', 'pos_code': None},
     {'name': 'Marine plywood 1/2"', 'unit': 'sheet', 'default_unit_cost': '750.00',
-     'store_sku': 'PLY-12', 'pos_code': 'QB000005'},
+     'store_sku': 'PLY-12', 'pos_code': None},
     {'name': 'Coco lumber 2×3×10', 'unit': 'pc', 'default_unit_cost': '110.00',
      'store_sku': None, 'pos_code': None},
     {'name': 'Tie wire #16', 'unit': 'kg', 'default_unit_cost': '95.00',
-     'store_sku': 'TW-16', 'pos_code': 'QB000006'},
+     'store_sku': 'TW-16', 'pos_code': None},
     {'name': 'Long-span roof sheet 0.5 mm', 'unit': 'lin.m',
      'default_unit_cost': '450.00', 'store_sku': None, 'pos_code': None},
     {'name': 'Floor tile 60×60', 'unit': 'sq.m', 'default_unit_cost': '650.00',
      'store_sku': None, 'pos_code': None},
     {'name': 'Tile adhesive 25 kg', 'unit': 'bag', 'default_unit_cost': '380.00',
-     'store_sku': 'TA-25', 'pos_code': 'QB000007'},
+     'store_sku': 'TA-25', 'pos_code': 'QB000010-9'},  # POS Tile Adhesive BAG, not KG
 ]
 
 SUPPLIERS = [

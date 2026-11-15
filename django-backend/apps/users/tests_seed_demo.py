@@ -6,10 +6,12 @@ Contract proved here:
 3. every demo account logs in through the real login endpoint with the mock
    password, including the active-role (`X-Active-Role`) rules for the account
    that holds two roles;
-4. the POS barcode mapping (`QB000001` … `QB000007`) is present on the materials
-   that have a store SKU;
-5. no password is ever printed;
-6. `--reset` removes only the rows the seed itself created.
+4. every mapped `pos_code` is a real POS selling-unit barcode (`QB000001-7` …),
+   matched to the same product and unit, and no unmapped material invents one;
+5. `--pos-payer-id` sets the own-store payer, is validated, and a null payer
+   prints the operator notice;
+6. no password is ever printed;
+7. `--reset` removes only the rows the seed itself created.
 """
 
 # Pyright here runs without django-stubs, so model managers are untyped.
@@ -46,6 +48,11 @@ DEMO_EMAILS = [
     'elena@example.ph',
 ]
 PROJECT_CODES = ['QB-2026-014', 'QB-2026-018', 'QB-2026-021', 'QB-2026-025']
+
+# What POS's own `seed_demo` derives for a selling unit: `QB{id:06}-{check digit}`.
+POS_CODE_PATTERN = r'^QB\d{6}-\d$'
+# The biggest id `Supplier.pos_payer_id` (PositiveBigIntegerField) can hold.
+MAX_POS_PAYER_ID = 2**63 - 1
 
 
 def seed(*args, **kwargs):
@@ -152,22 +159,83 @@ class SeedDemoCommandTests(TestCase):
         self.assertEqual(Trade.objects.count(), 9)
         self.assertEqual(EquipmentItem.objects.count(), 4)
 
-    def test_pos_code_mapping_is_present_on_the_store_materials(self):
+    def test_pos_codes_are_live_pos_selling_unit_barcodes(self):
         seed(SEED_FLAG)
 
         mapped = MaterialItem.objects.exclude(pos_code__isnull=True).exclude(pos_code='')
         codes = sorted(mapped.values_list('pos_code', flat=True))
 
-        self.assertEqual(
-            codes, [f'QB{number:06d}' for number in range(1, 8)],
-        )
-        # Only the materials that carry a store SKU map to a POS selling unit.
-        self.assertEqual(
-            MaterialItem.objects.filter(store_sku__isnull=False).count(), len(codes),
-        )
+        self.assertTrue(codes)
+        for code in codes:
+            # POS prints and resolves `QB{id:06}-{check digit}`, so an unsuffixed
+            # code like `QB000001` comes back as UNKNOWN_MATERIAL.
+            self.assertRegex(code, POS_CODE_PATTERN)
+        # One barcode, one material: two rows claiming one selling unit would bill
+        # the wrong product.
+        self.assertEqual(len(codes), len(set(codes)))
+
+        # The mapped materials are POS's own products, by name and unit.
         cement = MaterialItem.objects.get(name='Portland cement 40 kg')
         self.assertEqual(cement.store_sku, 'CEM-40')
-        self.assertEqual(cement.pos_code, 'QB000001')
+        self.assertEqual(cement.pos_code, 'QB000001-7')
+
+        adhesive = MaterialItem.objects.get(name='Tile adhesive 25 kg')
+        self.assertEqual(adhesive.unit, 'bag')
+        # POS sells this product by KG (QB000009-3) and by BAG (QB000010-9); a
+        # 25 kg bag must map to the BAG unit, never to the loose kilogram.
+        self.assertEqual(adhesive.pos_code, 'QB000010-9')
+
+    def test_materials_pos_does_not_sell_keep_a_null_pos_code(self):
+        seed(SEED_FLAG)
+
+        mapped = MaterialItem.objects.exclude(pos_code__isnull=True).exclude(pos_code='')
+        self.assertEqual(
+            sorted(mapped.values_list('name', flat=True)),
+            ['Portland cement 40 kg', 'Tile adhesive 25 kg'],
+        )
+        # A fake code is worse than none: CPMS then refuses the own-store PO itself
+        # (MISSING_POS_CODE) instead of POS refusing the import later.
+        for name in ('Deformed bar 10 mm × 6 m', 'CHB 4"', 'Tie wire #16'):
+            self.assertIsNone(MaterialItem.objects.get(name=name).pos_code, name)
+
+    def test_pos_payer_id_option_sets_the_own_store_payer(self):
+        seed(SEED_FLAG, '--pos-payer-id', 3)
+
+        self.assertEqual(Supplier.objects.get(is_own_store=True).pos_payer_id, 3)
+        # Only the own store bills a POS payer.
+        self.assertEqual(
+            Supplier.objects.filter(
+                is_own_store=False, pos_payer_id__isnull=False,
+            ).count(),
+            0,
+        )
+
+    def test_a_null_payer_prints_the_operator_notice(self):
+        output = seed(SEED_FLAG)
+
+        # POS customer ids are not stable across databases, so the seed cannot
+        # guess one: it stays null and tells the operator how to set it.
+        self.assertIsNone(Supplier.objects.get(is_own_store=True).pos_payer_id)
+        self.assertIn('--pos-payer-id', output)
+        self.assertIn('integration/cpms/customers/', output)
+
+    def test_the_notice_is_silent_once_a_payer_is_given(self):
+        output = seed(SEED_FLAG, '--pos-payer-id', 3)
+
+        self.assertNotIn('integration/cpms/customers/', output)
+
+    def test_pos_payer_id_is_validated(self):
+        for bad in (0, -4, MAX_POS_PAYER_ID + 1, 'not-a-number'):
+            with self.assertRaises(CommandError, msg=repr(bad)):
+                seed(SEED_FLAG, '--pos-payer-id', bad)
+        # The refused runs wrote nothing.
+        self.assertFalse(Supplier.objects.exists())
+
+        # The largest id the bigint column holds is still accepted.
+        seed(SEED_FLAG, '--pos-payer-id', MAX_POS_PAYER_ID)
+        self.assertEqual(
+            Supplier.objects.get(is_own_store=True).pos_payer_id, MAX_POS_PAYER_ID,
+        )
 
     def test_projects_assignments_categories_and_todos_match_the_mock(self):
         seed(SEED_FLAG)

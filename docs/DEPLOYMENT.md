@@ -194,3 +194,10 @@ docker exec -w /app cpms_test_backend python manage.py test apps.users --noinput
 docker exec -w /app cpms_test_backend python manage.py check
 docker exec -w /app cpms_test_backend python manage.py makemigrations --check --dry-run
 ```
+
+## Linking the demo seed to the live POS catalogue
+
+`seed_demo` maps only the two CPMS materials that have a real POS equivalent (Portland cement 40 kg to `QB000001-7`, Tile adhesive 25 kg bag to `QB000010-9`); every other material has no `pos_code`, so an own-store order for it is refused with `MISSING_POS_CODE`. POS barcodes come from the POS database ids, so they are only right on a freshly seeded POS. Before a demo:
+
+1. Run the POS seed, then compare with `GET /api/v1/integration/cpms/materials/` and fix any `pos_code` that differs (Master data, Materials).
+2. Find the POS customer that represents this CPMS company (`GET /api/v1/integration/cpms/customers/`) and run `python manage.py seed_demo --pos-payer-id <customer id>`. Without it the own-store supplier has no payer and POS refuses the import with a payer error. POS customer ids are not stable, so it is never defaulted.

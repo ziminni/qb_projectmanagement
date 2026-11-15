@@ -46,6 +46,24 @@ from django.db.models import ProtectedError
 from django.utils import timezone
 
 REQUIRED_FLAG = '--i-know-this-is-demo'
+# The largest id `Supplier.pos_payer_id` (`PositiveBigIntegerField`) can store.
+MAX_POS_PAYER_ID = 2**63 - 1
+
+
+def _pos_payer_id(value):
+    """`--pos-payer-id` as a POS customer id: a positive int the column can hold."""
+    try:
+        payer_id = int(value)
+    except (TypeError, ValueError):
+        raise CommandError(
+            f'--pos-payer-id must be a whole number: the POS customer id from '
+            f'GET integration/cpms/customers/ (got {value!r}).'
+        ) from None
+    if not 1 <= payer_id <= MAX_POS_PAYER_ID:
+        raise CommandError(
+            f'--pos-payer-id must be between 1 and {MAX_POS_PAYER_ID} (got {payer_id}).'
+        )
+    return payer_id
 
 
 def _money(value):
@@ -76,6 +94,18 @@ class Command(BaseCommand):
             action='store_true',
             help='Run against a database that is not in DEBUG mode.',
         )
+        parser.add_argument(
+            '--pos-payer-id',
+            dest='pos_payer_id',
+            type=_pos_payer_id,
+            default=None,
+            metavar='N',
+            help=(
+                'POS customer id the own-store supplier bills (read it from '
+                'GET integration/cpms/customers/ in POS). Left unset it stays null '
+                'and the output says so, because POS ids differ per database.'
+            ),
+        )
 
     def handle(self, *args, **options):
         if not (settings.DEBUG or options['demo_ack']):
@@ -88,7 +118,7 @@ class Command(BaseCommand):
         with transaction.atomic():
             if options['reset']:
                 self._report_deleted(self._reset())
-            counts = self._seed()
+            counts = self._seed(pos_payer_id=options['pos_payer_id'])
 
         self._report(counts)
 
@@ -138,11 +168,11 @@ class Command(BaseCommand):
         ))
 
     # ------------------------------------------------------------------- seed
-    def _seed(self):
+    def _seed(self, pos_payer_id=None):
         company = self._seed_company()
         users = self._seed_users(company)
         clients = self._seed_clients(users)
-        self._seed_master_data()
+        self._seed_master_data(pos_payer_id)
         projects = self._seed_projects(clients)
         assignments = self._seed_assignments(projects, users)
         categories, todos = self._seed_wbs(projects, users)
@@ -151,6 +181,7 @@ class Command(BaseCommand):
         return {
             'company': company.name,
             'accounts': len(users),
+            'own_store': Supplier.objects.filter(is_own_store=True).first(),
             'materials': MaterialItem.objects.filter(
                 name__in=[m['name'] for m in demo_data.MATERIALS],
             ).count(),
@@ -223,7 +254,7 @@ class Command(BaseCommand):
             )
         return clients
 
-    def _seed_master_data(self):
+    def _seed_master_data(self, pos_payer_id=None):
         for row in demo_data.MATERIALS:
             MaterialItem.objects.update_or_create(
                 name=row['name'],
@@ -235,15 +266,18 @@ class Command(BaseCommand):
                 },
             )
         for row in demo_data.SUPPLIERS:
-            Supplier.objects.update_or_create(
-                name=row['name'],
-                defaults={
-                    'contact_person': row['contact_person'],
-                    'phone': row['phone'],
-                    'address': row['address'],
-                    'is_own_store': row['is_own_store'],
-                },
-            )
+            defaults = {
+                'contact_person': row['contact_person'],
+                'phone': row['phone'],
+                'address': row['address'],
+                'is_own_store': row['is_own_store'],
+            }
+            if row['is_own_store'] and pos_payer_id is not None:
+                # Only the own store bills a POS customer. Without the option the
+                # stored value is left alone, so a re-seed cannot erase a payer an
+                # operator already set through the API.
+                defaults['pos_payer_id'] = pos_payer_id
+            Supplier.objects.update_or_create(name=row['name'], defaults=defaults)
         for name in demo_data.TRADES:
             Trade.objects.update_or_create(name=name)
         for row in demo_data.EQUIPMENT:
@@ -417,3 +451,12 @@ class Command(BaseCommand):
         self.stdout.write(
             '  every account uses the documented demo password (not printed here).'
         )
+        own_store = counts['own_store']
+        if own_store is not None and own_store.pos_payer_id is None:
+            # POS customer ids are not stable, so the seed cannot guess one: an
+            # own-store PO cannot import until an operator names the real payer.
+            self.stdout.write(
+                '  own-store POS payer is not set: read the payer id from POS '
+                'GET integration/cpms/customers/ and re-run with '
+                'seed_demo --pos-payer-id N, or an own-store PO cannot import.'
+            )
