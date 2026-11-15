@@ -26,7 +26,7 @@ from django.test import TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from ..users.models import AuditLog, Role
+from ..users.models import AuditLog, Notification, Role
 from ..users.tests import make_user
 from .models import (
     Attendance,
@@ -271,6 +271,27 @@ class PayrollVerificationTests(PayrollWriteCase):
             action='attendance_verified', entity='payroll_period',
             entity_id=self.period.pk,
         ).exists())
+
+    def test_verifying_tells_every_active_accountant_and_nobody_else(self):
+        second = make_user('second-acct@example.com', [Role.ACCOUNTANT])
+        gone = make_user('gone-acct@example.com', [Role.ACCOUNTANT], is_active=False)
+
+        self.act_as(self.accountant, Role.ACCOUNTANT)
+        self.client.post(self.period_url(self.period, 'verify/'))
+        self.assertEqual(Notification.objects.count(), 0, 'a refused verify must not notify')
+
+        self.act_as(self.owner, Role.OWNER)
+        response = self.client.post(self.period_url(self.period, 'verify/'))
+        self.assertEqual(response.status_code, 200, response.data)
+
+        for accountant in (self.accountant, second):
+            [note] = Notification.objects.filter(user=accountant)
+            self.assertEqual(note.type, 'payroll')
+            self.assertEqual(note.link, f'/payroll/{self.period.pk}')
+            self.assertIn('ready to process', note.message)
+        self.assertFalse(Notification.objects.filter(user=gone).exists())
+        self.assertFalse(Notification.objects.filter(user=self.owner).exists())
+        self.assertFalse(Notification.objects.filter(user=self.engineer).exists())
 
     def test_verify_waits_for_the_cut_off(self):
         future = self.make_period(

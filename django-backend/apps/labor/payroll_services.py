@@ -35,6 +35,7 @@ from ..projects import scoping
 from ..projects.models import Project
 from ..projects.rules import RuleRefused
 from ..users import services as user_services
+from ..users.models import Role, User
 from . import payroll_math
 from . import payroll_rules as rules
 from .models import (
@@ -117,6 +118,16 @@ def verify_period(user, period):
             user, 'attendance_verified', 'payroll_period', period.pk,
             _details(period),
         )
+        # Accountants are company-wide, not project members, so they are found by
+        # role, as the mock did. Same transaction: a refused verify tells no one.
+        for accountant in User.objects.filter(
+            is_active=True, user_roles__role=Role.ACCOUNTANT,
+        ).distinct():
+            user_services.notify(
+                accountant, 'payroll',
+                'Attendance verified; payroll period is ready to process.',
+                link=f'/payroll/{period.pk}',
+            )
     return period
 
 
