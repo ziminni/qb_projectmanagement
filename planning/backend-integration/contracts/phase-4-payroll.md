@@ -159,3 +159,14 @@ without wages, and one real process-vs-save race on PostgreSQL.
 Only the disposable `cpms_test_backend` / `cpms_test_db` stack; serialize CPMS
 backend suites. No live/dev database migrations, commits or pushes while
 building.
+
+
+## Owner decision 2026-11-15: payroll stays basic for now
+
+The owner decided to ship a **basic payroll** and improve it later, because the real cases are messy (workers with different rates, incomplete hours, how the firm actually pays labor). So:
+
+- Pay = days worked x each worker's own `daily_rate` (rates already differ per worker) + overtime at 1.25x, less cash advances. No government contributions (SSS, PhilHealth, Pag-IBIG) and no tax are applied.
+- The server keeps `deductions_policy = 'unconfigured'` with a zero `statutory_deductions`, so a later slice can add real rules without a wire change. The app now presents that as **Basic payroll**: the SSS/PhilHealth/Pag-IBIG columns are hidden and a plain note says contributions are not included yet. This is a presentation change only; nothing is computed differently.
+- Incomplete hours are handled only by the existing `half_day` status (0.5 day) and overtime hours. There is no hour-by-hour or undertime entry yet.
+
+Known limits to improve later (not decided, not built): hourly or partial-hour attendance, per-period or per-project rate changes, real statutory tables and pay frequency, negative-net handling beyond refusing an advance larger than gross pay, and a payslip format the firm accepts.

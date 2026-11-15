@@ -139,18 +139,16 @@ class PayrollPeriodDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            // Above the table, not below it: under a long pay table the notice
-            // is off screen at laptop widths.
-            // The server owns every amount and has no statutory table yet, so
-            // say that instead of printing three columns of zero contributions
-            // as if they were computed.
-            if (vm.statutoryDeductionsUnconfigured)
+            // Above the table, not below it: under a long pay table the note is
+            // off screen at laptop widths.
+            if (vm.basicPayroll)
               Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.lg),
                 child: Text(
-                  'Statutory deductions are not configured yet: contributions '
-                  'show ₱0.00 and net pay is gross pay less cash advances. The '
-                  'server computes every amount shown here.',
+                  'Basic payroll: pay is days worked × each worker\'s daily '
+                  'rate plus overtime, less cash advances. Government '
+                  'contributions (SSS, PhilHealth, Pag-IBIG) are not included '
+                  'yet. The server computes every amount shown here.',
                   style: textTheme.bodySmall,
                 ),
               ),
@@ -160,6 +158,7 @@ class PayrollPeriodDetailPage extends StatelessWidget {
                   : 'Pay preview',
               padding: EdgeInsets.zero,
               child: LaborPayrollTable(
+                showContributions: !vm.basicPayroll,
                 lines: vm.lines,
                 workerName: vm.workerName,
                 onCashAdvance: vm.canEditCashAdvance
@@ -180,7 +179,7 @@ class PayrollPeriodDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
-            if (!vm.statutoryDeductionsUnconfigured)
+            if (!vm.basicPayroll)
               Text(
                 'Overtime at +${((ContributionRates.overtimePremium - 1) * 100).round()}% '
                 'of the hourly rate. Contributions use simplified employee-share '

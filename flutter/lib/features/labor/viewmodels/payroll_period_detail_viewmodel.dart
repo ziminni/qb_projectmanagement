@@ -50,7 +50,7 @@ class PayrollPeriodDetailViewModel extends ChangeNotifier with ActionRunner {
   /// The server has no statutory contribution table yet: its lines carry a
   /// zero total with `deductions_policy: 'unconfigured'`, so the screens say so
   /// instead of showing three columns of zero contributions as computed.
-  bool get statutoryDeductionsUnconfigured => _lines.any(
+  bool get basicPayroll => _lines.any(
     (l) => l.deductionsPolicy == PayrollLine.deductionsUnconfigured,
   );
 
@@ -138,20 +138,21 @@ class PayrollPeriodDetailViewModel extends ChangeNotifier with ActionRunner {
         ('Period', Formatters.dateRange(p.periodStart, p.periodEnd)),
         ('Status', p.status.label),
         ('Workers', '${_lines.length}'),
-        if (statutoryDeductionsUnconfigured)
-          ('Deductions', 'Statutory deductions not configured (₱0.00)'),
+        if (basicPayroll)
+          (
+            'Basis',
+            'Basic payroll: gross pay less cash advances; no government contributions',
+          ),
       ],
       tables: [
         PdfTable(
           title: 'Pay',
-          headers: const [
+          headers: [
             'Worker',
             'Days',
             'OT pay',
             'Gross',
-            'SSS',
-            'PhilHealth',
-            'Pag-IBIG',
+            if (!basicPayroll) ...['SSS', 'PhilHealth', 'Pag-IBIG'],
             'Cash adv.',
             'Net pay',
           ],
@@ -162,22 +163,28 @@ class PayrollPeriodDetailViewModel extends ChangeNotifier with ActionRunner {
                 InputParsers.amountText(l.daysWorked),
                 peso(l.overtimePay),
                 peso(l.grossPay),
-                peso(l.sss),
-                peso(l.philhealth),
-                peso(l.pagibig),
+                if (!basicPayroll) ...[
+                  peso(l.sss),
+                  peso(l.philhealth),
+                  peso(l.pagibig),
+                ],
                 peso(l.cashAdvance),
                 peso(l.netPay),
               ],
           ],
-          numeric: const {1, 2, 3, 4, 5, 6, 7, 8},
+          numeric: basicPayroll
+              ? const {1, 2, 3, 4, 5}
+              : const {1, 2, 3, 4, 5, 6, 7, 8},
           totals: [
             'Total',
             InputParsers.amountText(sum((l) => l.daysWorked)),
             peso(sum((l) => l.overtimePay)),
             peso(totalGross),
-            peso(sum((l) => l.sss)),
-            peso(sum((l) => l.philhealth)),
-            peso(sum((l) => l.pagibig)),
+            if (!basicPayroll) ...[
+              peso(sum((l) => l.sss)),
+              peso(sum((l) => l.philhealth)),
+              peso(sum((l) => l.pagibig)),
+            ],
             peso(sum((l) => l.cashAdvance)),
             peso(totalNet),
           ],

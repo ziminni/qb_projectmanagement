@@ -77,30 +77,30 @@ void main() {
   for (final size in const [Size(1440, 900), Size(1100, 900)]) {
     final label = '${size.width.round()}x${size.height.round()}';
 
-    testWidgets('$label: unconfigured deductions say so', (tester) async {
-      await openPeriod(
-        tester,
-        policy: PayrollLine.deductionsUnconfigured,
-        size: size,
-      );
-      // An unnoticed warning is nearly useless: it must be on screen under
-      // Totals, not below the pay table.
-      expect(
-        find.textContaining('Statutory deductions are not configured'),
-        findsOneWidget,
-      );
-      await tester.scrollUntilVisible(
-        find.textContaining('Statutory deductions are not configured'),
-        300,
-        scrollable: pageScrollable(),
-        maxScrolls: 40,
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Statutory deductions are not configured'),
-        findsOneWidget,
-      );
-    });
+    testWidgets(
+      '$label: basic payroll says so and hides the contribution columns',
+      (tester) async {
+        await openPeriod(
+          tester,
+          policy: PayrollLine.deductionsUnconfigured,
+          size: size,
+        );
+        // An unnoticed warning is nearly useless: it must be on screen under
+        // Totals, not below the pay table.
+        expect(find.textContaining('Basic payroll'), findsOneWidget);
+        expect(find.text('SSS'), findsNothing);
+        expect(find.text('PhilHealth'), findsNothing);
+        expect(find.text('Pag-IBIG'), findsNothing);
+        await tester.scrollUntilVisible(
+          find.textContaining('Basic payroll'),
+          300,
+          scrollable: pageScrollable(),
+          maxScrolls: 40,
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Basic payroll'), findsOneWidget);
+      },
+    );
 
     testWidgets('$label: configured deductions keep the rates footer', (
       tester,
@@ -121,10 +121,8 @@ void main() {
         find.textContaining('simplified employee-share rates'),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('Statutory deductions are not configured'),
-        findsNothing,
-      );
+      expect(find.text('SSS'), findsOneWidget);
+      expect(find.textContaining('Basic payroll'), findsNothing);
     });
   }
 

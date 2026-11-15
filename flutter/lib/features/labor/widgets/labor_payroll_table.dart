@@ -11,10 +11,15 @@ class LaborPayrollTable extends StatelessWidget {
     required this.lines,
     required this.workerName,
     this.onCashAdvance,
+    this.showContributions = true,
   });
 
   final List<PayrollLine> lines;
   final String Function(int id) workerName;
+
+  /// False for basic payroll: no government contributions are applied, so the
+  /// three zero columns are left out instead of looking computed.
+  final bool showContributions;
 
   /// Set while cash advances can still be changed.
   final ValueChanged<PayrollLine>? onCashAdvance;
@@ -31,14 +36,16 @@ class LaborPayrollTable extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
-        columns: const [
+        columns: [
           DataColumn(label: Text('Worker')),
           DataColumn(label: Text('Days'), numeric: true),
           DataColumn(label: Text('OT pay'), numeric: true),
           DataColumn(label: Text('Gross'), numeric: true),
-          DataColumn(label: Text('SSS'), numeric: true),
-          DataColumn(label: Text('PhilHealth'), numeric: true),
-          DataColumn(label: Text('Pag-IBIG'), numeric: true),
+          if (showContributions) ...[
+            DataColumn(label: Text('SSS'), numeric: true),
+            DataColumn(label: Text('PhilHealth'), numeric: true),
+            DataColumn(label: Text('Pag-IBIG'), numeric: true),
+          ],
           DataColumn(label: Text('Cash adv.'), numeric: true),
           DataColumn(label: Text('Net pay'), numeric: true),
         ],
@@ -50,9 +57,11 @@ class LaborPayrollTable extends StatelessWidget {
                 DataCell(Text(InputParsers.amountText(l.daysWorked))),
                 DataCell(Text(p(l.overtimePay))),
                 DataCell(Text(p(l.grossPay))),
-                DataCell(Text(p(l.sss))),
-                DataCell(Text(p(l.philhealth))),
-                DataCell(Text(p(l.pagibig))),
+                if (showContributions) ...[
+                  DataCell(Text(p(l.sss))),
+                  DataCell(Text(p(l.philhealth))),
+                  DataCell(Text(p(l.pagibig))),
+                ],
                 DataCell(
                   Text(p(l.cashAdvance)),
                   showEditIcon: onCashAdvance != null,
