@@ -27,13 +27,15 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 
 ## Verified (all on disposable stacks)
 
-- Backend 631 tests OK, `check` clean, no migration drift. Flutter analyze clean, 375 tests OK.
+- Backend 637 tests OK, `check` clean, no migration drift. Flutter analyze clean, 392+ tests OK.
 - Independent reviews approved for labor, billing, payroll (after fixes). Runtime API QA found no confirmed defects for billing, labor and payroll.
 - Live HTTP bridge CPMS to POS passed (catalog, own-store import with token, manager accept, cashier partial release, read-back, cancel/close, retry with stable identity, `CPMS_SCOPE` fence, external PO isolation). Report: `temp/cpms/5.2/report.md` (local only).
 
 ## NOT verified
 
-- The Flutter app has not been run against the real API by a person. Mocks are still the default; API mode is `--dart-define=USE_API=true --dart-define=API_BASE_URL=...`.
+- Screen-level browser QA of the Flutter **web** build against a real disposable backend (reports `temp/cpms/5.3ui*/report.md`, local only). Verified: owner login, dashboard, projects list/detail, workers and attendance, billing draft create (preview equals persisted amount), accountant payroll period with advance and net, client sees only his project and no draft billing, site engineer accepts assignment, saves attendance and a daily report, and creates a material request, then the owner creates an own-store purchase order from it (20 bags, server material, POS panel says pending, never Synced). Defects found and fixed: API paths missing a slash, CORS blocking `X-Active-Role`, mock company id and demo password leaking into API mode, hardcoded store catalogue, payroll notice below the fold.
+- **Not clicked yet:** admin user management, variation orders, notifications, client billing after verify, daily-report photo upload, Windows/Linux desktop builds (only web was exercised). Mocks are still the default; API mode is `--dart-define=USE_API=true --dart-define=API_BASE_URL=http://host:port/api/v1`.
+- Teammate design notes (not changed): the site engineer is chosen only in the new-project wizard; the material request form lists only **ongoing** projects; the landing hero image is an external Unsplash URL that now returns 404.
 - No tunnel run with the real stack; no Windows/desktop packaging; `libsecret` on Linux untested.
 - Derived project costs and supplier payables are unavailable in API mode.
 
