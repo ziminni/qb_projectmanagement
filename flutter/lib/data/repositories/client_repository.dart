@@ -14,9 +14,4 @@ abstract interface class ClientRepository {
 
   /// Links [userId] to [clientId], or unlinks the user when [clientId] is null.
   Future<void> linkUser(int userId, int? clientId);
-
-  /// Whether this backend can link a portal login to a client record at all.
-  /// The server exposes `clients/` read-only in Phase 2, so a screen must not
-  /// half-save a user and then fail on the link.
-  bool get canLinkUsers;
 }

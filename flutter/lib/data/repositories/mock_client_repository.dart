@@ -8,9 +8,6 @@ class MockClientRepository implements ClientRepository {
   final _clients = [...MockCompanyData.clients];
 
   @override
-  bool get canLinkUsers => true;
-
-  @override
   Future<List<Client>> getClients() async =>
       [..._clients]..sort((a, b) => a.name.compareTo(b.name));
 

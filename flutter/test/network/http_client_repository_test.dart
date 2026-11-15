@@ -89,14 +89,6 @@ void main() {
       expect(await repo.getClientForUser(404), isNull);
     });
 
-    test('can link a portal login (5.3 writes the route)', () {
-      final repo = HttpClientRepository(
-        testClient(api: FakeApi((o) => json(clientRow())), tokens: InMemoryTokenStore()),
-      );
-
-      expect(repo.canLinkUsers, isTrue);
-    });
-
     test('creates a client and keeps the server id', () async {
       final api = FakeApi(
         (options) => json(clientRow(id: 7, name: 'New Client'), status: 201),

@@ -35,9 +35,6 @@ class HttpClientRepository implements ClientRepository {
     return null;
   }
 
-  @override
-  bool get canLinkUsers => true;
-
   /// Id 0 creates; any other id updates. Only the editable columns are sent —
   /// the login is linked by its own route and the ids/timestamps are the
   /// server's.
