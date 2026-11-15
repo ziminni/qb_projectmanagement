@@ -3,15 +3,30 @@
 - `django-backend/`: Django REST API.
 - `flutter/`: Flutter frontend (`buildpro_frontend`).
 
-## Backend
+## Backend & POS Bridge
 
-Optionally copy `django-backend/.env.example` to `django-backend/.env` and adjust the settings, then start the API and PostgreSQL from the repository root:
+1. Copy `django-backend/.env.example` to `django-backend/.env`. To connect to a local POS stack on port `8000`, set:
 
-```sh
-docker compose up --build
+```env
+POS_API_BASE_URL=http://host.docker.internal:8000
+POS_API_ALLOW_INSECURE_LOCAL=True
+POS_API_SERVICE_USERNAME=cpms_service
+POS_API_SERVICE_PASSWORD=demo1234
 ```
 
-The API runs on port 8001.
+2. Start PostgreSQL (`5434`), the CPMS API (`8001`), and the supervised POS outbox worker from the repository root:
+
+```sh
+docker compose up -d --build
+```
+
+3. For a fresh demo database, seed demo accounts/projects and link the POS contractor payer ID (`GET http://127.0.0.1:8000/api/v1/integration/cpms/customers/` on a seeded POS):
+
+```sh
+docker compose exec backend python manage.py seed_demo --pos-payer-id <POS_CUSTOMER_ID>
+```
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for production/tunnel hardening (`DJANGO_DEBUG=False`, Cloudflare Quick Tunnel, database + `private_media/` backups) and [`docs/HANDOFF.md`](docs/HANDOFF.md) for verification status.
 
 ## Frontend
 
@@ -20,12 +35,26 @@ With Flutter installed:
 ```sh
 cd flutter
 flutter pub get
-flutter run
 ```
 
-The app targets desktop: run `flutter run -d macos` on a Mac or `flutter run -d windows` on Windows (needs Visual Studio with the "Desktop development with C++" workload). It also runs in Chrome with `flutter run -d chrome`.
+### Live API mode (`USE_API=true`)
 
-Validate the frontend with:
+Pass `--dart-define=USE_API=true` and `--dart-define=API_BASE_URL=http://127.0.0.1:8001/api/v1` (note the `/api/v1` suffix):
+
+```sh
+# Windows (PowerShell, requires Visual Studio with "Desktop development with C++")
+flutter run -d windows --dart-define=USE_API=true --dart-define=API_BASE_URL=http://127.0.0.1:8001/api/v1
+
+# Linux (requires clang, cmake, ninja-build, pkg-config, libgtk-3-dev, libsecret-1-dev + keyring)
+flutter run -d linux --dart-define=USE_API=true --dart-define=API_BASE_URL=http://127.0.0.1:8001/api/v1
+
+# Chrome
+flutter run -d chrome --dart-define=USE_API=true --dart-define=API_BASE_URL=http://127.0.0.1:8001/api/v1
+```
+
+### Offline mock mode (default when `USE_API` is omitted)
+
+Running `flutter run` without `--dart-define=USE_API=true` uses in-memory mock repositories (`flutter/lib/data/repositories/mock_*.dart`), which is also how unit/widget tests run by default:
 
 ```sh
 cd flutter
@@ -33,7 +62,7 @@ flutter analyze
 flutter test
 ```
 
-The frontend runs on mock repositories (`flutter/lib/data/repositories/mock_*.dart`); API integration is not configured yet. Sign in with any demo account listed on the login screen (password `password123`):
+### Demo Accounts (seeded by `seed_demo` and present in mock mode, password `password123`)
 
 | Role | Account | Job |
 | --- | --- | --- |
