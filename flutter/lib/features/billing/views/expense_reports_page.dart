@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
+import '../../../core/utils/finance_access.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
+import '../../../data/services/session_service.dart';
+import '../../../shared/widgets/app_budget_bar.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_figure.dart';
+import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_pdf_button.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/expense_reports_viewmodel.dart';
@@ -19,6 +24,15 @@ class ExpenseReportsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (getIt.isRegistered<SessionService>() &&
+        getIt<SessionService>().isSignedIn &&
+        !canSeeFinance()) {
+      return const AppEmptyState(
+        icon: Icons.lock_outline,
+        message: 'Expense reports are available only to finance roles.',
+      );
+    }
+
     return ChangeNotifierProvider(
       create: (_) => ExpenseReportsViewModel(
         session: getIt(),
@@ -35,6 +49,11 @@ class ExpenseReportsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
+            const AppPageHeader(
+              title: 'Expense reports',
+              subtitle:
+                  'Actual cost by source, category budget utilization, and earned value variance.',
+            ),
             Wrap(
               spacing: AppSpacing.md,
               runSpacing: AppSpacing.md,
@@ -61,39 +80,74 @@ class ExpenseReportsPage extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             if (r == null)
-              const AppEmptyState(message: 'Choose a project.')
+              AppEmptyState(
+                message: vm.projects.isEmpty
+                    ? 'No projects with costs to report yet.'
+                    : 'Choose a project.',
+              )
             else ...[
               AppSectionCard(
                 title: 'Actual cost',
-                child: Wrap(
-                  spacing: AppSpacing.xl,
-                  runSpacing: AppSpacing.md,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    AppFigure(
-                      label: 'Materials',
-                      value: Formatters.peso(r.costs.materials),
+                    Wrap(
+                      spacing: AppSpacing.xl,
+                      runSpacing: AppSpacing.md,
+                      children: [
+                        AppFigure(
+                          label: 'Materials',
+                          value: Formatters.peso(r.costs.materials),
+                          detail: r.costs.total > 0
+                              ? '${Formatters.percent(r.costs.materials / r.costs.total)} of spend'
+                              : null,
+                        ),
+                        AppFigure(
+                          label: 'Labor',
+                          value: Formatters.peso(r.costs.labor),
+                          detail: r.costs.total > 0
+                              ? '${Formatters.percent(r.costs.labor / r.costs.total)} of spend'
+                              : null,
+                        ),
+                        AppFigure(
+                          label: 'Equipment',
+                          value: Formatters.peso(r.costs.equipment),
+                          detail: r.costs.total > 0
+                              ? '${Formatters.percent(r.costs.equipment / r.costs.total)} of spend'
+                              : null,
+                        ),
+                        AppFigure(
+                          label: 'Total',
+                          value: Formatters.peso(r.costs.total),
+                          detail:
+                              'of ${Formatters.pesoWhole(r.project.contractAmount)} contract',
+                        ),
+                        AppFigure(
+                          label: 'Earned value',
+                          value: Formatters.peso(r.progress.earnedValue),
+                          detail:
+                              '${Formatters.percent(r.progress.progress)} accomplished',
+                        ),
+                        AppFigure(
+                          label: r.costVariance >= 0
+                              ? 'Under cost by'
+                              : 'Over cost by',
+                          value: Formatters.peso(r.costVariance.abs()),
+                          detail: 'vs. earned value',
+                          valueColor: r.costVariance >= 0
+                              ? AppColors.success
+                              : AppColors.error,
+                        ),
+                      ],
                     ),
-                    AppFigure(
-                      label: 'Labor',
-                      value: Formatters.peso(r.costs.labor),
-                    ),
-                    AppFigure(
-                      label: 'Equipment',
-                      value: Formatters.peso(r.costs.equipment),
-                    ),
-                    AppFigure(
-                      label: 'Total',
-                      value: Formatters.peso(r.costs.total),
-                    ),
-                    AppFigure(
-                      label: 'Earned value',
-                      value: Formatters.peso(r.progress.earnedValue),
-                    ),
-                    AppFigure(
-                      label: r.costVariance >= 0
-                          ? 'Under cost by'
-                          : 'Over cost by',
-                      value: Formatters.peso(r.costVariance.abs()),
+                    const SizedBox(height: AppSpacing.lg),
+                    const Divider(),
+                    const SizedBox(height: AppSpacing.md),
+                    AppBudgetBar(
+                      label: 'Material spend vs. category budgets',
+                      budget: r.totalBudget,
+                      actual: r.costs.materials,
+                      showAmounts: true,
                     ),
                   ],
                 ),

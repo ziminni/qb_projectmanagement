@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_spacing.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/services/procurement_rules.dart';
+import '../../../shared/widgets/app_budget_bar.dart';
 import '../../../shared/widgets/app_info_row.dart';
 import '../../../shared/widgets/app_section_card.dart';
 
@@ -40,6 +42,13 @@ class ProcurementBudgetCard extends StatelessWidget {
             AppInfoRow(
               label: 'Remaining',
               value: Formatters.peso(check.remaining!),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            AppBudgetBar(
+              label: 'Budget utilization',
+              budget: check.budget,
+              actual: check.committed + check.requestCost,
+              showAmounts: true,
             ),
           ],
           if (check.exceedsBudget)
