@@ -8,6 +8,7 @@ class LineDraft {
     this.unit = '',
     this.quantity = 0,
     this.unitPrice = 0,
+    this.priceHidden = false,
   });
 
   int? materialId;
@@ -15,6 +16,11 @@ class LineDraft {
   String unit;
   double quantity;
   double unitPrice;
+
+  /// The source hides this line's price (a role without the money view), so
+  /// the field stays blank for the owner to type instead of showing a
+  /// misleading ₱0.
+  bool priceHidden;
 
   double get amount => quantity * unitPrice;
 

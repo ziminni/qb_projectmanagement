@@ -7,6 +7,7 @@ import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
 import '../../../data/models/material_item.dart';
 import '../../../data/models/material_request.dart';
+import '../../../data/models/material_request_item.dart';
 import '../../../data/models/material_source.dart';
 import '../../../data/models/project.dart';
 import '../../../data/models/store_product.dart';
@@ -182,17 +183,37 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
 
   void addProduct(StoreProduct p) {
     if (isPicked(p)) return;
+    final asked = _askedFor(p);
     lines.add(
       LineDraft(
         materialId: p.materialId,
         description: p.name,
         unit: p.unit,
-        // A hidden price stays blank for the owner to type; only the owner
-        // orders and the owner sees prices (server-side finance role).
+        // The engineer already said how many; the owner only types the
+        // numbers the request does not answer. A hidden price stays blank
+        // for the owner to type; only the owner orders and the owner sees
+        // prices (server-side finance role).
+        quantity: asked?.quantity ?? 0,
         unitPrice: p.price ?? 0,
+        priceHidden: p.price == null,
       ),
     );
     notifyListeners();
+  }
+
+  /// The open request item this product answers: the engineer's own words
+  /// and the same unit. A unit that differs is a different thing to buy, so
+  /// its quantity is left for the owner.
+  MaterialRequestItem? _askedFor(StoreProduct p) {
+    String norm(String s) => s.trim().toLowerCase();
+    for (final i in _detail?.items ?? const <MaterialRequestItem>[]) {
+      if (!i.isCovered &&
+          norm(i.description) == norm(p.name) &&
+          norm(i.unit) == norm(p.unit)) {
+        return i;
+      }
+    }
+    return null;
   }
 
   void addLine() {

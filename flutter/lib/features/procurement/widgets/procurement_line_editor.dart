@@ -91,7 +91,9 @@ class ProcurementLineEditor extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: TextFormField(
-            initialValue: InputParsers.amountText(line.unitPrice),
+            initialValue: line.priceHidden
+                ? ''
+                : InputParsers.amountText(line.unitPrice),
             decoration: const InputDecoration(
               labelText: 'Unit price',
               prefixText: '₱',
