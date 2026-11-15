@@ -1012,8 +1012,49 @@ class VariationOrderTests(BillingFixtures, APITestCase):
             self.client_http.get(f'{VOS_URL}{proposed["id"]}/').status_code, 404,
         )
 
-    def test_accountant_has_no_variation_order_surface(self):
-        self.assertEqual(self.accountant_http.get(VOS_URL).status_code, 403)
+    def test_accountant_reads_variation_orders_but_never_writes_them(self):
+        # The project Financials tab is open to the accountant and lists the
+        # variation orders and their approved total, so the read must work.
+        proposed = self.propose().data
+        sent = self.propose(description='Second change').data
+        self.owner_http.post(f'{VOS_URL}{sent["id"]}/submit/', {}, format='json')
+
+        listed = self.accountant_http.get(VOS_URL, {'project': self.project.pk})
+        self.assertEqual(listed.status_code, 200, listed.data)
+        self.assertEqual(
+            {row['id'] for row in listed.data['results']},
+            {proposed['id'], sent['id']},
+        )
+        detail = self.accountant_http.get(f'{VOS_URL}{proposed["id"]}/')
+        self.assertEqual(detail.status_code, 200, detail.data)
+        self.assertEqual(money(detail.data['amount']), Decimal('150000.00'))
+
+        # Reading is all the finance role gets.
+        write = self.accountant_http.post(
+            VOS_URL,
+            {'project_id': self.project.pk, 'type': 'additive',
+             'description': 'Nope', 'amount': '1', 'days_impact': 0},
+            format='json',
+        )
+        self.assertEqual(write.status_code, 403)
+        for action in ('submit', 'owner-reject', 'client-approve', 'client-reject'):
+            with self.subTest(action=action):
+                response = self.accountant_http.post(
+                    f'{VOS_URL}{proposed["id"]}/{action}/',
+                    {'reason': 'x'}, format='json',
+                )
+                self.assertEqual(response.status_code, 403, response.data)
+        edit = self.accountant_http.patch(
+            f'{VOS_URL}{proposed["id"]}/', {'description': 'Hacked'}, format='json',
+        )
+        self.assertEqual(edit.status_code, 403, edit.data)
+        self.assertEqual(
+            VariationOrder.objects.get(pk=proposed['id']).description,
+            'Extra floor slab',
+        )
+
+    def test_admin_still_has_no_variation_order_surface(self):
+        self.assertEqual(self.admin_http.get(VOS_URL).status_code, 403)
 
     def test_a_sent_vo_is_no_longer_editable(self):
         vo = self.propose().data

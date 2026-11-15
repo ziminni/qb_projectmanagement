@@ -137,7 +137,7 @@ always `404` (never a `403` that leaks its existence).
   assignment. Owner-only: submit, owner-reject, pricing the amount. Client:
   own project's VOs **with `approved_by_owner` set** (`ClientVariationOrders
   ViewModel` filter), and approve/reject only while `pending_client`.
-  *(Delegated default: the accountant has no variation-order route — the mock
+  *(Superseded 2026-11-15, see Open policy question 2: the accountant now reads VOs read-only. Original default: the accountant had no variation-order route — the mock
   and `role_navigation.dart` give that screen to owner/site engineer/client
   only. Owner confirmation open: §Open policy questions 2.)*
 - Site engineer never sends a VO amount: the server stores `0.00` for a new VO
@@ -282,9 +282,7 @@ migration, no POS mutation, no commit or push in this slice.
    (`createBilling`/`submitBilling` require `AppRole.owner`). Default applied:
    accountant may read and record payments but not create/submit/withdraw. If
    the accountant is meant to bill, this is a one-line capability change.
-2. **Does the accountant see variation orders?** Default applied: no route
-   (mock and `role_navigation.dart` exclude it). If finance needs VO amounts,
-   add `sees_finance` to the VO read fence.
+2. **Does the accountant see variation orders?** Resolved 2026-11-15: yes, **read-only**. The project Financials tab (open to owner and accountant) lists VOs and their approved total, and a real-API probe showed the accountant's page erroring without it. Writes stay owner/site-engineer/client; admin still has no VO route.
 3. **Down-payment recoupment basis.** The mock recoups `down_payment_pct` of
    every period's gross, forever, so total recouped can exceed any down payment
    actually collected. No cap is implemented; production needs either a DP

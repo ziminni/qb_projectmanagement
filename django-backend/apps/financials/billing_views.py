@@ -301,7 +301,10 @@ class VariationOrderViewSet(viewsets.GenericViewSet,
                 scoping.projects_for(self.request.user, role),
             )
             return queryset.filter(approved_by_owner__isnull=False)
-        if role in (Role.OWNER, Role.SITE_ENGINEER):
+        # The accountant reads (the project Financials tab lists VOs and their
+        # approved total); every write action below re-checks its own role, so
+        # this widens reads only.
+        if role in (Role.OWNER, Role.SITE_ENGINEER, Role.ACCOUNTANT):
             return billing_services.vo_for(
                 scoping.projects_for(self.request.user, role),
             )
