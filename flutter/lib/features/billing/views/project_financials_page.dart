@@ -119,7 +119,11 @@ class ProjectFinancialsPage extends StatelessWidget {
               // Derived costs (materials, payroll, equipment) have no route
               // yet: the billing half of the tab still shows.
               child: r == null
-                  ? const ListTile(title: Text(supplierAccountingUnavailable))
+                  ? ListTile(
+                      title: Text(
+                        vm.costsError ?? supplierAccountingUnavailable,
+                      ),
+                    )
                   : BillingCostTable(report: r),
             ),
             gap,

@@ -41,6 +41,9 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
   BilledSummary? summary;
   double retentionHeld = 0;
 
+  /// Why the cost half is missing, when the server said why.
+  String? costsError;
+
   /// What the store says this project owes it; null when there is no store to
   /// ask (the offline demo) or it could not be read, see [storeBalanceError].
   StoreBalance? storeBalance;
@@ -71,6 +74,18 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
     }
   }
 
+  /// The cost half fails on its own: the billings above it still show.
+  Future<void> _loadCosts() async {
+    try {
+      report = await _builder.build(project!);
+    } on UnsupportedError {
+      costsUnavailable = true;
+    } on BusinessRuleException catch (e) {
+      costsUnavailable = true;
+      costsError = e.message;
+    }
+  }
+
   Future<void> load() async {
     try {
       project = (await _projects.getProject(projectId))!;
@@ -83,11 +98,7 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
       final r = await _billing.retentionFor(projectId);
       retentionHeld = r.held - r.released;
       await _loadStoreBalance();
-      report = await _builder.build(project!);
-    } on UnsupportedError {
-      // Derived costs have no route yet (phase-4 contract excludes them), so
-      // the tab shows the billing half and says costing is unavailable.
-      costsUnavailable = true;
+      await _loadCosts();
     } on BusinessRuleException catch (e) {
       _error = e.message;
     } finally {

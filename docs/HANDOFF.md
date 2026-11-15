@@ -49,7 +49,7 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 ## Needs an owner decision (nothing invented)
 
 1. ~~Payroll statutory deductions~~ **Decided 2026-11-15: basic payroll for now** (gross pay less cash advances, per-worker daily rates, half-days and overtime; no SSS/PhilHealth/Pag-IBIG). Real contributions, partial-hour entry and the firm's payslip format are later improvements, listed in `contracts/phase-4-payroll.md`.
-2. ~~Invoice valuation and debt ownership~~ **Decided 2026-11-15:** the store's price is the real price and the store holds the debt; CPMS asks the store through the service account. Built: live store catalogue (price, stock status) and an "Owed to the store" card. Still open: how the derived materials cost and its per-category split should use the store's charged total (see MAP 5.10).
+2. ~~Invoice valuation and debt ownership~~ **Decided 2026-11-15:** the store's price is the real price and the store holds the debt; CPMS asks the store through the service account. Built: live store catalogue (price, stock status) and an "Owed to the store" card. Materials cost: one "Materials from our store" line at the store's charge, categories are outside purchases only (owner option 1, may revisit the per-category split later; MAP 5.10).
 3. Negative-net payroll handling; multi-project deductions.
 4. Unconfirmed defaults recorded in `planning/backend-integration/decisions/06-phase-2-contract-rulings.md` and the phase 4 contracts.
 

@@ -134,9 +134,14 @@ void main() {
           find.textContaining('Store balance unavailable'),
           findsOneWidget,
         );
+        // On the card and, since the cost needs the store's charges, on the
+        // cost table too.
         expect(
-          find.textContaining('store could not be reached'),
-          findsOneWidget,
+          find.textContaining(
+            'store could not be reached',
+            skipOffstage: false,
+          ),
+          findsNWidgets(2),
         );
         // Below the fold in a lazily built list, but built: the tab did not fail.
         expect(

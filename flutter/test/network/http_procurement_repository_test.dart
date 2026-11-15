@@ -716,7 +716,7 @@ void main() {
   });
 
   group('finance-blocked methods', () {
-    test('payables, payments and delivered value are not faked', () async {
+    test('payables and payments are not faked', () async {
       final api = FakeApi((options) => json(const <Object>[]));
       final repo = repoFor(api, active: AppRole.accountant);
 
@@ -746,16 +746,8 @@ void main() {
           ),
         ),
       );
-      expect(
-        repo.deliveredValueByCategory(1),
-        throwsA(
-          isA<UnsupportedError>().having(
-            (e) => e.message,
-            'message',
-            contains('per-line'),
-          ),
-        ),
-      );
+      // Delivered value is no longer blocked: own-store goods are the store's
+      // charge and the rest has a route (store_materials_cost_test.dart).
       expect(api.requests, isEmpty);
     });
   });

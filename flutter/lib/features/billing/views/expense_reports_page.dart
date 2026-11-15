@@ -107,8 +107,9 @@ class ExpenseReportsPage extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Materials are delivered (undamaged) value by request '
-                'category. Labor is processed payroll; equipment is hours on '
-                'approved daily reports × rate.',
+                'category; goods from our own store are one line, at what the '
+                'store charged. Labor is processed payroll; equipment is hours '
+                'on approved daily reports × rate.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],

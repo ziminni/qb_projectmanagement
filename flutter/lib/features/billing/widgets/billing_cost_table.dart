@@ -37,6 +37,17 @@ class BillingCostTable extends StatelessWidget {
                 DataCell(variance(cat.variance)),
               ],
             ),
+          // The store's charge: one line with no category budget (decision
+          // 2026-11-15), so category rows are outside purchases only.
+          if (c.storeMaterials != 0)
+            DataRow(
+              cells: [
+                const DataCell(Text('Materials from our store')),
+                const DataCell(Text('—')),
+                DataCell(Text(p(c.storeMaterials))),
+                const DataCell(Text('—')),
+              ],
+            ),
           DataRow(
             cells: [
               const DataCell(Text('Labor (processed payroll)')),

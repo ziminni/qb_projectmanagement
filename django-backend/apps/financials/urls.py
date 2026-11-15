@@ -7,7 +7,9 @@ Two clusters live here:
   `progress-billings/`, `client-payments/`, `billing-summary/`,
   `variation-orders/`, `retention/` and `retention-releases/`.
 
-Derived project costs and POS/supplier payables are deliberately absent.
+Derived project costs are not here: outside-store materials cost is
+`requisitions` `projects/{id}/external-materials-cost/`, own-store materials are the
+store's charge (`pos-payables/`), labor is `labor-cost/`. Supplier payables are absent.
 """
 
 from django.urls import include, path

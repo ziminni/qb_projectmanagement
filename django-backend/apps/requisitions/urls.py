@@ -21,6 +21,7 @@ models and rows are untouched. The POS bridge that replaces them is task 3.1b.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .cost_views import external_materials_cost_view
 from .pos_live_views import pos_catalog_view, pos_payables_view
 from .procurement_views import (
     DeliveryViewSet,
@@ -39,6 +40,10 @@ router.register(r'deliveries', DeliveryViewSet, basename='delivery')
 
 urlpatterns = [
     path('pos-catalog/', pos_catalog_view, name='pos-catalog'),
+    path(
+        'projects/<int:pk>/external-materials-cost/', external_materials_cost_view,
+        name='project-external-materials-cost',
+    ),
     path(
         'projects/<int:pk>/pos-payables/', pos_payables_view,
         name='project-pos-payables',

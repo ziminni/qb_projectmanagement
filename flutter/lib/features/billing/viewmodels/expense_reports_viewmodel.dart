@@ -7,6 +7,7 @@ import '../../../data/models/category.dart';
 import '../../../data/models/project.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
+import '../../../data/services/business_rule_exception.dart';
 import '../../../data/services/progress_calculator.dart';
 import '../../../data/services/project_cost_service.dart';
 import '../../../data/services/session_service.dart';
@@ -61,6 +62,8 @@ class CostReport {
           headers: const ['Cost', 'Amount'],
           rows: [
             ['Materials', peso(costs.materials)],
+            if (costs.storeMaterials != 0)
+              ['  of which from our store', peso(costs.storeMaterials)],
             ['Labor', peso(costs.labor)],
             ['Equipment', peso(costs.equipment)],
           ],
@@ -77,6 +80,13 @@ class CostReport {
                 peso(c.budget),
                 peso(c.actual),
                 peso(c.variance),
+              ],
+            if (costs.storeMaterials != 0)
+              [
+                'Materials from our store',
+                '—',
+                peso(costs.storeMaterials),
+                '—',
               ],
           ],
           numeric: const {1, 2, 3},
@@ -179,6 +189,9 @@ class ExpenseReportsViewModel extends ChangeNotifier {
       // Delivered-value costing is blocked in API mode (blocker 1).
       _report = null;
       _error = supplierAccountingUnavailable;
+    } on BusinessRuleException catch (e) {
+      _report = null;
+      _error = e.message;
     } finally {
       _loading = false;
       notifyListeners();

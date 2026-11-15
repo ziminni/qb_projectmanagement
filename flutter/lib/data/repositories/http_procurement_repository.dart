@@ -371,12 +371,16 @@ class HttpProcurementRepository implements ProcurementRepository {
   );
 
   @override
-  Future<Map<int, double>> deliveredValueByCategory(int projectId) async =>
-      throw UnsupportedError(
-        'Delivered-value costing is blocked: own-store material needs real '
-        'per-line release values, which the POS boundary does not provide '
-        '(phase-3 contract, blocker 1).',
-      );
+  Future<Map<int, double>> deliveredValueByCategory(int projectId) async {
+    // Outside-store goods only: own-store goods are the store's charge.
+    final data = jsonObject(
+      await _client.get('projects/$projectId/external-materials-cost/'),
+    );
+    return {
+      for (final e in jsonObject(data['by_category']).entries)
+        int.parse(e.key): JsonUtils.toDouble(e.value),
+    };
+  }
 
   // ---- Helpers
 
