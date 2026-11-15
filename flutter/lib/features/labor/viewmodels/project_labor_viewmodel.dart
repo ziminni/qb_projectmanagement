@@ -19,9 +19,14 @@ class ProjectLaborViewModel extends ChangeNotifier {
   ProjectLaborViewModel({
     required this.projectId,
     required LaborRepository labor,
+    required this.seesFinance,
   }) : _labor = labor;
 
   final int projectId;
+
+  /// Whether this role may see peso amounts ([AppRole.seesFinance]).
+  final bool seesFinance;
+
   final LaborRepository _labor;
 
   bool _loading = true;
@@ -59,8 +64,10 @@ class ProjectLaborViewModel extends ChangeNotifier {
             byDate[d]!.where((a) => a.status == AttendanceStatus.absent).length,
           ),
       ];
-      // Payroll has no routes yet: leave the figures out rather than fake them.
-      if (_labor.supportsPayroll) {
+      // Payroll (periods and labor cost) is finance-only on the server and the
+      // page shows it to a finance role only, so a site engineer never asks: a
+      // refused call would turn the whole tab into an error.
+      if (_labor.supportsPayroll && seesFinance) {
         periods = await _labor.getPeriods(projectIds: [projectId]);
         laborCost = await _labor.laborCost(projectId);
       }

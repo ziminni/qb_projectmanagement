@@ -6,7 +6,8 @@ import '../models/payroll_period.dart';
 import '../models/worker.dart';
 import 'labor_repository.dart';
 
-/// Workers and attendance against the CPMS backend (Phase 4, slice A).
+/// Workers and attendance against the CPMS backend (Phase 4, slice A), and
+/// payroll periods against the slice C routes.
 ///
 /// Scope, role and redaction are the server's: the active role (sent as
 /// `X-Active-Role`) decides which projects and rows come back and whether a
@@ -14,16 +15,18 @@ import 'labor_repository.dart';
 /// never sent as a claim. Refusals arrive as the server's own `detail` text
 /// and surface as `BusinessRuleException` unchanged.
 ///
-/// Payroll has no endpoints yet (phase-4 contract, slice A), so every payroll
-/// method refuses: an invented period, advance or labor cost would be a figure
-/// nobody computed.
+/// Payroll money is computed by the server: every amount on a line (`gross_pay`,
+/// `cash_advance`, `statutory_deductions`, `net_pay`) is read as sent and never
+/// recalculated here, which is why `payroll_calculator.dart` stays mock-only.
+/// The statutory total is `0.00` with `deductions_policy: 'unconfigured'` until
+/// a contribution table exists, and that flag reaches the screens.
 class HttpLaborRepository implements LaborRepository {
   HttpLaborRepository(this._client);
 
   final ApiClient _client;
 
   @override
-  bool get supportsPayroll => false;
+  bool get supportsPayroll => true;
 
   // ---- Workers
 
@@ -101,54 +104,104 @@ class HttpLaborRepository implements LaborRepository {
     );
   }
 
-  // ---- Payroll (no routes yet: phase-4 contract, slice A)
+  // ---- Payroll
 
   @override
-  Future<List<PayrollPeriod>> getPeriods({List<int>? projectIds}) async =>
-      throw UnsupportedError(_noPayroll);
+  Future<List<PayrollPeriod>> getPeriods({List<int>? projectIds}) async {
+    final rows = await _client.getRows(
+      'payroll-periods/',
+      // The route filters one project; a longer list is filtered here.
+      query: {
+        if (projectIds != null && projectIds.length == 1)
+          'project': '${projectIds.single}',
+      },
+    );
+    return [
+      for (final row in rows)
+        if (PayrollPeriod.fromJson(row) case final period
+            when projectIds == null || projectIds.contains(period.projectId))
+          period,
+    ];
+  }
 
   @override
-  Future<PayrollPeriod?> getPeriod(int id) async => throw UnsupportedError(
-    _noPayroll,
-  );
+  Future<PayrollPeriod?> getPeriod(int id) async {
+    final data = await _client.get(
+      'payroll-periods/$id/',
+      notFoundAsNull: true,
+    );
+    return data == null ? null : PayrollPeriod.fromJson(jsonObject(data));
+  }
 
+  /// The period is created open: its status is the server's to move.
   @override
   Future<PayrollPeriod> createPeriod(
     int projectId,
     DateTime start,
     DateTime end, {
     required int userId,
-  }) async => throw UnsupportedError(_noPayroll);
+  }) async => PayrollPeriod.fromJson(
+    jsonObject(
+      await _client.post(
+        'payroll-periods/',
+        body: {
+          'project_id': projectId,
+          'period_start': JsonUtils.fromDate(start),
+          'period_end': JsonUtils.fromDate(end),
+        },
+      ),
+    ),
+  );
 
   @override
   Future<PayrollPeriod> verifyPeriod(int id, {required int userId}) async =>
-      throw UnsupportedError(_noPayroll);
+      _move(id, 'verify');
 
   @override
-  Future<List<PayrollLine>> getLines(int periodId) async =>
-      throw UnsupportedError(_noPayroll);
+  Future<List<PayrollLine>> getLines(int periodId) async => [
+    for (final row in await _client.getRows(
+      'payroll-periods/$periodId/lines/',
+    ))
+      PayrollLine.fromJson(row),
+  ];
 
+  /// The route answers with the affected line, which the screens re-read from
+  /// `lines/`; nothing is computed from it here.
   @override
   Future<void> setCashAdvance(
     int periodId,
     int workerId,
     double amount, {
     required int userId,
-  }) async => throw UnsupportedError(_noPayroll);
+  }) async {
+    await _client.post(
+      'payroll-periods/$periodId/cash-advance/',
+      body: {'worker_id': workerId, 'amount': amount},
+    );
+  }
 
   @override
   Future<PayrollPeriod> processPeriod(int id, {required int userId}) async =>
-      throw UnsupportedError(_noPayroll);
+      _move(id, 'process');
 
+  /// Finance-only on the server, so an omitted figure is a broken response and
+  /// a refused role is an error — neither reads as a zero cost.
   @override
-  Future<double> laborCost(int projectId) async => throw UnsupportedError(
-    'Labor cost needs processed payroll, which the CPMS backend does not have '
-    'yet (phase-4 contract, slice A).',
-  );
+  Future<double> laborCost(int projectId) async {
+    final data = jsonObject(
+      await _client.get('labor-cost/', query: {'project': '$projectId'}),
+    );
+    return JsonUtils.toFinanceDouble(
+      data['labor_cost'],
+      omitted: !_client.seesFinance,
+    );
+  }
 
-  static const String _noPayroll =
-      'Payroll periods are not available yet: the CPMS backend has workers and '
-      'attendance only so far (phase-4 contract, slice A).';
+  /// A period move: each transition is its own audited server transaction.
+  Future<PayrollPeriod> _move(int id, String move) async =>
+      PayrollPeriod.fromJson(
+        jsonObject(await _client.post('payroll-periods/$id/$move/')),
+      );
 
   /// A worker row, told whether this role is sent the money keys: an omitted
   /// `daily_rate` is a hidden wage for a redacted role and a broken response

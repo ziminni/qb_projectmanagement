@@ -24,8 +24,11 @@ class ProjectLaborPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       key: ValueKey(projectId),
-      create: (_) =>
-          ProjectLaborViewModel(projectId: projectId, labor: getIt())..load(),
+      create: (_) => ProjectLaborViewModel(
+        projectId: projectId,
+        labor: getIt(),
+        seesFinance: canSeeFinance(),
+      )..load(),
       builder: (context, _) {
         final vm = context.watch<ProjectLaborViewModel>();
         if (vm.isLoading) {

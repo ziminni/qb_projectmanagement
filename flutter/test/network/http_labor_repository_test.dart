@@ -2,6 +2,8 @@ import 'package:buildpro_frontend/core/di/service_locator.dart';
 import 'package:buildpro_frontend/core/network/api_config.dart';
 import 'package:buildpro_frontend/data/models/app_role.dart';
 import 'package:buildpro_frontend/data/models/attendance.dart';
+import 'package:buildpro_frontend/data/models/payroll_line.dart';
+import 'package:buildpro_frontend/data/models/payroll_period.dart';
 import 'package:buildpro_frontend/data/models/worker.dart';
 import 'package:buildpro_frontend/data/repositories/http_labor_repository.dart';
 import 'package:buildpro_frontend/data/repositories/labor_repository.dart';
@@ -49,6 +51,45 @@ Map<String, dynamic> attendanceRow({
   'recorded_by': 4,
   'created_at': '2026-10-20T09:00:00Z',
   'updated_at': '2026-10-20T09:00:00Z',
+};
+
+// Wire shapes from the 4.1c payroll build: one `statutory_deductions` total
+// and a `deductions_policy` flag instead of the demo's three columns.
+Map<String, dynamic> payrollPeriodRow({
+  int id = 1,
+  int projectId = 1,
+  String start = '2026-10-01',
+  String end = '2026-10-15',
+  String status = 'open',
+}) => {
+  'id': id,
+  'project_id': projectId,
+  'period_start': start,
+  'period_end': end,
+  'status': status,
+  'created_at': '2026-10-01T09:00:00Z',
+  'updated_at': '2026-10-01T09:00:00Z',
+};
+
+Map<String, dynamic> payrollLineRow({
+  int id = 0,
+  int workerId = 1,
+  String gross = '4593.75',
+  String statutory = '0.00',
+  String policy = 'unconfigured',
+  String cashAdvance = '0.00',
+  String net = '4593.75',
+}) => {
+  'id': id,
+  'payroll_period_id': 1,
+  'worker_id': workerId,
+  'days_worked': '5.50',
+  'overtime_pay': '468.75',
+  'gross_pay': gross,
+  'cash_advance': cashAdvance,
+  'statutory_deductions': statutory,
+  'deductions_policy': policy,
+  'net_pay': net,
 };
 
 HttpLaborRepository laborRepoFor(
@@ -292,77 +333,350 @@ void main() {
     });
   });
 
-  group('payroll not available yet', () {
-    test('every payroll method refuses instead of faking a ledger', () async {
-      final api = FakeApi((options) => json(const <Object>[]));
-      final repo = laborRepoFor(api, active: AppRole.accountant);
-      final matcher = throwsA(
-        isA<UnsupportedError>().having(
-          (e) => e.message,
-          'message',
-          contains('Payroll periods are not available yet'),
-        ),
+  group('payroll periods', () {
+    test('reads the cut-off calendar of one project', () async {
+      final api = FakeApi(
+        (options) => json([payrollPeriodRow(projectId: 3)]),
       );
 
-      expect(repo.supportsPayroll, isFalse);
-      expect(repo.getPeriods(), matcher);
-      expect(repo.getPeriod(1), matcher);
+      final periods = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).getPeriods(projectIds: [3]);
+
+      final request = api.last('payroll-periods/');
+      expect(request.method, 'GET');
+      expect(request.uri.queryParameters['project'], '3');
+      expect(periods.single.id, 1);
+      expect(periods.single.projectId, 3);
+      expect(periods.single.periodStart, DateTime(2026, 10, 1));
+      expect(periods.single.status, PayrollStatus.open);
+    });
+
+    test('a wider project list asks for all and filters here', () async {
+      // The route filters one project, so a longer list is filtered here
+      // instead of asking for a guess.
+      final api = FakeApi(
+        (options) => json([
+          payrollPeriodRow(id: 1, projectId: 3),
+          payrollPeriodRow(id: 2, projectId: 4),
+          payrollPeriodRow(id: 3, projectId: 5),
+        ]),
+      );
+
+      final periods = await laborRepoFor(
+        api,
+        active: AppRole.owner,
+      ).getPeriods(projectIds: [3, 4]);
+
       expect(
-        repo.createPeriod(
-          1,
+        api.last('payroll-periods/').uri.queryParameters.containsKey('project'),
+        isFalse,
+      );
+      expect(periods.map((p) => p.id), [1, 2]);
+    });
+
+    test('one period is null when the server will not show it', () async {
+      final api = FakeApi(
+        (options) => json({'detail': 'Not found.'}, status: 404),
+      );
+
+      expect(
+        await laborRepoFor(api, active: AppRole.accountant).getPeriod(7),
+        isNull,
+      );
+      expect(api.last('payroll-periods/7/').method, 'GET');
+    });
+
+    test('creates a period and leaves the status to the server', () async {
+      final api = FakeApi(
+        (options) => json(payrollPeriodRow(id: 9), status: 201),
+      );
+
+      final created = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).createPeriod(
+        3,
+        DateTime(2026, 10, 1),
+        DateTime(2026, 10, 15),
+        userId: 3,
+      );
+
+      final request = api.last('payroll-periods/');
+      expect(request.method, 'POST');
+      final body = sentBody(request);
+      expect(body, {
+        'project_id': 3,
+        'period_start': '2026-10-01',
+        'period_end': '2026-10-15',
+      });
+      expect(created.id, 9);
+    });
+
+    test('verification is its own route with no body', () async {
+      final api = FakeApi(
+        (options) => json(payrollPeriodRow(id: 4, status: 'verified')),
+      );
+
+      final verified = await laborRepoFor(
+        api,
+        active: AppRole.owner,
+      ).verifyPeriod(4, userId: 7);
+
+      final request = api.last('payroll-periods/4/verify/');
+      expect(request.method, 'POST');
+      expect(request.data, isNull);
+      expect(verified.status, PayrollStatus.verified);
+    });
+
+    test('processing returns the locked period', () async {
+      final api = FakeApi(
+        (options) => json(payrollPeriodRow(id: 4, status: 'processed')),
+      );
+
+      final processed = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).processPeriod(4, userId: 3);
+
+      expect(api.last('payroll-periods/4/process/').method, 'POST');
+      expect(processed.status, PayrollStatus.processed);
+    });
+
+    test('an overlap refusal reaches the user unchanged', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'This overlaps an existing payroll period for the project.',
+        }, status: 400),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.accountant).createPeriod(
+          3,
           DateTime(2026, 10, 1),
           DateTime(2026, 10, 15),
           userId: 3,
         ),
-        matcher,
-      );
-      expect(repo.verifyPeriod(1, userId: 3), matcher);
-      expect(repo.getLines(1), matcher);
-      expect(repo.setCashAdvance(1, 1, 100, userId: 3), matcher);
-      expect(repo.processPeriod(1, userId: 3), matcher);
-      // Cost needs a processed period, so it names that instead.
-      expect(
-        repo.laborCost(1),
         throwsA(
-          isA<UnsupportedError>().having(
+          isA<BusinessRuleException>().having(
             (e) => e.message,
             'message',
-            contains('processed payroll'),
+            contains('overlaps an existing payroll period'),
           ),
         ),
       );
-      // Nothing was sent: a refused method never guesses at a route.
-      expect(api.requests, isEmpty);
+    });
+  });
+
+  group('payroll lines', () {
+    test('reads the server lines with one statutory total', () async {
+      // The lines route answers with a bare list, not a DRF page.
+      final api = FakeApi(
+        (options) => json([
+          payrollLineRow(id: 11, workerId: 2, cashAdvance: '100.00'),
+          payrollLineRow(id: 12, workerId: 1),
+        ]),
+      );
+
+      final lines = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).getLines(4);
+
+      expect(api.last('payroll-periods/4/lines/').method, 'GET');
+      expect(lines.map((l) => l.id), [11, 12]);
+      expect(lines.first.workerId, 2);
+      expect(lines.first.daysWorked, 5.5);
+      expect(lines.first.overtimePay, 468.75);
+      expect(lines.first.grossPay, 4593.75);
+      expect(lines.first.cashAdvance, 100);
+    });
+
+    test('an unconfigured deductions policy is kept, not zeroed away', () async {
+      final api = FakeApi((options) => json([payrollLineRow()]));
+
+      final line = (await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).getLines(4)).single;
+
+      expect(line.deductionsPolicy, PayrollLine.deductionsUnconfigured);
+      // The server deducts nothing yet, and the screens must say why rather
+      // than present three columns of zero contributions as compliance.
+      expect(line.statutoryDeductions, 0);
+      expect(line.sss, 0);
+      expect(line.philhealth, 0);
+      expect(line.pagibig, 0);
+      expect(line.netPay, 4593.75);
+    });
+
+    test('a line without its gross pay is a parse error', () async {
+      final row = payrollLineRow()..remove('gross_pay');
+      final api = FakeApi((options) => json([row]));
+
+      await expectLater(
+        laborRepoFor(api, active: AppRole.accountant).getLines(4),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a line without a deductions policy is a parse error', () async {
+      final row = payrollLineRow()..remove('deductions_policy');
+      final api = FakeApi((options) => json([row]));
+
+      await expectLater(
+        laborRepoFor(api, active: AppRole.accountant).getLines(4),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a finance refusal is not a line of zeros', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'Owner or Accountant role required to see payroll.',
+        }, status: 403),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.siteEngineer).getLines(4),
+        throwsA(isA<BusinessRuleException>()),
+      );
+    });
+
+    test('sets one worker cash advance on the period', () async {
+      final api = FakeApi(
+        (options) => json(payrollLineRow(id: 11, cashAdvance: '250.00')),
+      );
+
+      await laborRepoFor(api, active: AppRole.accountant).setCashAdvance(
+        4,
+        2,
+        250,
+        userId: 3,
+      );
+
+      final request = api.last('payroll-periods/4/cash-advance/');
+      expect(request.method, 'POST');
+      final body = sentBody(request);
+      expect(body, {'worker_id': 2, 'amount': 250.0});
+      expect(body.containsKey('payroll_period_id'), isFalse);
+    });
+
+    test('an over-gross advance reaches the user unchanged', () async {
+      final api = FakeApi(
+        (options) =>
+            json({'detail': 'Cash advance cannot exceed gross pay.'}, status: 400),
+      );
+
+      expect(
+        laborRepoFor(
+          api,
+          active: AppRole.accountant,
+        ).setCashAdvance(4, 2, 99999, userId: 3),
+        throwsA(
+          isA<BusinessRuleException>().having(
+            (e) => e.message,
+            'message',
+            'Cash advance cannot exceed gross pay.',
+          ),
+        ),
+      );
+    });
+  });
+
+  group('labor cost', () {
+    test('reads the processed payroll total as a number', () async {
+      final api = FakeApi(
+        (options) => json({'project_id': 3, 'labor_cost': '9187.50'}),
+      );
+
+      final cost = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).laborCost(3);
+
+      final request = api.last('labor-cost/');
+      expect(request.method, 'GET');
+      expect(request.uri.queryParameters['project'], '3');
+      expect(cost, 9187.5);
+    });
+
+    test('a missing cost is a parse error, never zero', () async {
+      final api = FakeApi((options) => json({'project_id': 3}));
+
+      await expectLater(
+        laborRepoFor(api, active: AppRole.accountant).laborCost(3),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a non-finance role is refused, not told the cost is zero', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'Owner or Accountant role required to see payroll.',
+        }, status: 403),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.siteEngineer).laborCost(3),
+        throwsA(isA<BusinessRuleException>()),
+      );
     });
   });
 
   group('the project labor tab on an API backend', () {
-    test(
-      'loads the site without a payroll figure and without hanging',
-      () async {
-        final api = FakeApi((options) {
-          if (options.path == 'workers/') {
-            return json([workerRow(finance: false)]);
-          }
-          if (options.path == 'attendance/') return json([attendanceRow()]);
-          return json({'detail': 'Not found.'}, status: 404);
-        });
-        final vm = ProjectLaborViewModel(
-          projectId: 1,
-          labor: laborRepoFor(api, active: AppRole.siteEngineer),
-        );
+    test('a site engineer never asks for the payroll figures', () async {
+      // The payroll routes are finance-only, so asking would turn the whole
+      // tab into a 403 error instead of showing its attendance.
+      final api = FakeApi((options) {
+        if (options.path == 'workers/') {
+          return json([workerRow(finance: false)]);
+        }
+        if (options.path == 'attendance/') return json([attendanceRow()]);
+        return json({'detail': 'Not found.'}, status: 404);
+      });
+      final vm = ProjectLaborViewModel(
+        projectId: 1,
+        labor: laborRepoFor(api, active: AppRole.siteEngineer),
+        seesFinance: false,
+      );
 
-        await vm.load();
+      await vm.load();
 
-        expect(vm.isLoading, isFalse);
-        expect(vm.error, isNull);
-        expect(vm.workers.single.fullName, 'Nilo Aguilar');
-        expect(vm.recentDays.single.present, 1);
-        expect(vm.periods, isEmpty);
-        expect(vm.laborCost, 0);
-        expect(api.paths, ['attendance/', 'workers/']);
-      },
-    );
+      expect(vm.isLoading, isFalse);
+      expect(vm.error, isNull);
+      expect(vm.workers.single.fullName, 'Nilo Aguilar');
+      expect(vm.recentDays.single.present, 1);
+      expect(vm.periods, isEmpty);
+      expect(vm.laborCost, 0);
+      expect(api.paths, ['attendance/', 'workers/']);
+    });
+
+    test('an accountant sees the periods and the server cost', () async {
+      final api = FakeApi((options) {
+        if (options.path == 'attendance/') return json([attendanceRow()]);
+        if (options.path == 'workers/') return json([workerRow()]);
+        if (options.path == 'payroll-periods/') {
+          return json([payrollPeriodRow(projectId: 1)]);
+        }
+        if (options.path == 'labor-cost/') {
+          return json({'project_id': 1, 'labor_cost': '4593.75'});
+        }
+        return json({'detail': 'Not found.'}, status: 404);
+      });
+      final vm = ProjectLaborViewModel(
+        projectId: 1,
+        labor: laborRepoFor(api, active: AppRole.accountant),
+        seesFinance: true,
+      );
+
+      await vm.load();
+
+      expect(vm.error, isNull);
+      expect(vm.periods.single.status, PayrollStatus.open);
+      expect(vm.laborCost, 4593.75);
+    });
   });
 
   group('repository switch', () {

@@ -165,16 +165,27 @@ class PayrollPeriodDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Overtime at +${((ContributionRates.overtimePremium - 1) * 100).round()}% '
-              'of the hourly rate. Contributions use simplified employee-share '
-              'rates (SSS ${(ContributionRates.sss * 100).toStringAsFixed(1)}%, '
-              'PhilHealth ${(ContributionRates.philhealth * 100).toStringAsFixed(1)}%, '
-              'Pag-IBIG ${(ContributionRates.pagibig * 100).toStringAsFixed(0)}% '
-              'up to ₱${ContributionRates.pagibigCapPerPeriod.toStringAsFixed(0)}), '
-              'not the official contribution tables.',
-              style: textTheme.bodySmall,
-            ),
+            // The server owns every amount and has no statutory table yet, so
+            // say that instead of printing three columns of zero contributions
+            // as if they were computed.
+            if (vm.statutoryDeductionsUnconfigured)
+              Text(
+                'Statutory deductions are not configured yet: contributions '
+                'show ₱0.00 and net pay is gross pay less cash advances. The '
+                'server computes every amount shown here.',
+                style: textTheme.bodySmall,
+              )
+            else
+              Text(
+                'Overtime at +${((ContributionRates.overtimePremium - 1) * 100).round()}% '
+                'of the hourly rate. Contributions use simplified employee-share '
+                'rates (SSS ${(ContributionRates.sss * 100).toStringAsFixed(1)}%, '
+                'PhilHealth ${(ContributionRates.philhealth * 100).toStringAsFixed(1)}%, '
+                'Pag-IBIG ${(ContributionRates.pagibig * 100).toStringAsFixed(0)}% '
+                'up to ₱${ContributionRates.pagibigCapPerPeriod.toStringAsFixed(0)}), '
+                'not the official contribution tables.',
+                style: textTheme.bodySmall,
+              ),
           ],
         );
       },

@@ -47,6 +47,13 @@ class PayrollPeriodDetailViewModel extends ChangeNotifier with ActionRunner {
   double get totalGross => _lines.fold(0, (s, l) => s + l.grossPay);
   double get totalNet => _lines.fold(0, (s, l) => s + l.netPay);
 
+  /// The server has no statutory contribution table yet: its lines carry a
+  /// zero total with `deductions_policy: 'unconfigured'`, so the screens say so
+  /// instead of showing three columns of zero contributions as computed.
+  bool get statutoryDeductionsUnconfigured => _lines.any(
+    (l) => l.deductionsPolicy == PayrollLine.deductionsUnconfigured,
+  );
+
   String? get verifyBlocker =>
       _period == null ? null : LaborRules.canVerify(_period!, DateTime.now());
 
@@ -131,6 +138,8 @@ class PayrollPeriodDetailViewModel extends ChangeNotifier with ActionRunner {
         ('Period', Formatters.dateRange(p.periodStart, p.periodEnd)),
         ('Status', p.status.label),
         ('Workers', '${_lines.length}'),
+        if (statutoryDeductionsUnconfigured)
+          ('Deductions', 'Statutory deductions not configured (₱0.00)'),
       ],
       tables: [
         PdfTable(

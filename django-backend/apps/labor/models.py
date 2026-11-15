@@ -1,14 +1,16 @@
-"""Workers and project attendance (Phase 4 labor slice A).
+"""Workers and project attendance (Phase 4 labor slice A) plus payroll
+periods, lines and cash advances (slice C).
 
-Shapes mirror `flutter/lib/data/models/{worker,attendance}.dart` and the wire
-contract `planning/backend-integration/contracts/phase-4-labor.md`:
+Shapes mirror `flutter/lib/data/models/{worker,attendance,payroll_period,
+payroll_line}.dart` and the wire contracts
+`planning/backend-integration/contracts/phase-4-labor.md` (slice A) and
+`.../phase-4-payroll.md` (slice C):
 
     WORKERS    → apps_labor.Worker
     ATTENDANCE → apps_labor.Attendance
-
-No payroll table exists in this slice on purpose: periods, processing and
-labor cost posting are a later slice and must add processed-period attendance
-locks in the same rollout.
+    PERIOD     → apps_labor.PayrollPeriod
+    LINE       → apps_labor.PayrollLine      (snapshot, written at processing)
+    ADVANCE    → apps_labor.PayrollAdvance   (pre-processing cash advance)
 
 Two uniqueness rules live in the database, not only in the view:
 
@@ -17,6 +19,11 @@ Two uniqueness rules live in the database, not only in the view:
    worker cannot be marked present at two sites the same day (two half-days
    included). An absence at another project is allowed, hence the partial
    index condition.
+
+Statutory deductions are **unresolved owner policy**. A line therefore stores
+one `statutory_deductions` amount (default `0.00`) with an explicit
+`deductions_policy` flag; nothing here computes SSS, PhilHealth, Pag-IBIG or
+withholding tax.
 """
 
 # Pyright here runs without django-stubs, so model fields are inferred as their
@@ -121,3 +128,162 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f'{self.worker} {self.work_date} {self.status}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 slice C — payroll periods, lines and cash advances
+# ---------------------------------------------------------------------------
+
+class PayrollStatus(models.TextChoices):
+    """Mirror of Flutter `PayrollStatus` (`payroll_period.dart:3-7`)."""
+
+    OPEN = 'open', 'Open'
+    VERIFIED = 'verified', 'Verified by owner'
+    PROCESSED = 'processed', 'Processed'
+
+
+class PayrollPeriod(models.Model):
+    """One weekly/15-day cut-off of one project (`payroll_period.dart`).
+
+    The status only moves open → verified → processed, plus one step back
+    (verified → open) when verified attendance is corrected before processing.
+    A processed period is final: its lines are the pay that was issued.
+    """
+
+    project = models.ForeignKey(
+        'apps_projects.Project', on_delete=models.PROTECT,
+        related_name='payroll_periods',
+    )
+    period_start = models.DateField()
+    period_end = models.DateField()
+    status = models.CharField(
+        max_length=16, choices=PayrollStatus.choices,
+        default=PayrollStatus.OPEN, db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Payroll Period'
+        verbose_name_plural = 'Payroll Periods'
+        ordering = ('-period_start', '-id')
+        indexes = [models.Index(fields=['project', 'status'])]
+        constraints = [
+            # Overlaps are refused by the service under the project row lock;
+            # this is the backstop for two simultaneous creates.
+            models.UniqueConstraint(
+                fields=('project', 'period_start'),
+                name='apps_labor_payroll_period_unique_project_start',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(period_end__gte=models.F('period_start')),
+                name='apps_labor_payroll_period_end_after_start',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.project.code} {self.period_start}–{self.period_end}'
+
+
+class PayrollLine(models.Model):
+    """One worker's pay for one period (`payroll_line.dart`).
+
+    Written once, at processing: a later wage change never rewrites issued pay.
+    The wire shape extends the demo model with one `statutory_deductions`
+    amount and a `deductions_policy` flag, because the SSS/PhilHealth/Pag-IBIG/
+    withholding-tax policy is an open owner decision.
+    """
+
+    DEDUCTIONS_UNCONFIGURED = 'unconfigured'
+    DEDUCTIONS_POLICY_CHOICES = ((DEDUCTIONS_UNCONFIGURED, 'Not configured'),)
+
+    period = models.ForeignKey(
+        PayrollPeriod, on_delete=models.PROTECT, related_name='lines',
+    )
+    worker = models.ForeignKey(Worker, on_delete=models.PROTECT,
+                               related_name='payroll_lines')
+    days_worked = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(16)],
+    )
+    overtime_pay = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+    gross_pay = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+    cash_advance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0)],
+    )
+    statutory_deductions = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0)],
+    )
+    deductions_policy = models.CharField(
+        max_length=16, choices=DEDUCTIONS_POLICY_CHOICES,
+        default=DEDUCTIONS_UNCONFIGURED,
+    )
+    net_pay = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Payroll Line'
+        verbose_name_plural = 'Payroll Lines'
+        ordering = ('worker_id', 'id')
+        constraints = [
+            models.UniqueConstraint(
+                fields=('period', 'worker'),
+                name='apps_labor_payroll_line_unique_period_worker',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(cash_advance__gte=0)
+                & models.Q(statutory_deductions__gte=0)
+                & models.Q(gross_pay__gte=0),
+                name='apps_labor_payroll_line_amounts_not_negative',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.period_id}/{self.worker_id} {self.net_pay}'
+
+
+class PayrollAdvance(models.Model):
+    """A worker's cash advance held against one period, before processing.
+
+    Keyed by (period, worker) — "per line" once the period is processed. An
+    advance is set back to `0.00`, never deleted, so its history is kept.
+    """
+
+    period = models.ForeignKey(
+        PayrollPeriod, on_delete=models.PROTECT, related_name='advances',
+    )
+    worker = models.ForeignKey(Worker, on_delete=models.PROTECT,
+                               related_name='payroll_advances')
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Payroll Advance'
+        verbose_name_plural = 'Payroll Advances'
+        ordering = ('worker_id', 'id')
+        constraints = [
+            models.UniqueConstraint(
+                fields=('period', 'worker'),
+                name='apps_labor_payroll_advance_unique_period_worker',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gte=0),
+                name='apps_labor_payroll_advance_amount_not_negative',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.period_id}/{self.worker_id} {self.amount}'

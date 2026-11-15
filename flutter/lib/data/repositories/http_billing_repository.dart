@@ -69,7 +69,8 @@ class HttpBillingRepository implements BillingRepository {
     return BillingDetail(
       billing: ProgressBilling.fromJson(row),
       payments: [
-        for (final payment in jsonRows(row['payments'])) Payment.fromJson(payment),
+        for (final payment in jsonRows(row['payments']))
+          Payment.fromJson(payment),
       ],
       history: _history(row['history']),
     );
@@ -152,7 +153,8 @@ class HttpBillingRepository implements BillingRepository {
         'paid_on': JsonUtils.fromDate(paidOn),
         'method': method.apiValue,
         // An absent reference is no reference: an empty one is noise.
-        if (reference != null && reference.isNotEmpty) 'reference_no': reference,
+        if (reference != null && reference.isNotEmpty)
+          'reference_no': reference,
       },
     );
     return Payment.fromJson(jsonObject(data));
@@ -179,7 +181,8 @@ class HttpBillingRepository implements BillingRepository {
     return [
       for (final row in rows)
         if (Payment.fromJson(row) case final payment
-            when billingIds == null || billingIds.contains(payment.progressBillingId))
+            when billingIds == null ||
+                billingIds.contains(payment.progressBillingId))
           payment,
     ];
   }
@@ -194,10 +197,7 @@ class HttpBillingRepository implements BillingRepository {
     }
     if (projectIds == null || projectIds.length == 1) {
       final data = jsonObject(
-        await _client.get(
-          'billing-summary/',
-          query: _oneProject(projectIds),
-        ),
+        await _client.get('billing-summary/', query: _oneProject(projectIds)),
       );
       return BilledSummary(
         billed: _money(data['billed']),
@@ -275,10 +275,8 @@ class HttpBillingRepository implements BillingRepository {
   }
 
   @override
-  Future<VariationOrder> submitVariationOrder(
-    int id, {
-    required int userId,
-  }) => _voMove(id, 'submit');
+  Future<VariationOrder> submitVariationOrder(int id, {required int userId}) =>
+      _voMove(id, 'submit');
 
   @override
   Future<VariationOrder> ownerRejectVo(
@@ -344,7 +342,8 @@ class HttpBillingRepository implements BillingRepository {
         'amount': amount,
         'released_on': JsonUtils.fromDate(releasedOn),
         'method': method.apiValue,
-        if (reference != null && reference.isNotEmpty) 'reference_no': reference,
+        if (reference != null && reference.isNotEmpty)
+          'reference_no': reference,
       },
     );
     return RetentionRelease.fromJson(jsonObject(data));
@@ -354,13 +353,13 @@ class HttpBillingRepository implements BillingRepository {
 
   /// A billing move: each transition is its own audited route.
   Future<ProgressBilling> _move(int id, String move, {Object? body}) async =>
-      _billing(
-        await _client.post('progress-billings/$id/$move/', body: body),
-      );
+      _billing(await _client.post('progress-billings/$id/$move/', body: body));
 
   Future<VariationOrder> _voMove(int id, String move, {Object? body}) async =>
       VariationOrder.fromJson(
-        jsonObject(await _client.post('variation-orders/$id/$move/', body: body)),
+        jsonObject(
+          await _client.post('variation-orders/$id/$move/', body: body),
+        ),
       );
 
   ProgressBilling _billing(Object? data) =>

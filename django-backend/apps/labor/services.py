@@ -3,12 +3,16 @@
 Every write lives in one `transaction.atomic()` with its audit row, so an
 invalid entry leaves no row, no audit and no half-saved sheet behind.
 
-The save-day lock order is fixed to avoid deadlocks:
+The save-day lock order is fixed to avoid deadlocks, and shared with payroll:
 
-1. worker rows, `select_for_update()` ordered by id (this also serialises two
+1. the **project** row (`select_for_update`) — the same first lock a payroll
+   processing run takes, so "process vs. save attendance" cannot interleave;
+2. the payroll period covering the day (a processed one refuses the save);
+3. worker rows, `select_for_update()` ordered by id (this also serialises two
    competing cross-project saves for the same worker);
-2. the existing attendance rows of the project/day;
-3. then the cross-project presence check, the upsert and the audits.
+4. the existing attendance rows of the project/day;
+5. then the cross-project presence check, the upsert, the audits and — when a
+   verified period's attendance actually changed — the reopen to `open`.
 
 The database's partial unique index (one non-absent row per worker per day) is
 the backstop; a race that still reaches it is mapped to a clean `400`, never a
@@ -23,10 +27,17 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from ..projects.models import Project
 from ..projects.rules import RuleRefused
 from ..users import services as user_services
-from . import rules
-from .models import PRESENT_STATUSES, Attendance, AttendanceStatus, Worker
+from . import payroll_services, rules
+from .models import (
+    PRESENT_STATUSES,
+    Attendance,
+    AttendanceStatus,
+    PayrollStatus,
+    Worker,
+)
 
 
 def create_worker(user, serializer):
@@ -69,6 +80,10 @@ def save_day(user, project, work_date, entries):
 def _write_sheet(user, project, work_date, entries, worker_ids):
     saved = []
     with transaction.atomic():
+        # The project lock is shared with payroll processing: it decides whether
+        # this save sees the period's status or the process run sees the save.
+        project = Project.objects.select_for_update().get(pk=project.pk)
+        period = payroll_services.locked_period(project, work_date)
         # Stable worker lock order serialises competing saves for this worker.
         workers = {
             worker.pk: worker
@@ -105,6 +120,7 @@ def _write_sheet(user, project, work_date, entries, worker_ids):
                     rules.PRESENCE_CONFLICT.format(name=worker.full_name)
                 )
 
+        changed = False
         for entry in entries:
             worker = workers[entry['worker_id']]
             status = entry['status']
@@ -112,11 +128,15 @@ def _write_sheet(user, project, work_date, entries, worker_ids):
             if row is None:
                 row = Attendance(project=project, worker=worker,
                                  work_date=work_date)
-            row.status = status
-            row.overtime_hours = (
+            overtime_hours = (
                 Decimal(0) if status == AttendanceStatus.ABSENT
                 else entry['overtime_hours']
             )
+            if (row.pk is None or row.status != status
+                    or row.overtime_hours != overtime_hours):
+                changed = True
+            row.status = status
+            row.overtime_hours = overtime_hours
             row.recorded_by = user
             row.save()
             # No wage, government id or raw request body reaches the audit row.
@@ -127,6 +147,11 @@ def _write_sheet(user, project, work_date, entries, worker_ids):
                 'status': status,
             })
             saved.append(row)
+        # The owner verified this attendance; a real correction needs a new
+        # verification before the accountant may process the period.
+        if (changed and period is not None
+                and period.status == PayrollStatus.VERIFIED):
+            payroll_services.reopen_verified_period(user, period, work_date)
     return saved
 
 

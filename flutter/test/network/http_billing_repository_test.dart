@@ -91,7 +91,10 @@ Map<String, dynamic> releaseRow({
   'updated_at': '2026-12-01T09:00:00Z',
 };
 
-Map<String, dynamic> auditRow({int id = 1, String action = 'billing_submitted'}) => {
+Map<String, dynamic> auditRow({
+  int id = 1,
+  String action = 'billing_submitted',
+}) => {
   'id': id,
   'user_id': 4,
   'action': action,
@@ -145,10 +148,9 @@ void main() {
         (options) => json([billingRow(projectId: 7, status: 'approved')]),
       );
 
-      final billings = await billingRepoFor(api).getBillings(
-        projectIds: [7],
-        statuses: [BillingStatus.approved],
-      );
+      final billings = await billingRepoFor(
+        api,
+      ).getBillings(projectIds: [7], statuses: [BillingStatus.approved]);
 
       final query = api.last('progress-billings/').uri.queryParameters;
       expect(query['project'], '7');
@@ -190,16 +192,24 @@ void main() {
       expect(detail.payments.single.amount, 100000);
       expect(detail.payments.single.method, PaymentMethod.bankTransfer);
       expect(detail.history.single.action, 'billing_submitted');
-      expect(detail.history.single.details['reason'], 'Rework on the second floor');
+      expect(
+        detail.history.single.details['reason'],
+        'Rework on the second floor',
+      );
       expect(detail.paid, 100000);
       expect(detail.balance, 335000);
     });
 
     test('a billing the server does not show is null, not an error', () async {
-      final api = FakeApi((options) => json({'detail': 'Not found.'}, status: 404));
+      final api = FakeApi(
+        (options) => json({'detail': 'Not found.'}, status: 404),
+      );
 
       // A draft billing is a 404 for the client: it may not learn it exists.
-      expect(await billingRepoFor(api, active: AppRole.client).getBilling(9), isNull);
+      expect(
+        await billingRepoFor(api, active: AppRole.client).getBilling(9),
+        isNull,
+      );
     });
 
     test('preview asks the server and trusts its figures', () async {
@@ -233,32 +243,36 @@ void main() {
       expect(figures.netDue, 25000);
     });
 
-    test('a finance answer without a figure is a parse error, not zero', () async {
-      final body = {
-        'pct_accomplished': '0.500000',
-        'gross_earned': '450000.00',
-        'less_previous': '0.00',
-        'less_dp_recoupment': '0.00',
-        'less_retention': '10000.00',
-        'this_period': '450000.00',
-        'net_due': '440000.00',
-      }..remove('gross_earned');
-      final api = FakeApi((options) => json(body));
+    test(
+      'a finance answer without a figure is a parse error, not zero',
+      () async {
+        final body = {
+          'pct_accomplished': '0.500000',
+          'gross_earned': '450000.00',
+          'less_previous': '0.00',
+          'less_dp_recoupment': '0.00',
+          'less_retention': '10000.00',
+          'this_period': '450000.00',
+          'net_due': '440000.00',
+        }..remove('gross_earned');
+        final api = FakeApi((options) => json(body));
 
-      // Preview is finance-only: a missing figure is a broken response, and a
-      // zero would be money nobody computed.
-      expect(
-        billingRepoFor(api, active: AppRole.accountant).previewBilling(
-          3,
-          DateTime(2026, 10, 31),
-        ),
-        throwsA(isA<FormatException>()),
-      );
-    });
+        // Preview is finance-only: a missing figure is a broken response, and a
+        // zero would be money nobody computed.
+        expect(
+          billingRepoFor(
+            api,
+            active: AppRole.accountant,
+          ).previewBilling(3, DateTime(2026, 10, 31)),
+          throwsA(isA<FormatException>()),
+        );
+      },
+    );
 
     test('creates a draft with the project and the period end only', () async {
       final api = FakeApi(
-        (options) => json(billingRow(status: 'draft', billingNo: 4), status: 201),
+        (options) =>
+            json(billingRow(status: 'draft', billingNo: 4), status: 201),
       );
 
       final billing = await billingRepoFor(
@@ -280,9 +294,11 @@ void main() {
     test('submits and withdraws through their own routes', () async {
       final api = FakeApi(
         (options) => json(
-          billingRow(status: options.path.endsWith('/submit/')
-              ? 'pending_client'
-              : 'rejected'),
+          billingRow(
+            status: options.path.endsWith('/submit/')
+                ? 'pending_client'
+                : 'rejected',
+          ),
         ),
       );
       final repo = billingRepoFor(api);
@@ -344,9 +360,12 @@ void main() {
         userId: 6,
       );
 
-      expect(sentBody(api.last('progress-billings/1/payments/')).containsKey(
-        'reference_no',
-      ), isFalse);
+      expect(
+        sentBody(
+          api.last('progress-billings/1/payments/'),
+        ).containsKey('reference_no'),
+        isFalse,
+      );
     });
 
     test('keeps the server refusal text on a 400', () async {
@@ -412,8 +431,10 @@ void main() {
       expect(api.countOf('progress-billings/'), 0);
       expect(payments.map((p) => p.id), [1, 2, 3]);
 
-      final many = await billingRepoFor(api, active: AppRole.accountant)
-          .getPayments(projectIds: [1, 2]);
+      final many = await billingRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).getPayments(projectIds: [1, 2]);
       // A wider list matches the payments against those projects' billings.
       expect(api.countOf('progress-billings/'), 1);
       expect(many.map((p) => p.id), [1, 2]);
@@ -464,11 +485,8 @@ void main() {
 
     test('retention held and released come from the retention route', () async {
       final api = FakeApi(
-        (options) => json({
-          'held': 15000.0,
-          'released': 5000.0,
-          'available': 10000.0,
-        }),
+        (options) =>
+            json({'held': 15000.0, 'released': 5000.0, 'available': 10000.0}),
       );
 
       final retention = await billingRepoFor(
@@ -536,9 +554,14 @@ void main() {
     });
 
     test('a VO the route does not show is null', () async {
-      final api = FakeApi((options) => json({'detail': 'Not found.'}, status: 404));
+      final api = FakeApi(
+        (options) => json({'detail': 'Not found.'}, status: 404),
+      );
 
-      expect(await billingRepoFor(api, active: AppRole.client).getVariationOrder(9), isNull);
+      expect(
+        await billingRepoFor(api, active: AppRole.client).getVariationOrder(9),
+        isNull,
+      );
     });
 
     test('proposes with POST and edits with PATCH', () async {
@@ -574,9 +597,14 @@ void main() {
     });
 
     test('a site engineer never sends a price', () async {
-      final api = FakeApi((options) => json(voRow(amount: '0.00'), status: 201));
+      final api = FakeApi(
+        (options) => json(voRow(amount: '0.00'), status: 201),
+      );
 
-      await billingRepoFor(api, active: AppRole.siteEngineer).saveVariationOrder(
+      await billingRepoFor(
+        api,
+        active: AppRole.siteEngineer,
+      ).saveVariationOrder(
         VariationOrder(
           id: 0,
           projectId: 1,
@@ -598,26 +626,33 @@ void main() {
       );
     });
 
-    test('submit, owner-reject, client approve and reject have routes', () async {
-      final api = FakeApi((options) => json(voRow(status: 'rejected')));
-      final repo = billingRepoFor(api, active: AppRole.owner);
+    test(
+      'submit, owner-reject, client approve and reject have routes',
+      () async {
+        final api = FakeApi((options) => json(voRow(status: 'rejected')));
+        final repo = billingRepoFor(api, active: AppRole.owner);
 
-      await repo.submitVariationOrder(1, userId: 4);
-      await repo.ownerRejectVo(1, userId: 4, reason: ' Not needed ');
-      await repo.clientApproveVo(1, userId: 9);
-      await repo.clientRejectVo(1, userId: 9, reason: ' Too expensive ');
+        await repo.submitVariationOrder(1, userId: 4);
+        await repo.ownerRejectVo(1, userId: 4, reason: ' Not needed ');
+        await repo.clientApproveVo(1, userId: 9);
+        await repo.clientRejectVo(1, userId: 9, reason: ' Too expensive ');
 
-      expect(api.last('variation-orders/1/submit/').method, 'POST');
-      expect(api.last('variation-orders/1/owner-reject/').method, 'POST');
-      // Approval applies the VO to the contract on the server: no second call.
-      expect(api.last('variation-orders/1/client-approve/').method, 'POST');
-      expect(api.last('variation-orders/1/client-reject/').method, 'POST');
-      expect(sentBody(api.last('variation-orders/1/owner-reject/'))['reason'],
-          'Not needed');
-      expect(sentBody(api.last('variation-orders/1/client-reject/'))['reason'],
-          'Too expensive');
-      expect(api.paths.where((p) => p.startsWith('projects/')), isEmpty);
-    });
+        expect(api.last('variation-orders/1/submit/').method, 'POST');
+        expect(api.last('variation-orders/1/owner-reject/').method, 'POST');
+        // Approval applies the VO to the contract on the server: no second call.
+        expect(api.last('variation-orders/1/client-approve/').method, 'POST');
+        expect(api.last('variation-orders/1/client-reject/').method, 'POST');
+        expect(
+          sentBody(api.last('variation-orders/1/owner-reject/'))['reason'],
+          'Not needed',
+        );
+        expect(
+          sentBody(api.last('variation-orders/1/client-reject/'))['reason'],
+          'Too expensive',
+        );
+        expect(api.paths.where((p) => p.startsWith('projects/')), isEmpty);
+      },
+    );
   });
 
   group('retention releases', () {
@@ -668,7 +703,8 @@ void main() {
     test('keeps the refusal text when the project is not completed', () async {
       final api = FakeApi(
         (options) => json({
-          'detail': 'Retention is released only after the project is completed.',
+          'detail':
+              'Retention is released only after the project is completed.',
         }, status: 400),
       );
 
