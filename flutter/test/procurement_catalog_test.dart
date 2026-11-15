@@ -100,11 +100,16 @@ void main() {
 
   test('an own-store line carries the server material id', () async {
     final api = FakeApi(
-      (options) => json({
-        'count': 1,
-        'next': null,
-        'results': [cementRow(id: 9001)],
-      }),
+      (options) => json([
+        {
+          'code': 'CEM-40',
+          'product': 'Portland cement 40 kg',
+          'unit': 'bag',
+          'price': '260.00',
+          'stock_status': 'in_stock',
+          'material_id': 9001,
+        },
+      ]),
     );
     final catalog = HttpStoreCatalogRepository(
       testClient(

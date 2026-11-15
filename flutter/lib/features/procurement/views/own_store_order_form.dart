@@ -6,10 +6,8 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/material_source.dart';
-import '../../../data/models/store_product.dart';
 import '../../../data/services/procurement_rules.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_action_bar.dart';
@@ -19,6 +17,7 @@ import '../viewmodels/order_form_viewmodel.dart';
 import '../viewmodels/procurement_lookups.dart';
 import '../widgets/procurement_budget_card.dart';
 import '../widgets/procurement_category_field.dart';
+import '../widgets/store_product_subtitle.dart';
 import '../widgets/procurement_line_editor.dart';
 import '../widgets/procurement_order_confirm_dialog.dart';
 import '../widgets/procurement_request_summary.dart';
@@ -52,16 +51,6 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
     _address.dispose();
     super.dispose();
   }
-
-  /// SKU, price and shelf count as far as the catalogue knows them: the
-  /// server's master list has no stock, and it hides a price from a role
-  /// without the money view — shown as unavailable, never as ₱0.00.
-  static String _productSubtitle(StoreProduct p) => [
-    if (p.sku.isNotEmpty) p.sku,
-    if (p.price != null) '${Formatters.peso(p.price!)} / ${p.unit}',
-    if (p.price == null) 'Price unavailable',
-    if (p.stock != null) '${InputParsers.amountText(p.stock!)} in stock',
-  ].join(' · ');
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -156,7 +145,7 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
                               ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 title: Text(p.name),
-                                subtitle: Text(_productSubtitle(p)),
+                                subtitle: Text(storeProductSubtitle(p)),
                                 trailing: vm.isPicked(p)
                                     ? const Icon(Icons.check_circle)
                                     : IconButton(

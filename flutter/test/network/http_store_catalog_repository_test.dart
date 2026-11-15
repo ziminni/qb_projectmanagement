@@ -34,6 +34,9 @@ HttpStoreCatalogRepository storeCatalog({
     tokens: InMemoryTokenStore(),
     session: signedInSession(roles: [active], active: active),
   ),
+  // These tests are about the master-list fallback; the live store has its own
+  // file (http_store_catalog_live_test.dart).
+  live: false,
 );
 
 void main() {
@@ -69,7 +72,10 @@ void main() {
       expect(cement.name, 'Portland cement 40 kg');
       expect(cement.sku, 'CEM-40');
       expect(cement.unit, 'bag');
-      expect(cement.price, 260);
+      // The store's price is the real price and the store was not asked, so
+      // the CPMS planning cost (260) is never shown as the store's price.
+      expect(cement.price, isNull);
+      expect(cement.fromStore, isFalse);
       // The master list keeps no shelf count and no category: none is invented.
       expect(cement.stock, isNull);
       expect(cement.category, isNull);
@@ -144,17 +150,16 @@ void main() {
       },
     );
 
-    test('a hidden price is unavailable, never zero', () async {
+    test('no role sees a CPMS cost as the store price', () async {
       final api = FakeApi(
         (options) => json({
           'count': 1,
           'next': null,
-          // The server zeroes the cost for a role without the money view.
           'results': [
             materialRow(
               41,
               name: 'Portland cement 40 kg',
-              cost: 0,
+              cost: 260,
               storeSku: 'CEM-40',
               posCode: 'QB000001',
             ),
@@ -162,14 +167,13 @@ void main() {
         }),
       );
 
-      final engineer = await storeCatalog(
-        api: api,
-        active: AppRole.siteEngineer,
-      ).getProducts();
-      final owner = await storeCatalog(api: api).getProducts();
-
-      expect(engineer.single.price, isNull);
-      expect(owner.single.price, 0);
+      for (final role in [AppRole.owner, AppRole.siteEngineer]) {
+        final products = await storeCatalog(
+          api: api,
+          active: role,
+        ).getProducts();
+        expect(products.single.price, isNull, reason: '$role');
+      }
     });
 
     test('an empty master list is an empty catalogue', () async {
