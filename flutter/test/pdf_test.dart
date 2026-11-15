@@ -39,7 +39,7 @@ void main() {
   ) async {
     await pumpApp(tester);
     await signInAs(tester, 'ramon@example.ph');
-    for (final path in ['/purchase-orders/5', '/daily-reports/1']) {
+    for (final path in ['/purchase-orders/5', '/daily-reports/1', '/payroll/2']) {
       await goTo(tester, path);
       expect(find.text('Export PDF'), findsOneWidget, reason: path);
     }
