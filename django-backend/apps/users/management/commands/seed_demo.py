@@ -107,6 +107,16 @@ class Command(BaseCommand):
                 'and the output says so, because POS ids differ per database.'
             ),
         )
+        parser.add_argument(
+            '--auto-pos-payer',
+            dest='auto_pos_payer',
+            action='store_true',
+            help=(
+                'When --pos-payer-id is omitted and the own-store supplier has no '
+                'payer yet, query POS GET integration/cpms/customers/ and pick '
+                'the first customer automatically if POS is reachable.'
+            ),
+        )
 
     def handle(self, *args, **options):
         if not (settings.DEBUG or options['demo_ack']):
@@ -115,13 +125,39 @@ class Command(BaseCommand):
                 f'database. Re-run with {REQUIRED_FLAG} if it really is a demo one.'
             )
 
+        pos_payer_id = options['pos_payer_id']
+        if pos_payer_id is None and options.get('auto_pos_payer'):
+            pos_payer_id = self._discover_pos_payer_id()
+
         # One transaction: a failed reset must not leave a half-seeded database.
         with transaction.atomic():
             if options['reset']:
                 self._report_deleted(self._reset())
-            counts = self._seed(pos_payer_id=options['pos_payer_id'])
+            counts = self._seed(pos_payer_id=pos_payer_id)
 
         self._report(counts)
+
+    def _discover_pos_payer_id(self):
+        """Best-effort POS contractor customer lookup when POS is already up."""
+        if Supplier.objects.filter(
+            is_own_store=True, pos_payer_id__isnull=False,
+        ).exists():
+            return None
+        try:
+            from apps.requisitions.pos_client import PosError, get_pos_client
+
+            for row in get_pos_client().list_customers():
+                if not isinstance(row, dict):
+                    continue
+                try:
+                    candidate = int(row.get('id'))
+                except (TypeError, ValueError):
+                    continue
+                if 1 <= candidate <= MAX_POS_PAYER_ID:
+                    return candidate
+        except (PosError, Exception):
+            return None
+        return None
 
     # ------------------------------------------------------------------ reset
     def _reset(self):

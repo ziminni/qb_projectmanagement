@@ -198,6 +198,19 @@ abstract interface class ProcurementRepository {
   /// something unreadable: never a made-up zero.
   Future<StoreBalance?> getStoreBalance(int projectId);
 
+  /// Lists online payment receipts submitted to the store for [projectId].
+  Future<List<StorePaymentReceipt>> getStorePaymentReceipts(int projectId) async =>
+      const [];
+
+  /// Submits an online payment receipt to the store for [projectId] (Phase 1c).
+  Future<StorePaymentReceipt> submitStorePaymentReceipt(
+    int projectId, {
+    required double amount,
+    required String referenceNo,
+    String paymentMethod = 'BANK_TRANSFER',
+    String notes = '',
+  }) => throw UnsupportedError('Store payment receipts require the API.');
+
   /// Reads the backend cache; never polls the store.
   Future<PosStatus> getPosStatus(int id);
 

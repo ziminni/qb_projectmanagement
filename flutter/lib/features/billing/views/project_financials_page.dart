@@ -110,6 +110,8 @@ class ProjectFinancialsPage extends StatelessWidget {
               StoreBalanceCard(
                 balance: vm.storeBalance,
                 error: vm.storeBalanceError,
+                receipts: vm.storeReceipts,
+                onSubmitReceipt: vm.submitStorePaymentReceipt,
               ),
             ],
             gap,

@@ -1,3 +1,4 @@
+import '../models/store_balance.dart';
 import '../repositories/daily_report_repository.dart';
 import 'business_rule_exception.dart';
 import '../repositories/labor_repository.dart';
@@ -9,18 +10,21 @@ class ProjectCosts {
   const ProjectCosts({
     required this.materialsByCategory,
     required this.storeMaterials,
+    this.storeMaterialsByCategory = const {},
     required this.labor,
     required this.equipment,
   });
 
-  /// Delivered (undamaged) outside-store material value per category. With the
-  /// API this excludes own-store goods: those are [storeMaterials].
+  /// Delivered (undamaged) material value per category, including own-store
+  /// costs attributed to a category via [storeMaterialsByCategory].
   final Map<int, double> materialsByCategory;
 
-  /// What the company store charged the project, from the store's own record
-  /// (owner decision 2026-11-15). One line, not split by category; zero when
-  /// there is no store to ask (the offline demo prices its own deliveries).
+  /// Uncategorized portion of what the company store charged the project
+  /// (after attributing [storeMaterialsByCategory]).
   final double storeMaterials;
+
+  /// Own-store material charges attributed to specific project categories.
+  final Map<int, double> storeMaterialsByCategory;
 
   double get materials =>
       materialsByCategory.values.fold(0.0, (a, b) => a + b) + storeMaterials;
@@ -53,15 +57,27 @@ class ProjectCostService {
   final MasterDataRepository _masterData;
 
   Future<ProjectCosts> costsFor(int projectId) async {
-    final byCategory = await _procurement.deliveredValueByCategory(projectId);
-    final store = await _storeCharges(projectId);
+    final byCategory = Map<int, double>.of(
+      await _procurement.deliveredValueByCategory(projectId),
+    );
+    final store = await _storeBalance(projectId);
+    final storeByCat = store?.byCategory ?? const <int, double>{};
+    var allocatedStore = 0.0;
+    for (final entry in storeByCat.entries) {
+      byCategory[entry.key] = (byCategory[entry.key] ?? 0) + entry.value;
+      allocatedStore += entry.value;
+    }
+    final unallocatedStore = store == null
+        ? 0.0
+        : (store.total - allocatedStore).clamp(0.0, double.infinity);
     final equipment = {
       for (final e in await _masterData.getEquipment()) e.id: e,
     };
     final logs = await _reports.getApprovedEquipmentLogs(projectId);
     return ProjectCosts(
       materialsByCategory: byCategory,
-      storeMaterials: store,
+      storeMaterials: unallocatedStore,
+      storeMaterialsByCategory: storeByCat,
       labor: await _labor.laborCost(projectId),
       equipment: logs.fold(
         0,
@@ -70,11 +86,11 @@ class ProjectCostService {
     );
   }
 
-  /// The store's charged total. A store that cannot be answered stops the
+  /// The store's charged balance. A store that cannot be answered stops the
   /// report: a total without the store's charges would look lower than it is.
-  Future<double> _storeCharges(int projectId) async {
+  Future<StoreBalance?> _storeBalance(int projectId) async {
     try {
-      return (await _procurement.getStoreBalance(projectId))?.total ?? 0;
+      return await _procurement.getStoreBalance(projectId);
     } on BusinessRuleException catch (e) {
       throw BusinessRuleException(
         "Actual cost needs the store's charges, which could not be read: "

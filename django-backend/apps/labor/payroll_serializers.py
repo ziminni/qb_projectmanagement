@@ -94,6 +94,9 @@ class PayrollLineSerializer(serializers.Serializer):
     days_worked = serializers.DecimalField(max_digits=5, decimal_places=2)
     overtime_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     gross_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
+    sss = serializers.DecimalField(max_digits=12, decimal_places=2)
+    philhealth = serializers.DecimalField(max_digits=12, decimal_places=2)
+    pagibig = serializers.DecimalField(max_digits=12, decimal_places=2)
     cash_advance = serializers.DecimalField(max_digits=12, decimal_places=2)
     statutory_deductions = serializers.DecimalField(
         max_digits=12, decimal_places=2,

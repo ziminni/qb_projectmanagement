@@ -52,6 +52,37 @@ class HttpProcurementRepository implements ProcurementRepository {
       );
 
   @override
+  Future<List<StorePaymentReceipt>> getStorePaymentReceipts(
+    int projectId,
+  ) async => [
+    for (final row in await _client.getRows(
+      'projects/$projectId/pos-payment-receipts/',
+    ))
+      StorePaymentReceipt.fromJson(row),
+  ];
+
+  @override
+  Future<StorePaymentReceipt> submitStorePaymentReceipt(
+    int projectId, {
+    required double amount,
+    required String referenceNo,
+    String paymentMethod = 'BANK_TRANSFER',
+    String notes = '',
+  }) async => StorePaymentReceipt.fromJson(
+    jsonObject(
+      await _client.post(
+        'projects/$projectId/pos-payment-receipts/',
+        body: {
+          'amount': amount.toStringAsFixed(2),
+          'reference_no': referenceNo.trim(),
+          'payment_method': paymentMethod,
+          'notes': notes.trim(),
+        },
+      ),
+    ),
+  );
+
+  @override
   Future<PosStatus> getPosStatus(int id) async => PosStatus.fromJson(
     jsonObject(await _client.get('purchase-orders/$id/pos-status/')),
   );

@@ -490,6 +490,39 @@ void main() {
     });
 
     test(
+      'configured statutory breakdown parses sss, philhealth, and pagibig without double-counting',
+      () async {
+        final api = FakeApi(
+          (options) => json([
+            {
+              ...payrollLineRow(
+                statutory: '129.14',
+                policy: 'configured',
+                cashAdvance: '50.00',
+                net: '1180.24',
+              ),
+              'sss': '67.97',
+              'philhealth': '33.98',
+              'pagibig': '27.19',
+            },
+          ]),
+        );
+
+        final line = (await laborRepoFor(
+          api,
+          active: AppRole.accountant,
+        ).getLines(4)).single;
+
+        expect(line.deductionsPolicy, PayrollLine.deductionsConfigured);
+        expect(line.sss, 67.97);
+        expect(line.philhealth, 33.98);
+        expect(line.pagibig, 27.19);
+        expect(line.statutoryDeductions, 129.14);
+        expect(line.deductions, closeTo(179.14, 0.001));
+      },
+    );
+
+    test(
       'an unconfigured deductions policy is kept, not zeroed away',
       () async {
         final api = FakeApi((options) => json([payrollLineRow()]));

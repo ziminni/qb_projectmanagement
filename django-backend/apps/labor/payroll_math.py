@@ -25,6 +25,11 @@ from .models import PayrollLine
 HOURS_PER_DAY = Decimal('8')
 OVERTIME_PREMIUM = Decimal('1.25')  # Labor Code regular-day premium.
 
+SSS_RATE = Decimal('0.05')
+PHILHEALTH_RATE = Decimal('0.025')
+PAGIBIG_RATE = Decimal('0.02')
+PAGIBIG_CAP_PER_PERIOD = Decimal('100.00')
+
 # Days of pay each attendance status earns (`attendance.dart` dayFraction).
 DAY_FRACTION = {
     'present': Decimal('1.00'),
@@ -53,7 +58,10 @@ def compute_line(worker, attendance_rows, cash_advance=Decimal('0.00')):
     hourly = Decimal(worker.daily_rate) / HOURS_PER_DAY
     overtime_pay = money(overtime_hours * hourly * OVERTIME_PREMIUM)
     gross_pay = money(Decimal(worker.daily_rate) * days + overtime_pay)
-    deductions = Decimal('0.00')
+    sss = money(gross_pay * SSS_RATE)
+    philhealth = money(gross_pay * PHILHEALTH_RATE)
+    pagibig = min(money(gross_pay * PAGIBIG_RATE), PAGIBIG_CAP_PER_PERIOD)
+    deductions = money(sss + philhealth + pagibig)
     net_pay = money(gross_pay - cash_advance - deductions)
     return {
         'id': 0,
@@ -61,9 +69,12 @@ def compute_line(worker, attendance_rows, cash_advance=Decimal('0.00')):
         'days_worked': money(days),
         'overtime_pay': overtime_pay,
         'gross_pay': gross_pay,
+        'sss': sss,
+        'philhealth': philhealth,
+        'pagibig': pagibig,
         'cash_advance': money(cash_advance),
         'statutory_deductions': deductions,
-        'deductions_policy': PayrollLine.DEDUCTIONS_UNCONFIGURED,
+        'deductions_policy': PayrollLine.DEDUCTIONS_CONFIGURED,
         'net_pay': net_pay,
     }
 

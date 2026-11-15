@@ -43,6 +43,11 @@ LABOR_COST_URL = '/api/v1/labor-cost/'
 # `self.worker`: 750/day, 1 day present + 1 half day, 2 overtime hours.
 GROSS = '1359.38'
 OVERTIME_PAY = '234.38'
+SSS = '67.97'
+PHILHEALTH = '33.98'
+PAGIBIG = '27.19'
+STATUTORY_DEDUCTIONS = '129.14'
+NET_BEFORE_ADVANCE = '1230.24'
 
 
 class PayrollFixtures(LaborFixtures):
@@ -388,7 +393,7 @@ class AttendanceLockTests(PayrollWriteCase):
 # --------------------------------------------------------------------------
 
 class PayrollLineTests(PayrollWriteCase):
-    def test_lines_before_processing_are_computed_and_deductions_unconfigured(self):
+    def test_lines_before_processing_are_computed_with_configured_statutory_deductions(self):
         response = self.get_lines()
         self.assertEqual(response.status_code, 200, response.data)
 
@@ -399,11 +404,33 @@ class PayrollLineTests(PayrollWriteCase):
         self.assertEqual(mine['days_worked'], '1.50')
         self.assertEqual(mine['overtime_pay'], OVERTIME_PAY)
         self.assertEqual(mine['gross_pay'], GROSS)
+        self.assertEqual(mine['sss'], SSS)
+        self.assertEqual(mine['philhealth'], PHILHEALTH)
+        self.assertEqual(mine['pagibig'], PAGIBIG)
         self.assertEqual(mine['cash_advance'], '0.00')
-        self.assertEqual(mine['statutory_deductions'], '0.00')
-        self.assertEqual(mine['deductions_policy'], 'unconfigured')
-        self.assertEqual(mine['net_pay'], GROSS)
-        self.assertEqual(rows[self.second.pk]['net_pay'], '750.00')
+        self.assertEqual(mine['statutory_deductions'], STATUTORY_DEDUCTIONS)
+        self.assertEqual(mine['deductions_policy'], 'configured')
+        self.assertEqual(mine['net_pay'], NET_BEFORE_ADVANCE)
+        self.assertEqual(rows[self.second.pk]['sss'], '37.50')
+        self.assertEqual(rows[self.second.pk]['philhealth'], '18.75')
+        self.assertEqual(rows[self.second.pk]['pagibig'], '15.00')
+        self.assertEqual(rows[self.second.pk]['statutory_deductions'], '71.25')
+        self.assertEqual(rows[self.second.pk]['net_pay'], '678.75')
+
+    def test_pagibig_caps_at_100_per_period(self):
+        self.worker.daily_rate = Decimal('6000.00')
+        self.worker.save(update_fields=['daily_rate'])
+        response = self.get_lines()
+        rows = {row['worker_id']: row for row in response.data}
+        mine = rows[self.worker.pk]
+        # Gross: 6000 * 1.5 + (6000 / 8 * 2 * 1.25) = 9000 + 1875 = 10875.00
+        self.assertEqual(mine['gross_pay'], '10875.00')
+        self.assertEqual(mine['sss'], '543.75')
+        self.assertEqual(mine['philhealth'], '271.88')
+        # 2% of 10875 is 217.50, capped at 100.00
+        self.assertEqual(mine['pagibig'], '100.00')
+        self.assertEqual(mine['statutory_deductions'], '915.63')
+        self.assertEqual(mine['net_pay'], '9959.37')
 
     def test_site_engineer_and_admin_never_see_wages(self):
         for user, role in (
@@ -423,17 +450,17 @@ class PayrollLineTests(PayrollWriteCase):
         response = self.post_advance(self.worker.pk, '100.00')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['cash_advance'], '100.00')
-        self.assertEqual(response.data['net_pay'], '1259.38')
+        self.assertEqual(response.data['net_pay'], '1130.24')
 
         lines = self.get_lines()
         rows = {row['worker_id']: row for row in lines.data}
         self.assertEqual(rows[self.worker.pk]['cash_advance'], '100.00')
-        self.assertEqual(rows[self.worker.pk]['net_pay'], '1259.38')
+        self.assertEqual(rows[self.worker.pk]['net_pay'], '1130.24')
 
         # Setting it again replaces the amount; the row is never duplicated.
         again = self.post_advance(self.worker.pk, '0.00')
         self.assertEqual(again.status_code, 200, again.data)
-        self.assertEqual(again.data['net_pay'], GROSS)
+        self.assertEqual(again.data['net_pay'], NET_BEFORE_ADVANCE)
 
     def test_cash_advance_bounds_and_unknown_worker(self):
         cases = (
@@ -534,7 +561,7 @@ class ProcessAndCostTests(PayrollWriteCase):
         # The stored advance is now larger than the recomputed gross (750.00).
         rows = {row['worker_id']: row for row in self.get_lines(period).data}
         self.assertEqual(rows[self.worker.pk]['gross_pay'], '750.00')
-        self.assertEqual(rows[self.worker.pk]['net_pay'], '-609.38')
+        self.assertEqual(rows[self.worker.pk]['net_pay'], '-680.63')
 
         self.act_as(self.owner, Role.OWNER)
         reverified = self.client.post(self.period_url(period, 'verify/'))
@@ -551,7 +578,7 @@ class ProcessAndCostTests(PayrollWriteCase):
         self.assertEqual(period.status, PayrollStatus.VERIFIED)
 
         # Lowering the advance to the recomputed gross is the way forward.
-        lowered = self.post_advance(self.worker.pk, '750.00', period=period)
+        lowered = self.post_advance(self.worker.pk, '678.75', period=period)
         self.assertEqual(lowered.status_code, 200, lowered.data)
         self.assertEqual(lowered.data['net_pay'], '0.00')
 
@@ -575,10 +602,13 @@ class ProcessAndCostTests(PayrollWriteCase):
         self.assertEqual(mine.days_worked, Decimal('1.50'))
         self.assertEqual(mine.overtime_pay, Decimal(OVERTIME_PAY))
         self.assertEqual(mine.gross_pay, Decimal(GROSS))
+        self.assertEqual(mine.sss, Decimal(SSS))
+        self.assertEqual(mine.philhealth, Decimal(PHILHEALTH))
+        self.assertEqual(mine.pagibig, Decimal(PAGIBIG))
         self.assertEqual(mine.cash_advance, Decimal('59.38'))
-        self.assertEqual(mine.statutory_deductions, Decimal('0.00'))
-        self.assertEqual(mine.deductions_policy, 'unconfigured')
-        self.assertEqual(mine.net_pay, Decimal('1300.00'))
+        self.assertEqual(mine.statutory_deductions, Decimal(STATUTORY_DEDUCTIONS))
+        self.assertEqual(mine.deductions_policy, 'configured')
+        self.assertEqual(mine.net_pay, Decimal('1170.86'))
         self.assertTrue(AuditLog.objects.filter(
             action='payroll_processed', entity='payroll_period',
             entity_id=self.period.pk,

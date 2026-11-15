@@ -48,6 +48,9 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
   /// ask (the offline demo) or it could not be read, see [storeBalanceError].
   StoreBalance? storeBalance;
 
+  /// Online payment proofs submitted to the store for this project (Phase 1c).
+  List<StorePaymentReceipt> storeReceipts = const [];
+
   /// Why the store's balance is missing. Kept apart from [error] so a store
   /// that is down never takes the billings, payments and VOs down with it.
   String? storeBalanceError;
@@ -67,11 +70,35 @@ class ProjectFinancialsViewModel extends ChangeNotifier {
   Future<void> _loadStoreBalance() async {
     try {
       storeBalance = await _procurement.getStoreBalance(projectId);
+      if (storeBalance != null && storeBalance!.atStore) {
+        try {
+          storeReceipts = await _procurement.getStorePaymentReceipts(projectId);
+        } on Object {
+          storeReceipts = const [];
+        }
+      }
     } on BusinessRuleException catch (e) {
       storeBalanceError = e.message;
     } on FormatException {
       storeBalanceError = 'The store sent an answer CPMS could not read.';
     }
+  }
+
+  Future<void> submitStorePaymentReceipt({
+    required double amount,
+    required String referenceNo,
+    String paymentMethod = 'BANK_TRANSFER',
+    String notes = '',
+  }) async {
+    await _procurement.submitStorePaymentReceipt(
+      projectId,
+      amount: amount,
+      referenceNo: referenceNo,
+      paymentMethod: paymentMethod,
+      notes: notes,
+    );
+    await _loadStoreBalance();
+    notifyListeners();
   }
 
   /// The cost half fails on its own: the billings above it still show.

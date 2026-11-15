@@ -69,6 +69,20 @@ class MockProcurementRepository implements ProcurementRepository {
   Future<StoreBalance?> getStoreBalance(int projectId) async => null;
 
   @override
+  Future<List<StorePaymentReceipt>> getStorePaymentReceipts(
+    int projectId,
+  ) async => const [];
+
+  @override
+  Future<StorePaymentReceipt> submitStorePaymentReceipt(
+    int projectId, {
+    required double amount,
+    required String referenceNo,
+    String paymentMethod = 'BANK_TRANSFER',
+    String notes = '',
+  }) => throw UnsupportedError('Store payment receipts require the API.');
+
+  @override
   Future<PosStatus> getPosStatus(int id) async =>
       throw UnsupportedError('Store sync status is unavailable in demo mode.');
 

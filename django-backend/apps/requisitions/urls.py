@@ -22,7 +22,11 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .cost_views import external_materials_cost_view
-from .pos_live_views import pos_catalog_view, pos_payables_view
+from .pos_live_views import (
+    pos_catalog_view,
+    pos_payables_view,
+    pos_payment_receipts_view,
+)
 from .procurement_views import (
     DeliveryViewSet,
     MaterialRequestViewSet,
@@ -47,6 +51,10 @@ urlpatterns = [
     path(
         'projects/<int:pk>/pos-payables/', pos_payables_view,
         name='project-pos-payables',
+    ),
+    path(
+        'projects/<int:pk>/pos-payment-receipts/', pos_payment_receipts_view,
+        name='project-pos-payment-receipts',
     ),
     path(
         'projects/<int:pk>/site-inventory/', project_site_inventory_view,

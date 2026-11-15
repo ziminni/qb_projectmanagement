@@ -195,7 +195,11 @@ class PayrollLine(models.Model):
     """
 
     DEDUCTIONS_UNCONFIGURED = 'unconfigured'
-    DEDUCTIONS_POLICY_CHOICES = ((DEDUCTIONS_UNCONFIGURED, 'Not configured'),)
+    DEDUCTIONS_CONFIGURED = 'configured'
+    DEDUCTIONS_POLICY_CHOICES = (
+        (DEDUCTIONS_UNCONFIGURED, 'Not configured'),
+        (DEDUCTIONS_CONFIGURED, 'Configured'),
+    )
 
     period = models.ForeignKey(
         PayrollPeriod, on_delete=models.PROTECT, related_name='lines',
@@ -214,6 +218,18 @@ class PayrollLine(models.Model):
         max_digits=12, decimal_places=2,
         validators=[MinValueValidator(0)],
     )
+    sss = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0)],
+    )
+    philhealth = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0)],
+    )
+    pagibig = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0)],
+    )
     cash_advance = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0.00'),
         validators=[MinValueValidator(0)],
@@ -224,7 +240,7 @@ class PayrollLine(models.Model):
     )
     deductions_policy = models.CharField(
         max_length=16, choices=DEDUCTIONS_POLICY_CHOICES,
-        default=DEDUCTIONS_UNCONFIGURED,
+        default=DEDUCTIONS_CONFIGURED,
     )
     net_pay = models.DecimalField(max_digits=12, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)

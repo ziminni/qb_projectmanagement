@@ -42,10 +42,14 @@ void main() {
   });
 
   group('repository mode', () {
-    test('the HTTP repositories stay off until USE_API is set', () {
-      // Mocks stay the default: only `--dart-define=USE_API=true` swaps in the
-      // HTTP repositories, so a test or demo run never reaches the server.
+    test('defaults to live HTTP repositories on flutter run and mocks in flutter test', () {
+      // Inside `flutter test` (`FLUTTER_TEST=true`) mocks stay the default so
+      // unit/widget tests never hit a server unless `USE_API=true` is passed.
       expect(useApi, isFalse);
+      // On `flutter run` (`isTest: false`), HTTP repositories are the default.
+      expect(resolveUseApi(configured: '', isTest: false), isTrue);
+      expect(resolveUseApi(configured: 'false', isTest: false), isFalse);
+      expect(resolveUseApi(configured: 'true', isTest: true), isTrue);
     });
   });
 }

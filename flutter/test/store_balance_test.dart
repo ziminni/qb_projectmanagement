@@ -69,6 +69,52 @@ void main() {
       expect(balance.fetchedAt, DateTime.parse('2026-11-15T10:30:00+08:00'));
     });
 
+    test('submits and lists online store payment receipts (Phase 1c)', () async {
+      final api = FakeApi((o) {
+        if (o.method == 'POST') {
+          return json({
+            'id': 9,
+            'cpms_payment_id': 'PAY-9',
+            'amount': '1200.00',
+            'approved_amount': null,
+            'payment_method': 'BANK_TRANSFER',
+            'reference_no': 'BDO-12345',
+            'notes': 'Transfer for PRJ-A',
+            'status': 'WAITING',
+            'decline_reason': '',
+            'created_at': '2026-11-15T10:30:00Z',
+          }, status: 201);
+        }
+        return json([
+          {
+            'id': 9,
+            'cpms_payment_id': 'PAY-9',
+            'amount': '1200.00',
+            'approved_amount': '1200.00',
+            'payment_method': 'BANK_TRANSFER',
+            'reference_no': 'BDO-12345',
+            'notes': 'Transfer for PRJ-A',
+            'status': 'APPROVED',
+            'decline_reason': '',
+            'created_at': '2026-11-15T10:30:00Z',
+          },
+        ]);
+      });
+
+      final created = await repo(api).submitStorePaymentReceipt(
+        1,
+        amount: 1200,
+        referenceNo: 'BDO-12345',
+        notes: 'Transfer for PRJ-A',
+      );
+      expect(created.status, 'WAITING');
+      expect(created.referenceNo, 'BDO-12345');
+
+      final listed = await repo(api).getStorePaymentReceipts(1);
+      expect(listed.single.status, 'APPROVED');
+      expect(listed.single.approvedAmount, 1200);
+    });
+
     test('a missing amount is an error, never a zero', () async {
       final api = FakeApi(
         (o) => json({'project_id': 1, 'at_store': true, 'total': '1.00'}),

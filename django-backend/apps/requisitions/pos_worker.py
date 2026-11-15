@@ -261,6 +261,31 @@ def _identity_problem(body, *, expected_id, expected_lines, quantity_keys):
 # The three job kinds
 # --------------------------------------------------------------------------
 
+def _resolve_missing_payer(order, job, payload, client):
+    """Fill a null own-store payer from the supplier or POS `customers/` list."""
+    project_block = payload.get('project')
+    if not isinstance(project_block, dict) or project_block.get('payer') is not None:
+        return
+    payer_id = order.supplier.pos_payer_id if order.supplier_id and order.supplier else None
+    if payer_id is None and hasattr(client, 'list_customers'):
+        try:
+            for row in client.list_customers():
+                if isinstance(row, dict) and row.get('id') is not None:
+                    payer_id = int(row['id'])
+                    break
+        except Exception:
+            payer_id = None
+        if payer_id is not None and order.supplier_id and order.supplier:
+            order.supplier.pos_payer_id = payer_id
+            order.supplier.save(update_fields=['pos_payer_id', 'updated_at'])
+    if payer_id is not None:
+        project_block = dict(project_block)
+        project_block['payer'] = payer_id
+        payload['project'] = project_block
+        job.payload = dict(payload)
+        job.save(update_fields=['payload', 'updated_at'])
+
+
 def _run_import(job, client, now):
     order = _order_of(job)
     if order.status == PurchaseOrderStatus.CANCELLED:
@@ -272,6 +297,7 @@ def _run_import(job, client, now):
         return
 
     payload = dict(job.payload or {})
+    _resolve_missing_payer(order, job, payload, client)
     # The token lives on the order (minted once, never serialized); it is added
     # here so a retry always carries the same one.
     payload['token'] = str(order.pos_token)

@@ -55,17 +55,27 @@ class PayrollLine {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  double get deductions =>
-      sss + philhealth + pagibig + statutoryDeductions + cashAdvance;
+  double get deductions {
+    final itemized = sss + philhealth + pagibig;
+    final statutory = itemized > 0 ? itemized : statutoryDeductions;
+    return statutory + cashAdvance;
+  }
 
-  /// A wire line: no three-way split and no timestamps, because the payroll
-  /// line table stores neither. A missing money figure throws rather than
-  /// reading as zero.
+  /// A wire line: parses optional `sss`, `philhealth`, `pagibig` breakdown
+  /// alongside `statutory_deductions` and `deductions_policy`. A missing money
+  /// figure throws rather than reading as zero.
   factory PayrollLine.fromJson(Map<String, dynamic> json) {
     final policy = json['deductions_policy'];
     if (policy is! String) {
       throw FormatException('Expected a deductions policy, got $policy');
     }
+    final sss = json.containsKey('sss') ? JsonUtils.toDouble(json['sss']) : 0.0;
+    final philhealth = json.containsKey('philhealth')
+        ? JsonUtils.toDouble(json['philhealth'])
+        : 0.0;
+    final pagibig = json.containsKey('pagibig')
+        ? JsonUtils.toDouble(json['pagibig'])
+        : 0.0;
     return PayrollLine(
       id: json['id'] as int,
       payrollPeriodId: json['payroll_period_id'] as int,
@@ -73,9 +83,9 @@ class PayrollLine {
       daysWorked: JsonUtils.toDouble(json['days_worked']),
       overtimePay: JsonUtils.toDouble(json['overtime_pay']),
       grossPay: JsonUtils.toDouble(json['gross_pay']),
-      sss: 0,
-      philhealth: 0,
-      pagibig: 0,
+      sss: sss,
+      philhealth: philhealth,
+      pagibig: pagibig,
       statutoryDeductions: JsonUtils.toDouble(json['statutory_deductions']),
       deductionsPolicy: policy,
       cashAdvance: JsonUtils.toDouble(json['cash_advance']),
@@ -90,6 +100,9 @@ class PayrollLine {
     'days_worked': daysWorked,
     'overtime_pay': overtimePay,
     'gross_pay': grossPay,
+    'sss': sss,
+    'philhealth': philhealth,
+    'pagibig': pagibig,
     'statutory_deductions': statutoryDeductions,
     'deductions_policy': deductionsPolicy,
     'cash_advance': cashAdvance,

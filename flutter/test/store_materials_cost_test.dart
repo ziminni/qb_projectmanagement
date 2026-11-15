@@ -65,6 +65,32 @@ void main() {
     });
 
     test(
+      'attributes categorized store charges into materialsByCategory without double-counting',
+      () async {
+        final baseline = await getIt<ProjectCostService>().costsFor(1);
+        await resetServices();
+        await useBalance(
+          () async => StoreBalance(
+            total: 780,
+            paid: 0,
+            balance: 780,
+            atStore: true,
+            fetchedAt: DateTime(2026, 11, 15),
+            byCategory: const {1: 500},
+          ),
+        );
+        final withCategorizedStore = await getIt<ProjectCostService>().costsFor(1);
+
+        expect(
+          withCategorizedStore.materialsByCategory[1],
+          (baseline.materialsByCategory[1] ?? 0) + 500,
+        );
+        expect(withCategorizedStore.storeMaterials, 280);
+        expect(withCategorizedStore.materials, baseline.materials + 780);
+      },
+    );
+
+    test(
       'a store that cannot be reached is an error, never a lower total',
       () async {
         await useBalance(

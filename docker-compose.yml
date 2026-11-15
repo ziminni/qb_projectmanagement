@@ -27,9 +27,15 @@ services:
     container_name: cpms_backend
     command: >
       sh -c "python manage.py migrate &&
+             python manage.py seed_demo --auto-pos-payer &&
              python manage.py runserver 0.0.0.0:8001"
     volumes:
       - ./django-backend:/app
+    environment:
+      POS_API_BASE_URL: ${POS_API_BASE_URL:-http://host.docker.internal:8000}
+      POS_API_ALLOW_INSECURE_LOCAL: ${POS_API_ALLOW_INSECURE_LOCAL:-True}
+      POS_API_SERVICE_USERNAME: ${POS_API_SERVICE_USERNAME:-cpms_service}
+      POS_API_SERVICE_PASSWORD: ${POS_API_SERVICE_PASSWORD:-demo1234}
     env_file:
       - path: ./django-backend/.env
         required: false
@@ -57,6 +63,11 @@ services:
     restart: unless-stopped
     volumes:
       - ./django-backend:/app
+    environment:
+      POS_API_BASE_URL: ${POS_API_BASE_URL:-http://host.docker.internal:8000}
+      POS_API_ALLOW_INSECURE_LOCAL: ${POS_API_ALLOW_INSECURE_LOCAL:-True}
+      POS_API_SERVICE_USERNAME: ${POS_API_SERVICE_USERNAME:-cpms_service}
+      POS_API_SERVICE_PASSWORD: ${POS_API_SERVICE_PASSWORD:-demo1234}
     env_file:
       - path: ./django-backend/.env
         required: false

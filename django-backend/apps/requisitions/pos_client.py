@@ -440,6 +440,22 @@ class PosClient:
             f'{INTEGRATION_PREFIX}/projects/{_segment(cpms_project_id)}/payables/',
         )
 
+    def list_payment_receipts(self, cpms_project_id):
+        """`GET projects/{cpms_project_id}/payment-receipts/` — online payment proofs."""
+        body = self._call(
+            'GET',
+            f'{INTEGRATION_PREFIX}/projects/{_segment(cpms_project_id)}/payment-receipts/',
+        )
+        return body.get('results') or []
+
+    def submit_payment_receipt(self, cpms_project_id, payload):
+        """`POST projects/{cpms_project_id}/payment-receipts/` — submit online payment proof."""
+        return self._call(
+            'POST',
+            f'{INTEGRATION_PREFIX}/projects/{_segment(cpms_project_id)}/payment-receipts/',
+            payload,
+        )
+
 
 def get_pos_client():
     """A client configured from settings (the worker's default seam)."""

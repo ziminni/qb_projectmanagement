@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 
 /// Set it at build time:
@@ -25,6 +27,21 @@ String resolveApiBaseUrl({required String configured, required bool debug}) {
 /// without a trailing slash turns `users/` into `/api/v1users/`.
 String withTrailingSlash(String base) => base.endsWith('/') ? base : '$base/';
 
-/// `--dart-define=USE_API=true` swaps the mock repositories for the HTTP ones.
-/// Task 5.2 makes the HTTP set the default; until then mocks stay in place.
-const bool useApi = bool.fromEnvironment('USE_API');
+const String _configuredUseApi = String.fromEnvironment('USE_API');
+
+bool get _isFlutterTest =>
+    !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+
+/// Live HTTP repositories are the default on `flutter run` (`USE_API` unset or
+/// `true`). Pass `--dart-define=USE_API=false` for offline mock mode; unit and
+/// widget tests (`FLUTTER_TEST`) keep mocks by default unless `USE_API=true`
+/// is passed explicitly.
+bool resolveUseApi({required String configured, required bool isTest}) {
+  final normalized = configured.trim().toLowerCase();
+  if (normalized == 'true' || normalized == '1') return true;
+  if (normalized == 'false' || normalized == '0') return false;
+  return !isTest;
+}
+
+bool get useApi =>
+    resolveUseApi(configured: _configuredUseApi, isTest: _isFlutterTest);

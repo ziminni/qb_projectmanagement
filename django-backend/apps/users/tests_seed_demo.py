@@ -19,6 +19,7 @@ Contract proved here:
 
 from decimal import Decimal
 from io import StringIO
+from unittest import mock
 
 from django.core.cache import cache
 from django.core.management import call_command
@@ -222,6 +223,20 @@ class SeedDemoCommandTests(TestCase):
     def test_the_notice_is_silent_once_a_payer_is_given(self):
         output = seed(SEED_FLAG, '--pos-payer-id', 3)
 
+        self.assertNotIn('integration/cpms/customers/', output)
+
+    def test_auto_pos_payer_discovers_first_pos_customer_when_unset(self):
+        fake_client = mock.Mock()
+        fake_client.list_customers.return_value = [
+            {'id': 42, 'name': 'BuildRight Contractor Account'},
+        ]
+        with mock.patch(
+            'apps.requisitions.pos_client.get_pos_client',
+            return_value=fake_client,
+        ):
+            output = seed(SEED_FLAG, '--auto-pos-payer')
+
+        self.assertEqual(Supplier.objects.get(is_own_store=True).pos_payer_id, 42)
         self.assertNotIn('integration/cpms/customers/', output)
 
     def test_pos_payer_id_is_validated(self):
