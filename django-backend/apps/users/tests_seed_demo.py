@@ -239,6 +239,33 @@ class SeedDemoCommandTests(TestCase):
         self.assertEqual(Supplier.objects.get(is_own_store=True).pos_payer_id, 42)
         self.assertNotIn('integration/cpms/customers/', output)
 
+    def _seed_auto(self, customers):
+        fake_client = mock.Mock()
+        if isinstance(customers, Exception):
+            fake_client.list_customers.side_effect = customers
+        else:
+            fake_client.list_customers.return_value = customers
+        with mock.patch(
+            'apps.requisitions.pos_client.get_pos_client', return_value=fake_client,
+        ):
+            seed(SEED_FLAG, '--auto-pos-payer')
+        return Supplier.objects.get(is_own_store=True).pos_payer_id
+
+    def test_auto_pos_payer_replaces_a_payer_pos_does_not_list(self):
+        # A payer left over from another POS database (seen on Windows: 1788)
+        # made every own-store order refused with UNKNOWN_PAYER.
+        seed(SEED_FLAG, '--pos-payer-id', 1788)
+        payer = self._seed_auto([
+            {'id': 4, 'name': 'Dela Cruz Construction'}, {'id': 2, 'name': 'QC'},
+        ])
+        self.assertEqual(payer, 4)
+
+    def test_auto_pos_payer_keeps_a_listed_payer_and_an_unreachable_pos(self):
+        seed(SEED_FLAG, '--pos-payer-id', 2)
+        self.assertEqual(self._seed_auto([{'id': 4}, {'id': 2}]), 2)
+        from apps.requisitions.pos_client import PosError
+        self.assertEqual(self._seed_auto(PosError('store down')), 2)
+
     def test_pos_payer_id_is_validated(self):
         for bad in (0, -4, MAX_POS_PAYER_ID + 1, 'not-a-number'):
             with self.assertRaises(CommandError, msg=repr(bad)):

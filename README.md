@@ -41,6 +41,8 @@ POS_API_GATEWAY_HEADER_VALUE=<key printed by the script>
 
 3. Run `docker compose up -d` here again.
 
+If an own-store order says **the store refused this order (UNKNOWN_PAYER)**, the own-store supplier points at a POS customer that this POS doesn't have. Restart CPMS (`docker compose restart backend`): on start it checks the payer against POS's contractors and replaces a missing one. Then press **Retry** on the order. The retry sends the corrected payer.
+
 The Quick Tunnel URL changes every time the tunnel restarts. When it does, rerun the script on the store PC and update `POS_API_BASE_URL`. Until then, CPMS keeps unsent requests in its outbox and retries them. The POS README (section 6) has the full guide.
 
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for production/tunnel hardening (`DJANGO_DEBUG=False`, Cloudflare Quick Tunnel, database + `private_media/` backups) and [`docs/HANDOFF.md`](docs/HANDOFF.md) for verification status.

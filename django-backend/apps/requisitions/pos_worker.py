@@ -261,12 +261,21 @@ def _identity_problem(body, *, expected_id, expected_lines, quantity_keys):
 # The three job kinds
 # --------------------------------------------------------------------------
 
-def _resolve_missing_payer(order, job, payload, client):
-    """Fill a null own-store payer from the supplier or POS `customers/` list."""
+def _resolve_payer(order, job, payload, client):
+    """Send the own-store supplier's CURRENT payer.
+
+    The payer is store master data, not request identity: a payer corrected in
+    the supplier list (or by `seed_demo --auto-pos-payer`) must heal an order
+    whose stored payload still carries the refused one. With none set anywhere,
+    the first payer POS lists (`customers/`) is adopted for the supplier.
+    """
     project_block = payload.get('project')
-    if not isinstance(project_block, dict) or project_block.get('payer') is not None:
+    if not isinstance(project_block, dict):
         return
-    payer_id = order.supplier.pos_payer_id if order.supplier_id and order.supplier else None
+    supplier = order.supplier if order.supplier_id else None
+    payer_id = supplier.pos_payer_id if supplier else None
+    if payer_id is None:
+        payer_id = project_block.get('payer')
     if payer_id is None and hasattr(client, 'list_customers'):
         try:
             for row in client.list_customers():
@@ -275,10 +284,10 @@ def _resolve_missing_payer(order, job, payload, client):
                     break
         except Exception:
             payer_id = None
-        if payer_id is not None and order.supplier_id and order.supplier:
-            order.supplier.pos_payer_id = payer_id
-            order.supplier.save(update_fields=['pos_payer_id', 'updated_at'])
-    if payer_id is not None:
+        if payer_id is not None and supplier:
+            supplier.pos_payer_id = payer_id
+            supplier.save(update_fields=['pos_payer_id', 'updated_at'])
+    if payer_id is not None and payer_id != project_block.get('payer'):
         project_block = dict(project_block)
         project_block['payer'] = payer_id
         payload['project'] = project_block
@@ -297,7 +306,7 @@ def _run_import(job, client, now):
         return
 
     payload = dict(job.payload or {})
-    _resolve_missing_payer(order, job, payload, client)
+    _resolve_payer(order, job, payload, client)
     # The token lives on the order (minted once, never serialized); it is added
     # here so a retry always carries the same one.
     payload['token'] = str(order.pos_token)

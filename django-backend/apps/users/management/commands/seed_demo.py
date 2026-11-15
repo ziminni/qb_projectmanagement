@@ -138,26 +138,34 @@ class Command(BaseCommand):
         self._report(counts)
 
     def _discover_pos_payer_id(self):
-        """Best-effort POS contractor customer lookup when POS is already up."""
-        if Supplier.objects.filter(
-            is_own_store=True, pos_payer_id__isnull=False,
-        ).exists():
-            return None
-        try:
-            from apps.requisitions.pos_client import PosError, get_pos_client
+        """Best-effort POS contractor customer lookup when POS is already up.
 
+        Keeps the current payer when POS lists it (or POS cannot be reached), and
+        replaces one POS does not list: a payer left from another POS database
+        made every own-store order refused with UNKNOWN_PAYER.
+        """
+        try:
+            from apps.requisitions.pos_client import get_pos_client
+
+            listed = []
             for row in get_pos_client().list_customers():
                 if not isinstance(row, dict):
                     continue
                 try:
-                    candidate = int(row.get('id'))
-                except (TypeError, ValueError):
+                    candidate = int(row['id'])
+                except (KeyError, TypeError, ValueError):
                     continue
                 if 1 <= candidate <= MAX_POS_PAYER_ID:
-                    return candidate
-        except (PosError, Exception):
+                    listed.append(candidate)
+        except Exception:
             return None
-        return None
+        current = (
+            Supplier.objects.filter(is_own_store=True)
+            .values_list('pos_payer_id', flat=True).first()
+        )
+        if not listed or current in listed:
+            return None
+        return listed[0]
 
     # ------------------------------------------------------------------ reset
     def _reset(self):
