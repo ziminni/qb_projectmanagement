@@ -156,9 +156,7 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
                               ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 title: Text(p.name),
-                                subtitle: Text(
-                                  _productSubtitle(p),
-                                ),
+                                subtitle: Text(_productSubtitle(p)),
                                 trailing: vm.isPicked(p)
                                     ? const Icon(Icons.check_circle)
                                     : IconButton(

@@ -86,8 +86,7 @@ void main() {
           'count': 2,
           'next': second ? null : '$apiBaseUrl/master-data/materials/?page=2',
           'results': [
-            if (!second)
-              materialRow(41, name: 'Cement', posCode: 'QB000001'),
+            if (!second) materialRow(41, name: 'Cement', posCode: 'QB000001'),
             if (second) materialRow(42, name: 'Tie wire', posCode: 'QB000002'),
           ],
         });
@@ -98,44 +97,52 @@ void main() {
       expect([for (final p in products) p.materialId], [41, 42]);
     });
 
-    test('searches name and SKU here, because the route has no filter', () async {
-      final api = FakeApi(
-        (options) => json({
-          'count': 2,
-          'next': null,
-          'results': [
-            materialRow(
-              41,
-              name: 'Portland cement 40 kg',
-              storeSku: 'CEM-40',
-              posCode: 'QB000001',
-            ),
-            materialRow(
-              42,
-              name: 'Tie wire #16',
-              unit: 'kg',
-              cost: 95,
-              posCode: 'QB000002',
-            ),
-          ],
-        }),
-      );
-      final repo = storeCatalog(api: api);
+    test(
+      'searches name and SKU here, because the route has no filter',
+      () async {
+        final api = FakeApi(
+          (options) => json({
+            'count': 2,
+            'next': null,
+            'results': [
+              materialRow(
+                41,
+                name: 'Portland cement 40 kg',
+                storeSku: 'CEM-40',
+                posCode: 'QB000001',
+              ),
+              materialRow(
+                42,
+                name: 'Tie wire #16',
+                unit: 'kg',
+                cost: 95,
+                posCode: 'QB000002',
+              ),
+            ],
+          }),
+        );
+        final repo = storeCatalog(api: api);
 
-      expect([for (final p in await repo.getProducts(query: 'tie')) p.materialId], [
-        42,
-      ]);
-      expect([for (final p in await repo.getProducts(query: 'cem-40')) p.materialId], [
-        41,
-      ]);
-      expect([for (final p in await repo.getProducts(query: '  ')) p.materialId], [
-        41,
-        42,
-      ]);
-      // The master list has no categories, so no category filter can match.
-      expect(await repo.getProducts(category: 'Steel'), isEmpty);
-      expect(await repo.getCategories(), isEmpty);
-    });
+        expect(
+          [for (final p in await repo.getProducts(query: 'tie')) p.materialId],
+          [42],
+        );
+        expect(
+          [
+            for (final p in await repo.getProducts(query: 'cem-40'))
+              p.materialId,
+          ],
+          [41],
+        );
+        expect(
+          [for (final p in await repo.getProducts(query: '  ')) p.materialId],
+          [41, 42],
+        );
+        // The master list has no categories, so no category filter can match.
+        expect(await repo.getProducts(category: 'Steel'), isEmpty);
+        expect(await repo.getCategories(), isEmpty);
+      },
+    );
 
     test('a hidden price is unavailable, never zero', () async {
       final api = FakeApi(
@@ -194,7 +201,9 @@ void main() {
     });
 
     test('a forbidden read is not shown as an empty catalogue', () async {
-      final api = FakeApi((options) => json({'detail': 'Forbidden.'}, status: 403));
+      final api = FakeApi(
+        (options) => json({'detail': 'Forbidden.'}, status: 403),
+      );
 
       await expectLater(
         storeCatalog(api: api).getProducts(),

@@ -27,8 +27,10 @@ class FixedCatalog implements StoreCatalogRepository {
   final List<StoreProduct> products;
 
   @override
-  Future<List<StoreProduct>> getProducts({String? query, String? category}) async =>
-      products;
+  Future<List<StoreProduct>> getProducts({
+    String? query,
+    String? category,
+  }) async => products;
 
   @override
   Future<List<String>> getCategories() async => const [];
@@ -49,17 +51,18 @@ class AskedRequestProcurement extends MockProcurementRepository {
   final List<MaterialRequestItem> items;
 
   @override
-  Future<MaterialRequestDetail?> getRequest(int id) async => MaterialRequestDetail(
-    MaterialRequest(
-      id: id,
-      projectId: 1,
-      requestedBy: 4,
-      neededBy: DateTime(2026, 11, 18),
-      status: MaterialRequestStatus.pending,
-    ),
-    items,
-    const [],
-  );
+  Future<MaterialRequestDetail?> getRequest(int id) async =>
+      MaterialRequestDetail(
+        MaterialRequest(
+          id: id,
+          projectId: 1,
+          requestedBy: 4,
+          neededBy: DateTime(2026, 11, 18),
+          status: MaterialRequestStatus.pending,
+        ),
+        items,
+        const [],
+      );
 }
 
 /// The server catalogue row QA used: same words as the request line.
@@ -107,7 +110,10 @@ void main() {
       testClient(
         api: api,
         tokens: InMemoryTokenStore(),
-        session: signedInSession(roles: const [AppRole.owner], active: AppRole.owner),
+        session: signedInSession(
+          roles: const [AppRole.owner],
+          active: AppRole.owner,
+        ),
       ),
     );
     final vm = OrderFormViewModel(
