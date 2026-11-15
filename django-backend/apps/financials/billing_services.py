@@ -18,8 +18,9 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Sum
 from django.utils import timezone
 
-from ..projects.models import Project
+from ..projects.models import Project, RoleOnProject
 from ..projects.rules import RuleRefused
+from ..projects.services import notify_project_role
 from ..users import services as user_services
 from . import billing_math
 from . import billing_rules as rules
@@ -34,6 +35,16 @@ from .models import (
     VariationOrder,
     VariationOrderStatus,
 )
+
+
+def _tell(project, role_on_project, type, message, link):
+    """Notify the project's accepted members in one role, in the caller's transaction.
+
+    The mock told the other party at each hand-off; doing it here keeps the
+    message and the status change atomic, so a refused or rolled-back action
+    sends nothing.
+    """
+    notify_project_role(project, role_on_project, message, type=type, link=link)
 
 
 def _refuse(message):
@@ -110,6 +121,12 @@ def submit_billing(user, billing):
         billing.status = BillingStatus.PENDING_CLIENT
         billing.save(update_fields=['status', 'updated_at'])
         user_services.record(user, 'billing_submitted', 'progress_billing', billing.pk)
+        _tell(
+            billing.project, RoleOnProject.CLIENT, 'billing',
+            f'Progress billing #{billing.billing_no} for {billing.project.name} '
+            'is ready for your review.',
+            f'/client/billings/{billing.pk}',
+        )
     return billing
 
 
@@ -135,6 +152,13 @@ def _answer_billing(billing, expected, new_status, action, user, reason=None):
         billing.save(update_fields=['status', 'updated_at'])
         details = {'reason': reason.strip()} if reason else None
         user_services.record(user, action, 'progress_billing', billing.pk, details)
+        if new_status == BillingStatus.DISPUTED:
+            _tell(
+                billing.project, RoleOnProject.OWNER, 'billing',
+                f'The client disputed billing #{billing.billing_no}: '
+                f'{reason.strip()}',
+                f'/billings/{billing.pk}',
+            )
     return billing
 
 
@@ -294,6 +318,12 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
                 status=VariationOrderStatus.PROPOSED,
             )
             user_services.record(user, 'vo_proposed', 'variation_order', vo.pk)
+            if not priced_by_owner:
+                _tell(
+                    project, RoleOnProject.OWNER, 'variation_order',
+                    f'{vo.vo_no} was proposed for {project.code}. Prepare it.',
+                    f'/variation-orders/{vo.pk}',
+                )
         else:
             vo.type = vo_type
             vo.description = description
@@ -320,6 +350,11 @@ def submit_vo(user, vo):
         vo.approved_by_owner = user
         vo.save(update_fields=['status', 'approved_by_owner', 'updated_at'])
         user_services.record(user, 'vo_submitted', 'variation_order', vo.pk)
+        _tell(
+            vo.project, RoleOnProject.CLIENT, 'variation_order',
+            f'{vo.vo_no} is waiting for your approval.',
+            f'/client/variation-orders/{vo.pk}',
+        )
     return vo
 
 
@@ -366,6 +401,12 @@ def client_approve_vo(user, vo):
             )
         project.save(update_fields=['contract_amount', 'target_end_date', 'updated_at'])
         user_services.record(user, 'vo_client_approved', 'variation_order', vo.pk)
+        _tell(
+            project, RoleOnProject.OWNER, 'variation_order',
+            f'{vo.vo_no} is approved. The contract amount and target end date '
+            'are updated; adjust categories and to-dos.',
+            f'/variation-orders/{vo.pk}',
+        )
     return vo
 
 

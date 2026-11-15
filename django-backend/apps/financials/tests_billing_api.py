@@ -34,7 +34,7 @@ from ..projects.models import (
     RoleOnProject,
     Todo,
 )
-from ..users.models import AuditLog, Role
+from ..users.models import AuditLog, Notification, Role
 from ..users.tests import make_user
 from . import billing_rules as rules
 from .models import ProgressBilling, VariationOrder
@@ -1100,6 +1100,88 @@ class BillingAuditTests(BillingFixtures, APITestCase):
         self.send_billing(billing)
         audit = AuditLog.objects.get(action='billing_submitted')
         self.assertEqual(audit.user, self.owner)
+
+
+class BillingNotificationTests(BillingFixtures, APITestCase):
+    """The mock notified the other party at each hand-off; the server must too."""
+
+    def inbox(self, user):
+        return list(Notification.objects.filter(user=user).order_by('id'))
+
+    def test_sending_a_billing_notifies_the_project_client_only(self):
+        billing = self.create_billing()
+
+        self.send_billing(billing)
+
+        [note] = self.inbox(self.client_user)
+        self.assertEqual(note.type, 'billing')
+        self.assertIn('Tower A', note.message)
+        self.assertEqual(note.link, f'/client/billings/{billing["id"]}')
+        self.assertEqual(self.inbox(self.other_client_user), [])
+        self.assertEqual(self.inbox(self.owner), [])
+
+    def test_a_dispute_notifies_the_owner_with_the_reason(self):
+        billing = self.create_billing()
+        self.send_billing(billing)
+
+        self.client_http.post(
+            f'{BILLINGS_URL}{billing["id"]}/client-dispute/',
+            {'reason': 'Retention looks wrong.'}, format='json',
+        )
+
+        [note] = self.inbox(self.owner)
+        self.assertEqual(note.type, 'billing')
+        self.assertIn('Retention looks wrong.', note.message)
+        self.assertEqual(note.link, f'/billings/{billing["id"]}')
+
+    def test_a_refused_send_notifies_nobody(self):
+        billing = self.create_billing()
+        self.send_billing(billing)
+
+        again = self.owner_http.post(
+            f'{BILLINGS_URL}{billing["id"]}/submit/', {}, format='json',
+        )
+
+        self.assertEqual(again.status_code, 400)
+        self.assertEqual(len(self.inbox(self.client_user)), 1)
+
+    def test_proposing_a_vo_notifies_the_owner(self):
+        response = self.engineer_http.post(
+            VOS_URL,
+            {'project_id': self.project.pk, 'type': 'additive',
+             'description': 'Extra slab', 'amount': '0', 'days_impact': 3},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        [note] = self.inbox(self.owner)
+        self.assertEqual(note.type, 'variation_order')
+        self.assertIn('VO-01', note.message)
+        self.assertIn('PRJ-A', note.message)
+        self.assertEqual(note.link, f'/variation-orders/{response.data["id"]}')
+
+    def test_a_vo_goes_to_the_client_then_the_approval_notifies_the_owner(self):
+        vo = self.owner_http.post(
+            VOS_URL,
+            {'project_id': self.project.pk, 'type': 'additive',
+             'description': 'Extra slab', 'amount': '150000.00',
+             'days_impact': 10},
+            format='json',
+        ).data
+        # An owner who proposes is not told about their own proposal.
+        self.assertEqual(self.inbox(self.owner), [])
+
+        self.owner_http.post(f'{VOS_URL}{vo["id"]}/submit/', {}, format='json')
+        [waiting] = self.inbox(self.client_user)
+        self.assertEqual(waiting.type, 'variation_order')
+        self.assertEqual(waiting.link, f'/client/variation-orders/{vo["id"]}')
+
+        self.client_http.post(
+            f'{VOS_URL}{vo["id"]}/client-approve/', {}, format='json',
+        )
+        [approved] = self.inbox(self.owner)
+        self.assertIn('is approved', approved.message)
+        self.assertEqual(approved.link, f'/variation-orders/{vo["id"]}')
 
 
 class BillingConcurrencyTests(BillingFixtures, TransactionTestCase):
