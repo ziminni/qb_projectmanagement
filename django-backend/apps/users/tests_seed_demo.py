@@ -186,6 +186,17 @@ class SeedDemoCommandTests(TestCase):
         # 25 kg bag must map to the BAG unit, never to the loose kilogram.
         self.assertEqual(adhesive.pos_code, 'QB000010-9')
 
+    def test_a_rerun_keeps_a_pos_code_the_user_corrected(self):
+        # Compose reseeds on every start; a code fixed in Master lists to match
+        # this store's catalogue must survive the restart.
+        seed(SEED_FLAG)
+        MaterialItem.objects.filter(name='Portland cement 40 kg').update(pos_code='QB000002-4')
+
+        seed(SEED_FLAG)
+
+        self.assertEqual(
+            MaterialItem.objects.get(name='Portland cement 40 kg').pos_code, 'QB000002-4')
+
     def test_materials_pos_does_not_sell_keep_a_null_pos_code(self):
         seed(SEED_FLAG)
 
