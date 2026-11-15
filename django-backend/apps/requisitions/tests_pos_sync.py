@@ -21,8 +21,10 @@ import json
 import threading
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 from unittest import mock
 
+from django.core.management import call_command
 from django.db import connections
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
@@ -175,6 +177,8 @@ POS_SETTINGS = {
     'POS_OUTBOX_MAX_ATTEMPTS': 5,
     'POS_OUTBOX_BACKOFF_SECONDS': 30,
     'POS_OUTBOX_BACKOFF_MAX_SECONDS': 3600,
+    'POS_OUTBOX_POLL_SECONDS': 30,
+    'POS_AUTO_REFRESH_SECONDS': 60,
     'POS_STATUS_STALE_AFTER_SECONDS': 300,
 }
 
@@ -974,6 +978,72 @@ class PosRouteAccessTests(PosWorkflowCase):
                 data = self.client.get(self.status_url()).data
                 self.assertNotIn('pos_expected_amount', data)
 
+    def test_pos_status_returns_empty_lines_before_snapshot(self):
+        self.act_as(self.owner, Role.OWNER)
+        data = self.client.get(self.status_url()).data
+        self.assertEqual(data['lines'], [])
+
+    def test_pos_status_includes_matched_lines_without_money(self):
+        fake = FakePosClient().script(
+            'import', import_body(self.po_no, self.sent_lines(), status='ACCEPTED'),
+        )
+        self.run_worker(fake)
+        fake.script('read', read_back_body(
+            self.po_no, [('CEM-40KG', '10.00', '4.00')],
+            status='PARTIAL', expected='2500.00',
+        ))
+        self.act_as(self.owner, Role.OWNER)
+        self.client.post(f'/api/v1/purchase-orders/{self.order.pk}/pos-sync/')
+        self.run_worker(fake)
+
+        for user, role in ((self.owner, Role.OWNER), (self.engineer, Role.SITE_ENGINEER)):
+            with self.subTest(role=role):
+                self.act_as(user, role)
+                data = self.client.get(self.status_url()).data
+                self.assertEqual(data['lines'], [
+                    {
+                        'code': 'CEM-40KG',
+                        'description': 'Portland Cement',
+                        'unit': 'bag',
+                        'requested': '10.00',
+                        'released': '4.00',
+                        'outstanding': '6.00',
+                    },
+                ])
+                line_keys = set(data['lines'][0].keys())
+                self.assertEqual(
+                    line_keys,
+                    {'code', 'description', 'unit', 'requested', 'released', 'outstanding'},
+                )
+
+    def test_pos_status_handles_unmatched_pos_code_without_crashing(self):
+        PosRequestSnapshot.objects.create(
+            purchase_order=self.order,
+            pos_status='PARTIAL',
+            lines=[
+                {
+                    'code': 'UNKNOWN-SKU',
+                    'requested': '5.00',
+                    'released': '2.00',
+                    'outstanding': '3.00',
+                },
+            ],
+            last_checked_at=timezone.now(),
+            stale=False,
+        )
+        self.act_as(self.owner, Role.OWNER)
+        data = self.client.get(self.status_url()).data
+        self.assertEqual(data['lines'], [
+            {
+                'code': 'UNKNOWN-SKU',
+                'description': '',
+                'unit': '',
+                'requested': '5.00',
+                'released': '2.00',
+                'outstanding': '3.00',
+            },
+        ])
+
     def test_the_client_portal_has_no_pos_surface(self):
         self.act_as(self.client_user, Role.CLIENT)
         self.assertEqual(self.client.get(self.status_url()).status_code, 403)
@@ -1105,3 +1175,190 @@ class WorkerClaimConcurrencyTests(ProcurementFixtures, TransactionTestCase):
         self.assertEqual(sorted(processed), [0, 1], processed)
         self.assertEqual(len(fake.imports), 1)
         self.assertEqual(sum(1 for name in fake.names() if name == 'import'), 1)
+
+
+@override_settings(**POS_SETTINGS)
+class AutoRefreshTests(PosWorkflowCase):
+    """Automatic store status refresh for open synced own-store orders."""
+
+    def _sync_order(self, order, status='WAITING'):
+        job = order.outbox_jobs.get(operation=PosOutboxOperation.IMPORT)
+        lines = [(line['code'], line['quantity']) for line in job.payload['items']]
+        fake = FakePosClient().script('import', import_body(order.po_no, lines, status=status))
+        self.run_worker(fake)
+
+    def test_enqueue_auto_refresh_queues_open_synced_orders_only(self):
+        # 1. Open synced order (`WAITING`) -> queued
+        self._sync_order(self.order, status='WAITING')
+
+        # 2. Open synced order (`PARTIAL`) -> queued
+        _, resp_partial = self.place_order()
+        partial_order = PurchaseOrder.objects.get(pk=resp_partial.data['id'])
+        self._sync_order(partial_order, status='PARTIAL')
+
+        # 3. Terminal synced orders (`RELEASED`, `DECLINED`, `CLOSED`) -> skipped
+        terminal_orders = []
+        for terminal_status in ('RELEASED', 'DECLINED', 'CLOSED'):
+            _, resp = self.place_order()
+            terminal = PurchaseOrder.objects.get(pk=resp.data['id'])
+            self._sync_order(terminal, status=terminal_status)
+            terminal_orders.append(terminal)
+
+        # 4. Cancelled synced order -> skipped
+        _, resp_cancelled = self.place_order()
+        cancelled_order = PurchaseOrder.objects.get(pk=resp_cancelled.data['id'])
+        self._sync_order(cancelled_order, status='ACCEPTED')
+        self.act_as(self.owner, Role.OWNER)
+        self.client.post(f'/api/v1/purchase-orders/{cancelled_order.pk}/cancel/')
+
+        # 5. Unsynced (`PENDING_SYNC`) and `FAILED` orders -> skipped
+        _, resp_pending = self.place_order()
+        pending_order = PurchaseOrder.objects.get(pk=resp_pending.data['id'])
+        _, resp_failed = self.place_order()
+        failed_order = PurchaseOrder.objects.get(pk=resp_failed.data['id'])
+        PurchaseOrder.objects.filter(pk=failed_order.pk).update(
+            pos_sync_status=PosSyncStatus.FAILED,
+        )
+
+        # 6. External order -> skipped
+        ext_req = self.make_request()
+        from .tests_procurement import png
+        ext_resp = self.client.post(
+            '/api/v1/purchase-orders/',
+            {
+                'request_id': ext_req.pk,
+                'category_id': self.category.pk,
+                'source': 'external',
+                'store_name': 'Downtown Hardware',
+                'or_number': 'OR-101',
+                'lines': json.dumps([{
+                    'material_id': self.cement.pk,
+                    'description': 'Portland Cement',
+                    'unit': 'bag',
+                    'quantity': 5,
+                    'unit_price': '260.00',
+                }]),
+                'receipt_photo': png(),
+            },
+            format='multipart',
+        )
+        self.assertEqual(ext_resp.status_code, 201, ext_resp.data)
+        external_order = PurchaseOrder.objects.get(pk=ext_resp.data['id'])
+
+        queued = pos_worker.enqueue_auto_refresh()
+        self.assertEqual(queued, 2)
+
+        self.assertTrue(PosOutboxJob.objects.filter(
+            purchase_order=self.order, operation=PosOutboxOperation.REFRESH,
+            state=PosOutboxState.PENDING,
+        ).exists())
+        self.assertTrue(PosOutboxJob.objects.filter(
+            purchase_order=partial_order, operation=PosOutboxOperation.REFRESH,
+            state=PosOutboxState.PENDING,
+        ).exists())
+        for skipped in [*terminal_orders, pending_order, failed_order, cancelled_order, external_order]:
+            self.assertFalse(PosOutboxJob.objects.filter(
+                purchase_order=skipped, operation=PosOutboxOperation.REFRESH,
+            ).exists())
+
+    def test_enqueue_auto_refresh_reuses_refresh_job_without_duplicates(self):
+        self._sync_order(self.order, status='WAITING')
+        self.assertEqual(pos_worker.enqueue_auto_refresh(), 1)
+        # Running again while PENDING skips and creates no duplicate row.
+        self.assertEqual(pos_worker.enqueue_auto_refresh(), 0)
+        self.assertEqual(PosOutboxJob.objects.filter(
+            purchase_order=self.order, operation=PosOutboxOperation.REFRESH,
+        ).count(), 1)
+
+        # Backoff on a pending retry is preserved.
+        job = PosOutboxJob.objects.get(
+            purchase_order=self.order, operation=PosOutboxOperation.REFRESH,
+        )
+        future = timezone.now() + timedelta(minutes=5)
+        PosOutboxJob.objects.filter(pk=job.pk).update(attempts=2, next_attempt_at=future)
+        self.assertEqual(pos_worker.enqueue_auto_refresh(), 0)
+        job.refresh_from_db()
+        self.assertEqual(job.attempts, 2)
+        self.assertEqual(job.next_attempt_at, future)
+
+        # Process the refresh (store now reports ACCEPTED, still non-final).
+        PosOutboxJob.objects.filter(pk=job.pk).update(next_attempt_at=None)
+        fake = FakePosClient().script('read', read_back_body(
+            self.po_no, [(code, '10.00', '0.00') for code, _ in self.sent_lines()],
+            status='ACCEPTED',
+        ))
+        self.run_worker(fake)
+        job.refresh_from_db()
+        self.assertEqual(job.state, PosOutboxState.DONE)
+
+        # Next auto-refresh re-arms the same row; manual pos-sync reuses it too.
+        self.assertEqual(pos_worker.enqueue_auto_refresh(), 1)
+        self.act_as(self.owner, Role.OWNER)
+        self.assertEqual(
+            self.client.post(f'/api/v1/purchase-orders/{self.order.pk}/pos-sync/').status_code,
+            202,
+        )
+        self.assertEqual(PosOutboxJob.objects.filter(
+            purchase_order=self.order, operation=PosOutboxOperation.REFRESH,
+        ).count(), 1)
+
+        # Once the store answers RELEASED, auto-refresh stops queuing.
+        fake.script('read', read_back_body(
+            self.po_no, [(code, '10.00', '10.00') for code, _ in self.sent_lines()],
+            status='RELEASED',
+        ))
+        self.run_worker(fake)
+        self.assertEqual(pos_worker.enqueue_auto_refresh(), 0)
+
+    def test_run_pos_outbox_once_refreshes_open_synced_orders(self):
+        self._sync_order(self.order, status='WAITING')
+        fake = FakePosClient().script('read', read_back_body(
+            self.po_no, [(code, '10.00', '10.00') for code, _ in self.sent_lines()],
+            status='RELEASED',
+        ))
+        out = StringIO()
+        with mock.patch('apps.requisitions.pos_worker.get_pos_client', return_value=fake):
+            call_command('run_pos_outbox', '--once', stdout=out)
+        self.assertIn('1 job(s) processed', out.getvalue())
+        snapshot = PosRequestSnapshot.objects.get(purchase_order=self.order)
+        self.assertEqual(snapshot.pos_status, 'RELEASED')
+
+    @override_settings(POS_AUTO_REFRESH_SECONDS=15, POS_OUTBOX_POLL_SECONDS=30)
+    def test_run_pos_outbox_loop_uses_pos_auto_refresh_seconds(self):
+        self._sync_order(self.order, status='WAITING')
+        fake = FakePosClient().script(
+            'read',
+            read_back_body(
+                self.po_no, [(code, '10.00', '3.00') for code, _ in self.sent_lines()],
+                status='PARTIAL',
+            ),
+            read_back_body(
+                self.po_no, [(code, '10.00', '10.00') for code, _ in self.sent_lines()],
+                status='RELEASED',
+            ),
+        )
+
+        class StopLoop(BaseException):
+            pass
+
+        ticks = iter([100.0, 110.0, 116.0])
+        sleeps = []
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) >= 3:
+                raise StopLoop()
+
+        with (
+            mock.patch('apps.requisitions.pos_worker.get_pos_client', return_value=fake),
+            mock.patch('apps.requisitions.management.commands.run_pos_outbox.time.monotonic', side_effect=ticks),
+            mock.patch('apps.requisitions.management.commands.run_pos_outbox.time.sleep', side_effect=fake_sleep),
+        ):
+            with self.assertRaises(StopLoop):
+                call_command('run_pos_outbox', stdout=StringIO())
+
+        # Loop sleeps min(poll=30, auto_refresh=15) = 15s and executes both reads.
+        self.assertEqual(sleeps, [15, 15, 15])
+        self.assertEqual(fake.names(), ['read', 'read'])
+        snapshot = PosRequestSnapshot.objects.get(purchase_order=self.order)
+        self.assertEqual(snapshot.pos_status, 'RELEASED')

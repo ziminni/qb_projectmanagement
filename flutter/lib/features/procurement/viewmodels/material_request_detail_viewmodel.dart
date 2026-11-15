@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ChangeNotifier;
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/material_request.dart';
+import '../../../data/models/material_source.dart';
 import '../../../data/models/purchase_order.dart';
 import '../../../data/repositories/procurement_repository.dart';
 import '../../../data/services/session_service.dart';
@@ -26,6 +27,8 @@ class MaterialRequestDetailViewModel extends ChangeNotifier with ActionRunner {
   String? _error;
   MaterialRequestDetail? _detail;
   List<PurchaseOrder> _orders = const [];
+  Map<int, PosStatus> _posStatuses = const {};
+  Set<int> _posStatusFailed = const {};
 
   bool get isLoading => _loading;
   String? get error => _error;
@@ -33,6 +36,17 @@ class MaterialRequestDetailViewModel extends ChangeNotifier with ActionRunner {
   MaterialRequest? get request => _detail?.request;
   List<PurchaseOrder> get orders => _orders;
   AppRole get role => _session.activeRole!;
+  bool get supportsPosStatus => _procurement.supportsPosStatus;
+
+  String? storeStatusFor(PurchaseOrder order) {
+    if (!supportsPosStatus || order.source != MaterialSource.ownStore) {
+      return null;
+    }
+    if (_posStatusFailed.contains(order.id)) {
+      return 'Store status unavailable';
+    }
+    return _posStatuses[order.id]?.compactSummary;
+  }
 
   bool get canReject =>
       role == AppRole.owner && request?.status == MaterialRequestStatus.pending;
@@ -63,6 +77,9 @@ class MaterialRequestDetailViewModel extends ChangeNotifier with ActionRunner {
     _detail = await _procurement.getRequest(requestId);
     if (_detail == null) {
       _error = 'Request not found.';
+      _orders = const [];
+      _posStatuses = const {};
+      _posStatusFailed = const {};
       return;
     }
     _orders = [
@@ -71,6 +88,20 @@ class MaterialRequestDetailViewModel extends ChangeNotifier with ActionRunner {
       ))
         if (o.materialRequestId == requestId) o,
     ];
+    final posStatuses = <int, PosStatus>{};
+    final posStatusFailed = <int>{};
+    if (_procurement.supportsPosStatus) {
+      for (final o in _orders) {
+        if (o.source != MaterialSource.ownStore) continue;
+        try {
+          posStatuses[o.id] = await _procurement.getPosStatus(o.id);
+        } catch (_) {
+          posStatusFailed.add(o.id);
+        }
+      }
+    }
+    _posStatuses = posStatuses;
+    _posStatusFailed = posStatusFailed;
   }
 
   Future<String?> reject(String reason) => runAction(() async {

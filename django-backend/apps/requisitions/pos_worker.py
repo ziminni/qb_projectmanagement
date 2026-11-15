@@ -77,6 +77,15 @@ MAX_JOBS_PER_RUN = 200
 IMPORT_QUANTITY_KEYS = ('quantity',)
 READ_BACK_QUANTITY_KEYS = ('requested',)
 
+#: POS statuses that will never advance further, so auto-refresh stops polling.
+FINAL_POS_STATUSES = frozenset({
+    'RELEASED',
+    'DECLINED',
+    'CLOSED',
+    'CANCELLED',
+    'REJECTED',
+})
+
 
 # --------------------------------------------------------------------------
 # Small helpers
@@ -499,6 +508,74 @@ def claim_next(now=None):
     return _due(
         PosOutboxJob.objects.select_for_update(skip_locked=True), now,
     ).order_by('id').first()
+
+
+def _is_final_pos_status(pos_status):
+    return str(pos_status or '').strip().upper() in FINAL_POS_STATUSES
+
+
+def enqueue_auto_refresh(now=None):
+    """Queue a store read-back for every open synced own-store order.
+
+    Skips cancelled orders, unsynced/failed orders, and orders whose cached
+    POS status is already terminal (`FINAL_POS_STATUSES`). Reuses the single
+    `refresh:{pos_request_id}` outbox job so repeated passes never duplicate
+    jobs or reset a pending job's retry backoff.
+    """
+    candidates = (
+        PurchaseOrder.objects
+        .filter(
+            source=MaterialSource.OWN_STORE,
+            pos_sync_status=PosSyncStatus.SYNCED,
+        )
+        .exclude(status=PurchaseOrderStatus.CANCELLED)
+        .select_related('pos_snapshot')
+        .order_by('id')
+    )
+    queued = 0
+    for candidate in candidates:
+        if not candidate.pos_request_id or not candidate.po_no:
+            continue
+        try:
+            snapshot_status = candidate.pos_snapshot.pos_status
+        except PosRequestSnapshot.DoesNotExist:
+            snapshot_status = ''
+        if _is_final_pos_status(snapshot_status):
+            continue
+
+        with transaction.atomic():
+            order = PurchaseOrder.objects.select_for_update().get(pk=candidate.pk)
+            if (
+                order.source != MaterialSource.OWN_STORE
+                or order.pos_sync_status != PosSyncStatus.SYNCED
+                or order.status == PurchaseOrderStatus.CANCELLED
+                or not order.pos_request_id
+                or not order.po_no
+            ):
+                continue
+            current_status = (
+                PosRequestSnapshot.objects
+                .filter(purchase_order=order)
+                .values_list('pos_status', flat=True)
+                .first()
+                or ''
+            )
+            if _is_final_pos_status(current_status):
+                continue
+
+            existing = (
+                PosOutboxJob.objects
+                .select_for_update()
+                .filter(idempotency_key=f'refresh:{order.pos_request_id}')
+                .first()
+            )
+            if existing is not None and existing.state == PosOutboxState.PENDING:
+                continue
+            job = _refresh_job(order, order.approved_by)
+            if job.state != PosOutboxState.PENDING:
+                _rearm(job)
+            queued += 1
+    return queued
 
 
 def run_once(client=None, limit=None, now=None):

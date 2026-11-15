@@ -19,6 +19,8 @@ contract shape this file:
 # Pyright runs without django-stubs/DRF stubs (untyped managers, `Meta`).
 # pyright: reportIncompatibleVariableOverride=false, reportAttributeAccessIssue=false
 
+from decimal import Decimal, InvalidOperation
+
 from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
@@ -175,6 +177,51 @@ class DeliveryItemSerializer(serializers.ModelSerializer):
 CLOSE_NEEDS_REVIEW_NOTE = 'The store may still hold this request. Retry the close.'
 
 
+def _snapshot_lines(order, snapshot):
+    """Per-line store quantities matched to the order's own description/unit."""
+    if snapshot is None or not isinstance(snapshot.lines, list):
+        return []
+    line_meta = {}
+    for item in order.items.select_related('material').order_by('id'):
+        material = item.material
+        pos_code = (material.pos_code or '').strip() if material is not None else ''
+        if not pos_code:
+            continue
+        meta = (item.description, item.unit)
+        line_meta.setdefault(pos_code, meta)
+        line_meta.setdefault(pos_code.upper(), meta)
+
+    lines = []
+    for raw in snapshot.lines:
+        if not isinstance(raw, dict):
+            continue
+        code = str(raw.get('code') or '').strip()
+        description, unit = line_meta.get(code) or line_meta.get(code.upper(), ('', ''))
+        raw_requested = raw.get('requested')
+        if raw_requested is None:
+            raw_requested = raw.get('quantity')
+        requested = str(raw_requested) if raw_requested is not None else '0.00'
+        raw_released = raw.get('released')
+        released = str(raw_released) if raw_released is not None else '0.00'
+        raw_outstanding = raw.get('outstanding')
+        if raw_outstanding is not None:
+            outstanding = str(raw_outstanding)
+        else:
+            try:
+                outstanding = f'{Decimal(requested) - Decimal(released):.2f}'
+            except (InvalidOperation, ValueError):
+                outstanding = requested
+        lines.append({
+            'code': code,
+            'description': description,
+            'unit': unit,
+            'requested': requested,
+            'released': released,
+            'outstanding': outstanding,
+        })
+    return lines
+
+
 def pos_status_payload(order, role, now=None):
     """`GET purchase-orders/{id}/pos-status/` — the cached store snapshot.
 
@@ -215,6 +262,7 @@ def pos_status_payload(order, role, now=None):
         # The store's own string, never folded into a CPMS enum.
         'pos_status': (snapshot.pos_status or None) if snapshot is not None else None,
         'decline_reason': (snapshot.decline_reason or '') if snapshot is not None else '',
+        'lines': _snapshot_lines(order, snapshot),
         'last_checked_at': checked if checked is not None else None,
         'stale': stale,
         'detail': detail,

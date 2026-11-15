@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/formatters.dart';
@@ -11,6 +12,7 @@ import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_figure.dart';
+import '../../../shared/widgets/app_progress_bar.dart';
 import '../viewmodels/billings_viewmodel.dart';
 import '../widgets/billing_tile.dart';
 
@@ -42,23 +44,63 @@ class BillingsPage extends StatelessWidget {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Wrap(
-                  spacing: AppSpacing.xl,
-                  runSpacing: AppSpacing.md,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    AppFigure(
-                      label: 'Billed to clients',
-                      value: Formatters.peso(vm.summary!.billed),
-                    ),
-                    AppFigure(
-                      label: 'Collected',
-                      value: Formatters.peso(vm.summary!.collected),
-                    ),
-                    AppFigure(
-                      label: 'Outstanding',
-                      value: Formatters.peso(
-                        vm.summary!.billed - vm.summary!.collected,
-                      ),
+                    Builder(
+                      builder: (context) {
+                        final billed = vm.summary!.billed;
+                        final collected = vm.summary!.collected;
+                        final outstanding = billed - collected;
+                        final projectCount = vm.projectsById.length;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              spacing: AppSpacing.xl,
+                              runSpacing: AppSpacing.md,
+                              children: [
+                                AppFigure(
+                                  label: 'Billed to clients',
+                                  value: Formatters.peso(billed),
+                                  detail:
+                                      '$projectCount project'
+                                      '${projectCount == 1 ? '' : 's'}',
+                                ),
+                                AppFigure(
+                                  label: 'Collected',
+                                  value: Formatters.peso(collected),
+                                  detail: billed > 0
+                                      ? '${Formatters.percent(collected / billed)} collected'
+                                      : 'Nothing billed yet',
+                                  valueColor: AppColors.success,
+                                ),
+                                AppFigure(
+                                  label: 'Outstanding',
+                                  value: Formatters.peso(outstanding),
+                                  detail: outstanding > 0
+                                      ? 'Awaiting payment'
+                                      : 'All collected',
+                                  valueColor: outstanding > 0
+                                      ? AppColors.warning
+                                      : AppColors.success,
+                                ),
+                              ],
+                            ),
+                            if (billed > 0) ...[
+                              const SizedBox(height: AppSpacing.md),
+                              AppProgressBar(
+                                value: (collected / billed).clamp(0.0, 1.0),
+                                height: 8,
+                                color: outstanding <= 0
+                                    ? AppColors.success
+                                    : AppColors.brandGold,
+                                semanticsLabel: 'Collection progress',
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),

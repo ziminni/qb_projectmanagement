@@ -151,7 +151,7 @@ class PurchaseOrderDetailViewModel extends ChangeNotifier with ActionRunner {
       info: [
         ('Store', lookups.storeName(o)),
         ('Source', o.source.label),
-        ('Status', o.status.label),
+        ('Status', o.statusLabel),
         if (o.createdAt != null) ('Date', Formatters.date(o.createdAt!)),
         ('Ordered by', lookups.userName(o.approvedBy)),
         if (o.deliveryAddress != null) ('Deliver to', o.deliveryAddress!),

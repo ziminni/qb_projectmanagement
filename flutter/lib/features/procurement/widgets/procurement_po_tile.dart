@@ -38,7 +38,9 @@ class ProcurementPoTile extends StatelessWidget {
         '$supplierName · ${order.source.label}'
         '${canSeeFinance() ? ' · ${Formatters.peso(order.totalAmount)}' : ''}',
       ),
-      trailing: trailing ?? ProcurementPoStatusChip(status: order.status),
+      trailing:
+          trailing ??
+          ProcurementPoStatusChip(status: order.status, source: order.source),
     );
   }
 }
