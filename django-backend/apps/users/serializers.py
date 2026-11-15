@@ -65,10 +65,23 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class _NoPhoneIsBlank(serializers.CharField):
+    """`phone`: the app sends null for an empty box; store it as no phone."""
+
+    def __init__(self, **kwargs):
+        super().__init__(max_length=32, allow_blank=True, allow_null=True, required=False, **kwargs)
+
+    def validate_empty_values(self, data):
+        if data is None:
+            return (True, '')
+        return super().validate_empty_values(data)
+
+
 class MeUpdateSerializer(serializers.ModelSerializer):
     """The only two fields a user may change on their own profile."""
 
     full_name = serializers.CharField(max_length=200)
+    phone = _NoPhoneIsBlank()
 
     class Meta:
         model = User
@@ -83,6 +96,7 @@ class UserWriteSerializer(serializers.ModelSerializer):
         allow_empty=False,
         write_only=True,
     )
+    phone = _NoPhoneIsBlank()
 
     class Meta:
         model = User

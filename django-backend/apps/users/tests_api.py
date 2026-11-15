@@ -685,3 +685,36 @@ class ThrottleTests(ApiTestCase):
 
         self.assertEqual(statuses[:5], [204] * 5)
         self.assertEqual(statuses[5], 429)
+
+
+class NoPhoneTests(APITestCase):
+    """The app sends `phone: null` for an empty phone box (found by the qa511
+    real-API probe): it must save as no phone, not refuse the whole form."""
+
+    def setUp(self):
+        self.admin = make_user('admin@example.com', [Role.ADMIN, Role.OWNER])
+        self.client.force_authenticate(user=self.admin)
+        self.client.credentials(HTTP_X_ACTIVE_ROLE=Role.ADMIN)
+
+    def test_admin_creates_and_edits_a_user_without_a_phone(self):
+        created = self.client.post(USERS_URL, {
+            'full_name': 'Ana Reyes', 'email': 'ana@example.com', 'phone': None,
+            'is_active': True, 'roles': ['site_engineer'],
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        user_id = created.data['user']['id']
+
+        edited = self.client.patch(f'{USERS_URL}{user_id}/', {
+            'full_name': 'Ana Reyes', 'email': 'ana@example.com', 'phone': None,
+            'is_active': True, 'roles': ['site_engineer', 'accountant'],
+        }, format='json')
+        self.assertEqual(edited.status_code, 200, edited.data)
+        self.assertEqual(User.objects.get(pk=user_id).phone, '')
+
+    def test_clearing_my_own_phone(self):
+        self.admin.phone = '0917'
+        self.admin.save()
+        response = self.client.patch(ME_URL, {'full_name': 'Admin', 'phone': None}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.phone, '')
