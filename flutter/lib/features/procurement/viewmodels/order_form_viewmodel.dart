@@ -187,7 +187,9 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
         materialId: p.materialId,
         description: p.name,
         unit: p.unit,
-        unitPrice: p.price,
+        // A hidden price stays blank for the owner to type; only the owner
+        // orders and the owner sees prices (server-side finance role).
+        unitPrice: p.price ?? 0,
       ),
     );
     notifyListeners();

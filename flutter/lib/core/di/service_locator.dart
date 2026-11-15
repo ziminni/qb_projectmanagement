@@ -15,6 +15,7 @@ import '../../data/repositories/http_notification_repository.dart';
 import '../../data/repositories/http_procurement_repository.dart';
 import '../../data/repositories/http_project_repository.dart';
 import '../../data/repositories/http_schedule_repository.dart';
+import '../../data/repositories/http_store_catalog_repository.dart';
 import '../../data/repositories/http_user_repository.dart';
 import '../../data/repositories/mock_auth_repository.dart';
 import '../../data/repositories/billing_repository.dart';
@@ -93,7 +94,12 @@ void setupServiceLocator() {
           : MockMasterDataRepository(),
     )
     ..registerLazySingleton<StoreCatalogRepository>(
-      MockStoreCatalogRepository.new,
+      // The own store's catalogue is the server's master data (only materials
+      // with a POS code), so an own-store line carries a material id the
+      // server can resolve.
+      () => useApi
+          ? HttpStoreCatalogRepository(getIt<ApiClient>())
+          : MockStoreCatalogRepository(),
     )
     ..registerLazySingleton<PrivateFileLoader>(
       () => PrivateFileLoader(useApi ? getIt<ApiClient>() : null),

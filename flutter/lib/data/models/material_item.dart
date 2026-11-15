@@ -9,6 +9,7 @@ class MaterialItem {
     required this.unit,
     required this.defaultUnitCost,
     this.storeSku,
+    this.posCode,
     this.createdAt,
     this.updatedAt,
   });
@@ -20,6 +21,10 @@ class MaterialItem {
 
   /// For the future hardware store link.
   final String? storeSku;
+
+  /// The POS selling-unit barcode. Only a material with one can be ordered
+  /// for the own store (`apps/requisitions/procurement_services.py`).
+  final String? posCode;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -46,6 +51,7 @@ class MaterialItem {
     unit: json['unit'] as String,
     defaultUnitCost: JsonUtils.toDouble(json['default_unit_cost']),
     storeSku: json['store_sku'] as String?,
+    posCode: json['pos_code'] as String?,
     createdAt: JsonUtils.toDateOrNull(json['created_at']),
     updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
   );
@@ -56,6 +62,7 @@ class MaterialItem {
     'unit': unit,
     'default_unit_cost': defaultUnitCost,
     'store_sku': storeSku,
+    'pos_code': posCode,
     'created_at': JsonUtils.fromDateTimeOrNull(createdAt),
     'updated_at': JsonUtils.fromDateTimeOrNull(updatedAt),
   };

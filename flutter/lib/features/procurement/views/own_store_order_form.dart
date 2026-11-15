@@ -9,6 +9,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/material_source.dart';
+import '../../../data/models/store_product.dart';
 import '../../../data/services/procurement_rules.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_action_bar.dart';
@@ -51,6 +52,16 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
     _address.dispose();
     super.dispose();
   }
+
+  /// SKU, price and shelf count as far as the catalogue knows them: the
+  /// server's master list has no stock, and it hides a price from a role
+  /// without the money view — shown as unavailable, never as ₱0.00.
+  static String _productSubtitle(StoreProduct p) => [
+    if (p.sku.isNotEmpty) p.sku,
+    if (p.price != null) '${Formatters.peso(p.price!)} / ${p.unit}',
+    if (p.price == null) 'Price unavailable',
+    if (p.stock != null) '${InputParsers.amountText(p.stock!)} in stock',
+  ].join(' · ');
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -146,8 +157,7 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
                                 contentPadding: EdgeInsets.zero,
                                 title: Text(p.name),
                                 subtitle: Text(
-                                  '${p.sku} · ${Formatters.peso(p.price)} / ${p.unit}'
-                                  ' · ${InputParsers.amountText(p.stock)} in stock',
+                                  _productSubtitle(p),
                                 ),
                                 trailing: vm.isPicked(p)
                                     ? const Icon(Icons.check_circle)

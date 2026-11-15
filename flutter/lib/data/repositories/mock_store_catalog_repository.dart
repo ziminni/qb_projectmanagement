@@ -86,5 +86,8 @@ class MockStoreCatalogRepository implements StoreCatalogRepository {
 
   @override
   Future<List<String>> getCategories() async =>
-      {for (final p in _products) p.category}.toList()..sort();
+      {
+        for (final p in _products)
+          if (p.category != null) p.category!,
+      }.toList()..sort();
 }
