@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:buildpro_frontend/core/di/service_locator.dart';
-import 'package:buildpro_frontend/core/utils/app_messages.dart';
 import 'package:buildpro_frontend/data/models/app_role.dart';
 import 'package:buildpro_frontend/data/models/delivery.dart';
 import 'package:buildpro_frontend/data/models/material_request.dart';
@@ -559,7 +558,7 @@ void main() {
     expect(find.text('Paid'), findsOneWidget);
   });
 
-  testWidgets('payables explains the blocked ledger and stops loading', (
+  testWidgets('API mode payables read the store, not a CPMS ledger', (
     tester,
   ) async {
     await getIt.unregister<ProcurementRepository>();
@@ -567,7 +566,10 @@ void main() {
     await pumpApp(tester);
     await signInAs(tester, 'liza@example.ph');
     await goTo(tester, '/payables');
-    expect(find.text(supplierAccountingUnavailable), findsOneWidget);
+    // Owner decision 2026-11-15: the store holds the debt (see
+    // store_payables_test.dart); no store answer here means nothing owed.
+    expect(find.text('Nothing is owed to the store.'), findsOneWidget);
+    expect(find.text('Pay'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 

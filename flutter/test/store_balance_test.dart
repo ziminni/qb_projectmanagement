@@ -12,7 +12,7 @@ import 'test_helpers.dart';
 
 /// Mock procurement whose store balance is scripted.
 class BalanceProcurement extends MockProcurementRepository {
-  BalanceProcurement(this.answer)
+  BalanceProcurement(this.answer, {this.supportsPayments = true})
     : super(
         projects: getIt(),
         schedule: getIt(),
@@ -25,13 +25,19 @@ class BalanceProcurement extends MockProcurementRepository {
   final Future<StoreBalance?> Function() answer;
 
   @override
+  final bool supportsPayments;
+
+  @override
   Future<StoreBalance?> getStoreBalance(int projectId) => answer();
 }
 
-Future<void> useBalance(Future<StoreBalance?> Function() answer) async {
+Future<void> useBalance(
+  Future<StoreBalance?> Function() answer, {
+  bool supportsPayments = true,
+}) async {
   await getIt.unregister<ProcurementRepository>();
   getIt.registerLazySingleton<ProcurementRepository>(
-    () => BalanceProcurement(answer),
+    () => BalanceProcurement(answer, supportsPayments: supportsPayments),
   );
 }
 

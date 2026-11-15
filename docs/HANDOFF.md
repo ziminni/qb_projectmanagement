@@ -40,7 +40,7 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 - **Not clicked yet:** admin user management, variation orders, notifications, client billing after verify, daily-report photo upload, a person clicking through the desktop window (no screenshot/click-automation tools here). Mocks are still the default; API mode is `--dart-define=USE_API=true --dart-define=API_BASE_URL=http://host:port/api/v1`.
 - Teammate design notes (not changed): the site engineer is chosen only in the new-project wizard; the material request form lists only **ongoing** projects; the landing hero image is an external Unsplash URL that now returns 404.
 - No tunnel run with the real stack; no Windows/desktop packaging; `libsecret` on Linux untested.
-- Derived project costs and supplier payables are unavailable in API mode.
+- Derived project costs work in API mode (`3dc70dc`). Supplier payables in API mode list what each project owes our store, read from the store, read-only (outside purchases are paid at the counter, so they are never payables; payments are recorded at the store).
 
 - **Linux desktop (verified by the controller, `temp/cpms/5.8/report.md`, local only):** the release build succeeds with `USE_API=true`, links `libsecret`, launches under WSLg, and an integration test on the native Linux app signed in to a real backend, kept the tokens in the OS keyring and loaded the owner's 3 scoped projects. Linux hosts need a keyring service (for example gnome-keyring). Windows and macOS builds were not tried.
 

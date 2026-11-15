@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_spacing.dart';
+import '../../../core/layout/project_tabs.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
@@ -52,7 +53,39 @@ class PayablesPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
-            if (vm.items.isEmpty)
+            if (vm.fromStore) ...[
+              Text(
+                'Read from the store. Outside purchases are paid at the '
+                'counter; what projects owe our store is recorded at the '
+                'store, and payments are recorded at the store too.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              if (vm.storeBalances.isEmpty)
+                const AppEmptyState(message: 'Nothing is owed to the store.')
+              else
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      for (final (i, (id, b)) in vm.storeBalances.indexed) ...[
+                        if (i > 0) const Divider(height: 1),
+                        ListTile(
+                          onTap: () => context.go(
+                            AppRoutes.projectTab(id, ProjectTab.financials),
+                          ),
+                          title: Text('${l.projectCode(id)} · our store'),
+                          subtitle: Text(
+                            'charged ${Formatters.peso(b.total)} · paid '
+                            '${Formatters.peso(b.paid)}',
+                          ),
+                          trailing: Text(Formatters.peso(b.balance)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+            ] else if (vm.items.isEmpty)
               const AppEmptyState(message: 'No supplier balances.')
             else
               Card(
