@@ -307,6 +307,13 @@ class Command(BaseCommand):
                     'unit': row['unit'],
                     'default_unit_cost': _money(row['default_unit_cost']),
                     'store_sku': row['store_sku'],
+                },
+                # Only on create: Compose reseeds on every start, and a code fixed
+                # in Master lists to match this store's catalogue must survive it.
+                create_defaults={
+                    'unit': row['unit'],
+                    'default_unit_cost': _money(row['default_unit_cost']),
+                    'store_sku': row['store_sku'],
                     'pos_code': row['pos_code'],
                 },
             )
