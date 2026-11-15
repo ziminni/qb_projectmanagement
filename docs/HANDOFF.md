@@ -43,6 +43,8 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 
 - **Linux desktop (verified by the controller, `temp/cpms/5.8/report.md`, local only):** the release build succeeds with `USE_API=true`, links `libsecret`, launches under WSLg, and an integration test on the native Linux app signed in to a real backend, kept the tokens in the OS keyring and loaded the owner's 3 scoped projects. Linux hosts need a keyring service (for example gnome-keyring). Windows and macOS builds were not tried.
 
+- **Real-API decode probe (controller, `temp/cpms/5.9/`, local only):** a headless `flutter test` signed in as all five demo roles against a disposable real backend and called every read method of the HTTP repositories, first on seed data (329 calls) and then after creating a billing, two variation orders, a payroll period, a material request and an own-store order through the API (66 calls, including detail reads and POS status). **Zero decode errors.** Every other refusal was an intended role fence, except one real defect it exposed, now fixed: the accountant could not read variation orders although the project Financials tab needs them (`a1fc33e`). The two probe files are kept in `temp/cpms/5.9/keep/`; run them with `--dart-define=USE_API=true --dart-define=API_BASE_URL=... --dart-define=DEMO_PW=...` after a fresh `seed_demo`.
+
 ## Needs an owner decision (nothing invented)
 
 1. ~~Payroll statutory deductions~~ **Decided 2026-11-15: basic payroll for now** (gross pay less cash advances, per-worker daily rates, half-days and overtime; no SSS/PhilHealth/Pag-IBIG). Real contributions, partial-hour entry and the firm's payslip format are later improvements, listed in `contracts/phase-4-payroll.md`.
