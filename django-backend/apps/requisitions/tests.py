@@ -1,4 +1,18 @@
-"""Tests for material requisitions and the POS release-token contract."""
+"""Pre-Phase-3 requisition tests: preserved rows, retired routes.
+
+The Phase 3 build retired the legacy release-token API (a 128-bit bearer
+secret any authenticated caller could `redeem/`, and an unscoped
+`requisitions/` CRUD that bypassed Phase 2 project scoping). The **rows and
+models stay** — `ReleaseToken` / `PosSyncLog` / the legacy request columns are
+history — so their model tests are kept and only the route tests are replaced
+by explicit "this path is gone" assertions.
+
+The Phase 3 wire contract is tested in `tests_procurement.py`; the legacy data
+mapping is tested in `tests_migration_procurement.py`.
+"""
+
+# Pyright here runs without django-stubs, so model managers are untyped.
+# pyright: reportAttributeAccessIssue=false
 
 from datetime import timedelta
 from decimal import Decimal
@@ -7,15 +21,18 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from ..company.models import Company
 from ..projects.models import Project, ProjectStatus, Site
-from ..users.models import User, UserRole
+from ..users.models import Role, User
 from .models import (
     MaterialRequest,
     MaterialRequestItem,
+    MaterialRequestStatus,
     ReleaseToken,
-    RequestStatus,
     TokenStatus,
 )
+
+FIXTURE_PASSWORD = 's3cret-pass-123'  # noqa: S105 - test fixture, not a credential
 
 
 class RequisitionFixtures(TestCase):
@@ -26,20 +43,21 @@ class RequisitionFixtures(TestCase):
             code='PRJ-900',
             name='Tower A',
             site=cls.site,
-            status=ProjectStatus.IN_PROGRESS,
+            status=ProjectStatus.ONGOING,
         )
         cls.engineer = User.objects.create_user(
-            username='eng1', email='eng1@example.com', password='s3cret-pass-123',
-            role=UserRole.ENGINEER,
+            email='eng1@example.com', password=FIXTURE_PASSWORD,
+            full_name='Engineer One', company=Company.objects.first(),
+            roles=[Role.SITE_ENGINEER],
         )
         cls.pm = User.objects.create_user(
-            username='pm1', email='pm1@example.com', password='s3cret-pass-123',
-            role=UserRole.PROJECT_MANAGER,
+            email='pm1@example.com', password=FIXTURE_PASSWORD,
+            full_name='PM One', company=Company.objects.first(),
+            roles=[Role.OWNER],
         )
 
     def make_request(self, **overrides):
         defaults = {
-            'request_no': 'REQ-0001',
             'project': self.project,
             'site': self.site,
             'requested_by': self.engineer,
@@ -48,83 +66,60 @@ class RequisitionFixtures(TestCase):
         return MaterialRequest.objects.create(**defaults)
 
 
-class MaterialRequestTests(RequisitionFixtures):
-    def test_new_request_defaults_to_draft_and_normal_priority(self):
-        material_request = self.make_request()
+class MaterialRequestModelTests(RequisitionFixtures):
+    def test_new_requests_start_pending_and_keep_the_legacy_columns(self):
+        material_request = self.make_request(priority='NORMAL')
 
-        self.assertEqual(material_request.status, RequestStatus.DRAFT)
-        self.assertEqual(material_request.priority, 'NORMAL')
+        self.assertEqual(material_request.status, MaterialRequestStatus.PENDING)
         self.assertTrue(material_request.is_editable)
+        self.assertEqual(material_request.priority, 'NORMAL')
+        # Phase 3 does not write these legacy columns, but they still hold data.
+        self.assertEqual(material_request.legacy_status, '')
+        self.assertEqual(material_request.number, f'MR-{material_request.pk:04d}')
 
-    def test_approve_stamps_reviewer_and_locks_editing(self):
-        material_request = self.make_request(status=RequestStatus.PENDING)
-
-        material_request.approve(self.pm)
-
-        self.assertEqual(material_request.status, RequestStatus.APPROVED)
-        self.assertEqual(material_request.reviewed_by, self.pm)
-        self.assertIsNotNone(material_request.reviewed_at)
-        self.assertFalse(material_request.is_editable)
-
-    def test_partial_approval_sets_partial_status(self):
-        material_request = self.make_request(status=RequestStatus.PENDING)
-
-        material_request.approve(self.pm, partial=True)
-
-        self.assertEqual(material_request.status, RequestStatus.PARTIALLY_APPROVED)
-
-    def test_reject_records_reason(self):
-        material_request = self.make_request(status=RequestStatus.PENDING)
+    def test_reject_records_reason_and_reviewer(self):
+        material_request = self.make_request()
 
         material_request.reject(self.pm, reason='Budget exhausted for this phase.')
 
-        self.assertEqual(material_request.status, RequestStatus.REJECTED)
-        self.assertEqual(material_request.rejection_reason, 'Budget exhausted for this phase.')
+        material_request.refresh_from_db()
+        self.assertEqual(material_request.status, MaterialRequestStatus.REJECTED)
+        self.assertEqual(
+            material_request.rejection_reason, 'Budget exhausted for this phase.',
+        )
+        self.assertEqual(material_request.reviewed_by, self.pm)
+        self.assertFalse(material_request.is_editable)
 
-    def test_total_approved_value_sums_line_items(self):
-        material_request = self.make_request()
-        MaterialRequestItem.objects.create(
+    def test_legacy_columns_and_totals_are_still_readable(self):
+        material_request = self.make_request(request_no='REQ-0001')
+        item = MaterialRequestItem.objects.create(
             material_request=material_request, item_sku='CEM-40KG',
             quantity_requested=Decimal('10'), quantity_approved=Decimal('10'),
             unit_cost=Decimal('250.00'),
         )
-        MaterialRequestItem.objects.create(
-            material_request=material_request, item_sku='SND-1M',
-            quantity_requested=Decimal('3'), quantity_approved=Decimal('2'),
-            unit_cost=Decimal('1200.00'),
-        )
 
-        # 10 * 250 + 2 * 1200
-        self.assertEqual(material_request.total_approved_value, Decimal('4900.00'))
-
-    def test_outstanding_quantity_tracks_releases(self):
-        item = MaterialRequestItem.objects.create(
-            material_request=self.make_request(), item_sku='STL-10MM',
-            quantity_requested=Decimal('100'), quantity_approved=Decimal('100'),
-            quantity_released=Decimal('40'),
-        )
-
-        self.assertEqual(item.outstanding_quantity, Decimal('60'))
+        self.assertEqual(item.approved_value, Decimal('2500.00'))
+        self.assertEqual(item.quantity, Decimal('10'))
+        self.assertEqual(material_request.request_no, 'REQ-0001')
 
 
 class ReleaseTokenTests(RequisitionFixtures):
-    def test_issue_for_creates_active_token_with_expiry(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
+    """The legacy model keeps working; only its API surface is retired."""
 
-        token = ReleaseToken.issue_for(material_request, user=self.pm, ttl_hours=48)
+    def test_issue_for_creates_active_token_with_expiry(self):
+        token = ReleaseToken.issue_for(
+            self.make_request(), user=self.pm, ttl_hours=48,
+        )
 
         self.assertEqual(token.status, TokenStatus.ACTIVE)
         self.assertTrue(token.is_redeemable)
         self.assertEqual(token.issued_by, self.pm)
         self.assertEqual(len(token.token), 32)
         self.assertEqual(token.token, token.token.upper())
-        # Expiry should land ~48h out.
         self.assertGreater(token.expires_at, timezone.now() + timedelta(hours=47))
 
     def test_token_uses_configured_default_ttl(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
-
-        token = ReleaseToken.issue_for(material_request)
+        token = ReleaseToken.issue_for(self.make_request())
 
         self.assertAlmostEqual(
             (token.expires_at - token.issued_at).total_seconds() / 3600,
@@ -133,15 +128,13 @@ class ReleaseTokenTests(RequisitionFixtures):
         )
 
     def test_expired_token_is_not_redeemable(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
-        token = ReleaseToken.issue_for(material_request, ttl_hours=-1)
+        token = ReleaseToken.issue_for(self.make_request(), ttl_hours=-1)
 
         self.assertTrue(token.is_expired)
         self.assertFalse(token.is_redeemable)
 
     def test_mark_redeemed_records_pos_reference(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
-        token = ReleaseToken.issue_for(material_request, user=self.pm)
+        token = ReleaseToken.issue_for(self.make_request(), user=self.pm)
 
         token.mark_redeemed(pos_reference='POS-SALE-7781', redeemed_by_name='Clerk Ana')
 
@@ -151,18 +144,13 @@ class ReleaseTokenTests(RequisitionFixtures):
         self.assertIsNotNone(token.redeemed_at)
 
     def test_tokens_are_unique_across_requests(self):
-        first = ReleaseToken.issue_for(
-            self.make_request(request_no='REQ-A'), user=self.pm,
-        )
-        second = ReleaseToken.issue_for(
-            self.make_request(request_no='REQ-B'), user=self.pm,
-        )
+        first = ReleaseToken.issue_for(self.make_request(), user=self.pm)
+        second = ReleaseToken.issue_for(self.make_request(), user=self.pm)
 
         self.assertNotEqual(first.token, second.token)
 
     def test_revoke_blocks_redemption(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
-        token = ReleaseToken.issue_for(material_request, user=self.pm)
+        token = ReleaseToken.issue_for(self.make_request(), user=self.pm)
 
         token.revoke(reason='Superseded by REQ-0002.')
 
@@ -171,8 +159,8 @@ class ReleaseTokenTests(RequisitionFixtures):
         self.assertIn('Superseded by REQ-0002.', token.notes)
 
 
-class ReleaseTokenAPITests(RequisitionFixtures):
-    """End-to-end proof that the DRF wiring and URLconf are live."""
+class LegacyRoutesRetiredTests(RequisitionFixtures):
+    """Every pre-Phase-3 requisition route is gone, including `redeem/`."""
 
     def setUp(self):
         self.client = APIClient()
@@ -184,66 +172,42 @@ class ReleaseTokenAPITests(RequisitionFixtures):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['system'], 'cpms')
 
-    def test_redeem_marks_token_and_releases_quantities(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
-        MaterialRequestItem.objects.create(
-            material_request=material_request, item_sku='CEM-40KG',
-            quantity_requested=Decimal('10'), quantity_approved=Decimal('10'),
-            unit_cost=Decimal('250.00'),
-        )
-        token = ReleaseToken.issue_for(material_request, user=self.pm)
+    def test_legacy_collections_are_retired(self):
+        for path in (
+            '/api/v1/requisitions/',
+            '/api/v1/requisition-items/',
+            '/api/v1/release-tokens/',
+            '/api/v1/pos-sync-logs/',
+        ):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 404, path)
+
+    def test_the_bearer_token_redeem_callback_is_retired(self):
+        token = ReleaseToken.issue_for(self.make_request(), user=self.pm)
 
         response = self.client.post(
             '/api/v1/release-tokens/redeem/',
-            {'token': token.token, 'pos_reference': 'POS-1', 'redeemed_by_name': 'Ana'},
-            format='json',
-        )
-
-        self.assertEqual(response.status_code, 200, response.data)
-
-        token.refresh_from_db()
-        material_request.refresh_from_db()
-        item = material_request.items.get()
-
-        self.assertEqual(token.status, TokenStatus.REDEEMED)
-        self.assertEqual(material_request.status, RequestStatus.RELEASED)
-        self.assertEqual(item.quantity_released, Decimal('10'))
-
-    def test_redeem_rejects_unknown_token(self):
-        response = self.client.post(
-            '/api/v1/release-tokens/redeem/',
-            {'token': 'DOES-NOT-EXIST'},
+            {'token': token.token, 'pos_reference': 'POS-1'},
             format='json',
         )
 
         self.assertEqual(response.status_code, 404)
+        token.refresh_from_db()
+        self.assertEqual(token.status, TokenStatus.ACTIVE)
 
-    def test_redeem_rejects_already_redeemed_token(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
-        token = ReleaseToken.issue_for(material_request, user=self.pm)
-        token.mark_redeemed(pos_reference='POS-FIRST')
+    def test_the_legacy_approval_actions_are_retired(self):
+        material_request = self.make_request()
 
-        response = self.client.post(
-            '/api/v1/release-tokens/redeem/',
-            {'token': token.token},
-            format='json',
-        )
+        for action in ('approve', 'reject', 'issue_token', 'push_to_pos'):
+            response = self.client.post(
+                f'/api/v1/requisitions/{material_request.pk}/{action}/', {},
+                format='json',
+            )
+            self.assertEqual(response.status_code, 404, action)
 
-        self.assertEqual(response.status_code, 409)
+    def test_procurement_routes_require_authentication(self):
+        anonymous = APIClient()
 
-    def test_engineer_cannot_issue_tokens(self):
-        material_request = self.make_request(status=RequestStatus.APPROVED)
-        self.client.force_authenticate(user=self.engineer)
-
-        response = self.client.post(
-            f'/api/v1/requisitions/{material_request.pk}/issue_token/',
-            {},
-            format='json',
-        )
-
-        self.assertEqual(response.status_code, 403)
-
-    def test_requisition_list_requires_authentication(self):
-        response = APIClient().get('/api/v1/requisitions/')
-
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(anonymous.get('/api/v1/material-requests/').status_code, 401)
+        self.assertEqual(anonymous.get('/api/v1/purchase-orders/').status_code, 401)
+        self.assertEqual(anonymous.get('/api/v1/deliveries/').status_code, 401)

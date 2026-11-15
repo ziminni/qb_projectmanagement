@@ -1,142 +1,140 @@
-"""Tests for the projects, contracts, phases and timeline domain."""
+"""Tests for the Phase 2 project domain models (clients, WBS, assignments)."""
 
-from datetime import timedelta
+# Pyright here runs without django-stubs, so model managers are untyped.
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false
 
-from django.core.exceptions import ValidationError
+from decimal import Decimal
+
+from django.db import IntegrityError
 from django.test import TestCase
-from django.utils import timezone
 
+from ..users.models import Role
+from ..users.tests import make_user
 from .models import (
-    Contract,
-    Milestone,
-    PhaseStatus,
+    Category,
+    Client,
     Project,
-    ProjectPhase,
+    ProjectAssignment,
     ProjectStatus,
-    Site,
+    RequestResponse,
+    RoleOnProject,
+    Todo,
 )
-from .serializers import ProjectPhaseSerializer, ProjectSerializer
 
 
-class ProjectDomainTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.site = Site.objects.create(code='SITE-001', name='Tagaytay Ridge')
+def make_project(code='PRJ-100', name='Tower One', **extra):
+    """Create a project on the Flutter shape with the minimum required data."""
+    return Project.objects.create(code=code, name=name, **extra)
 
-    def make_project(self, **overrides):
-        defaults = {
-            'code': 'PRJ-001',
-            'name': 'Ridge Villa',
-            'site': self.site,
-            'status': ProjectStatus.IN_PROGRESS,
-        }
-        defaults.update(overrides)
-        return Project.objects.create(**defaults)
 
-    def test_project_str_and_site_relation(self):
-        project = self.make_project()
+class ClientTests(TestCase):
+    def test_client_links_an_optional_portal_user(self):
+        user = make_user('elena@example.com', [Role.CLIENT])
 
-        self.assertEqual(str(project), 'PRJ-001 — Ridge Villa')
-        self.assertEqual(self.site.projects.count(), 1)
+        client = Client.objects.create(name='Acme Holdings', user=user)
+        unnamed = Client.objects.create(name='No Login Yet')
 
-    def test_is_overdue_true_when_target_passed_and_incomplete(self):
-        project = self.make_project(
-            target_end_date=timezone.localdate() - timedelta(days=1),
+        self.assertEqual(client.user_id, user.pk)
+        self.assertIsNone(unnamed.user_id)
+        self.assertEqual(str(client), 'Acme Holdings')
+
+    def test_a_portal_user_links_to_at_most_one_client(self):
+        user = make_user('elena@example.com', [Role.CLIENT])
+        Client.objects.create(name='Acme Holdings', user=user)
+
+        with self.assertRaises(IntegrityError):
+            Client.objects.create(name='Second Client', user=user)
+
+
+class ProjectModelTests(TestCase):
+    def test_new_project_waits_for_the_client(self):
+        project = make_project()
+
+        self.assertEqual(project.status, ProjectStatus.REQUESTED)
+        self.assertEqual(project.contract_amount, Decimal('0.00'))
+        self.assertIsNone(project.actual_end_date)
+
+    def test_project_code_is_unique_case_insensitively(self):
+        make_project(code='PRJ-100')
+
+        with self.assertRaises(IntegrityError):
+            make_project(code='prj-100')
+
+    def test_finance_placeholders_default_to_zero(self):
+        project = make_project()
+
+        self.assertEqual(project.down_payment_pct, Decimal('0.00'))
+        self.assertEqual(project.retention_pct, Decimal('0.00'))
+        self.assertEqual(project.contract_amount, Decimal('0.00'))
+
+
+class AssignmentModelTests(TestCase):
+    def test_one_row_per_user_and_role_on_a_project(self):
+        project = make_project()
+        user = make_user('ramon@example.com', [Role.OWNER])
+        ProjectAssignment.objects.create(
+            project=project, user=user, role_on_project=RoleOnProject.OWNER,
+            response=RequestResponse.ACCEPTED,
         )
 
-        self.assertTrue(project.is_overdue)
-
-    def test_is_overdue_false_when_completed_or_undated(self):
-        completed = self.make_project(
-            code='PRJ-002',
-            status=ProjectStatus.COMPLETED,
-            target_end_date=timezone.localdate() - timedelta(days=5),
-        )
-        undated = self.make_project(code='PRJ-003')
-
-        self.assertFalse(completed.is_overdue)
-        self.assertFalse(undated.is_overdue)
-
-    def test_contract_amount_and_retention(self):
-        project = self.make_project()
-        contract = Contract.objects.create(
-            project=project,
-            contract_no='CT-2024-001',
-            client_name='ACME Holdings',
-            amount=1500000,
-            retention_percent=10,
-        )
-
-        self.assertEqual(str(contract), 'CT-2024-001 — ACME Holdings')
-        self.assertEqual(project.contracts.count(), 1)
-
-
-class PhaseAndMilestoneTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.site = Site.objects.create(code='SITE-100', name='Batangas Yard')
-        cls.project = Project.objects.create(
-            code='PRJ-100', name='Yard Expansion', site=cls.site,
-        )
-
-    def test_phase_sequence_must_be_unique_per_project(self):
-        ProjectPhase.objects.create(
-            project=self.project, name='Siteworks', sequence=1,
-            status=PhaseStatus.IN_PROGRESS,
-        )
-
-        with self.assertRaises(Exception):
-            ProjectPhase.objects.create(
-                project=self.project, name='Duplicate', sequence=1,
+        with self.assertRaises(IntegrityError):
+            ProjectAssignment.objects.create(
+                project=project, user=user,
+                role_on_project=RoleOnProject.OWNER,
+                response=RequestResponse.PENDING,
             )
 
-    def test_same_sequence_allowed_across_different_projects(self):
-        other = Project.objects.create(
-            code='PRJ-101', name='Other Job', site=self.site,
-        )
-        ProjectPhase.objects.create(project=self.project, name='A', sequence=1)
-        ProjectPhase.objects.create(project=other, name='A', sequence=1)
+    def test_only_accepted_assignments_are_active(self):
+        project = make_project()
+        user = make_user('ramon@example.com', [Role.OWNER])
 
-        self.assertEqual(ProjectPhase.objects.count(), 2)
-
-    def test_milestone_completion_and_lateness(self):
-        due_past = Milestone.objects.create(
-            project=self.project,
-            title='Slab pour',
-            due_date=timezone.localdate() - timedelta(days=3),
+        waiting = ProjectAssignment.objects.create(
+            project=project, user=user, role_on_project=RoleOnProject.OWNER,
+            response=RequestResponse.PENDING,
         )
-        done = Milestone.objects.create(
-            project=self.project,
-            title='Permits',
-            due_date=timezone.localdate() - timedelta(days=10),
-            completed_date=timezone.localdate() - timedelta(days=11),
+        joined = ProjectAssignment.objects.create(
+            project=project, user=user,
+            role_on_project=RoleOnProject.SITE_ENGINEER,
+            response=RequestResponse.ACCEPTED,
         )
 
-        self.assertFalse(due_past.is_complete)
-        self.assertTrue(due_past.is_late)
+        self.assertFalse(waiting.is_active)
+        self.assertTrue(joined.is_active)
 
-        self.assertTrue(done.is_complete)
-        self.assertFalse(done.is_late)
 
-    def test_phase_progress_cannot_exceed_100(self):
-        serializer = ProjectPhaseSerializer(data={
-            'project': self.project.pk,
-            'name': 'Overrun',
-            'sequence': 9,
-            'progress_percent': '150.00',
-        })
+class WbsModelTests(TestCase):
+    def test_category_budget_is_optional_and_ordered(self):
+        project = make_project()
+        Category.objects.create(project=project, name='Finishing', sort_order=2)
+        first = Category.objects.create(
+            project=project, name='Siteworks', sort_order=1,
+            budget=Decimal('500000.00'),
+        )
 
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('progress_percent', serializer.errors)
+        self.assertEqual(list(project.categories.all())[0], first)
+        self.assertIsNone(project.categories.get(name='Finishing').budget)
 
-    def test_project_serializer_rejects_target_before_start(self):
-        serializer = ProjectSerializer(data={
-            'code': 'PRJ-BAD',
-            'name': 'Bad Dates',
-            'site': self.site.pk,
-            'start_date': '2024-06-01',
-            'target_end_date': '2024-01-01',
-        })
+    def test_a_todo_starts_open_and_unverified(self):
+        project = make_project()
+        category = Category.objects.create(project=project, name='Siteworks')
+        todo = Todo.objects.create(
+            category=category, title='Excavate',
+            start_date='2026-01-05', end_date='2026-01-10',
+        )
 
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('target_end_date', serializer.errors)
+        self.assertFalse(todo.is_done)
+        self.assertFalse(todo.is_verified)
+        self.assertIsNone(todo.daily_report_id)
+        self.assertEqual(str(todo), 'Excavate')
+
+    def test_deleting_a_category_deletes_its_todos(self):
+        project = make_project()
+        category = Category.objects.create(project=project, name='Siteworks')
+        Todo.objects.create(
+            category=category, title='Excavate',
+            start_date='2026-01-05', end_date='2026-01-10',
+        )
+
+        category.delete()
+
+        self.assertEqual(Todo.objects.count(), 0)

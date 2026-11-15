@@ -1,67 +1,64 @@
+"""Projects app admin: sites, clients, projects and the WBS."""
+
 from django.contrib import admin
 
-from .models import Contract, Milestone, Project, ProjectPhase, Site
+from .models import Category, Client, Project, ProjectAssignment, Site, Todo
 
 
-class ProjectPhaseInline(admin.TabularInline):
-    model = ProjectPhase
+class ProjectAssignmentInline(admin.TabularInline):
+    model = ProjectAssignment
     extra = 0
+    fields = ('user', 'role_on_project', 'response', 'note', 'responded_at')
 
 
-class MilestoneInline(admin.TabularInline):
-    model = Milestone
+class CategoryInline(admin.TabularInline):
+    model = Category
     extra = 0
-
-
-class ContractInline(admin.TabularInline):
-    model = Contract
-    extra = 0
+    fields = ('name', 'budget', 'sort_order')
 
 
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin):
     list_display = ('code', 'name', 'city', 'province', 'status')
     list_filter = ('status', 'province')
-    search_fields = ('code', 'name', 'city', 'province')
-    ordering = ('code',)
+    search_fields = ('code', 'name', 'city')
+
+
+@admin.register(Client)
+class ClientAdmin(admin.ModelAdmin):
+    list_display = ('name', 'contact_person', 'email', 'phone', 'user')
+    search_fields = ('name', 'contact_person', 'email')
 
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
     list_display = (
-        'code', 'name', 'site', 'manager', 'status',
-        'start_date', 'target_end_date', 'budget_amount',
+        'code', 'name', 'client', 'status', 'contract_amount',
+        'start_date', 'target_end_date',
     )
-    list_filter = ('status', 'site')
-    search_fields = ('code', 'name', 'site__name', 'site__code')
-    autocomplete_fields = ('site',)
-    date_hierarchy = 'start_date'
-    inlines = (ProjectPhaseInline, MilestoneInline, ContractInline)
+    list_filter = ('status', 'client')
+    search_fields = ('code', 'name', 'location')
+    readonly_fields = ('created_at', 'updated_at')
+    inlines = (ProjectAssignmentInline, CategoryInline)
 
 
-@admin.register(Contract)
-class ContractAdmin(admin.ModelAdmin):
-    list_display = (
-        'contract_no', 'project', 'client_name', 'amount',
-        'retention_percent', 'signed_date', 'status',
-    )
-    list_filter = ('status', 'signed_date')
-    search_fields = ('contract_no', 'client_name', 'project__code')
-    autocomplete_fields = ('project',)
+@admin.register(ProjectAssignment)
+class ProjectAssignmentAdmin(admin.ModelAdmin):
+    list_display = ('project', 'user', 'role_on_project', 'response', 'responded_at')
+    list_filter = ('role_on_project', 'response')
+    search_fields = ('project__code', 'user__full_name', 'user__email')
 
 
-@admin.register(ProjectPhase)
-class ProjectPhaseAdmin(admin.ModelAdmin):
-    list_display = ('project', 'sequence', 'name', 'status', 'progress_percent')
-    list_filter = ('status', 'project')
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'project', 'budget', 'sort_order')
     search_fields = ('name', 'project__code')
-    autocomplete_fields = ('project',)
 
 
-@admin.register(Milestone)
-class MilestoneAdmin(admin.ModelAdmin):
-    list_display = ('title', 'project', 'phase', 'due_date', 'completed_date')
-    list_filter = ('project',)
-    search_fields = ('title', 'project__code')
-    autocomplete_fields = ('project', 'phase')
-    date_hierarchy = 'due_date'
+@admin.register(Todo)
+class TodoAdmin(admin.ModelAdmin):
+    list_display = (
+        'title', 'category', 'start_date', 'end_date', 'is_done', 'is_verified',
+    )
+    list_filter = ('is_done', 'is_verified')
+    search_fields = ('title', 'category__name', 'category__project__code')

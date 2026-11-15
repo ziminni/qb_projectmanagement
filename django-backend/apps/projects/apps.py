@@ -5,4 +5,4 @@ class ProjectsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.projects'
     label = 'apps_projects'
-    verbose_name = 'Projects, Sites & Contracts'
+    verbose_name = 'Projects, Clients & WBS'

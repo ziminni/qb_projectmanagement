@@ -1,101 +1,150 @@
-"""Project, site, contract, phase and milestone serializers."""
+"""Output serializers for the Phase 2 project wire contract.
+
+These render exactly the Flutter shapes; writes are validated in
+`apps/projects/services.py` because every refusal has to be the mock's exact
+`{"detail": ...}` text. Redaction is per active role (passed in the context as
+`role`): non-finance roles never receive peso keys, and every role receives the
+server-computed category `weight` so progress matches across roles
+(decision 06 #3).
+"""
+
+# Pyright here runs without django-stubs/DRF stubs: `Meta` reads as an override
+# of ModelSerializer.Meta, and the mixin's `super()` / `self.context` are untyped.
+# pyright: reportIncompatibleVariableOverride=false, reportAttributeAccessIssue=false, reportGeneralTypeIssues=false
 
 from rest_framework import serializers
 
-from .models import Contract, Milestone, Project, ProjectPhase, Site
+from ..users import capabilities
+from ..users.models import Role
+from .models import Category, Client, Project, ProjectAssignment, Site, Todo
+
+
+def category_weights(project):
+    """Progress weight per category id: budget share, else equal shares.
+
+    Mirrors `computeProjectProgress` — budget weights only apply when **every**
+    category of the project has a positive budget.
+    """
+    categories = list(project.categories.all())
+    if not categories:
+        return {}
+    if all(category.budget is not None and category.budget > 0 for category in categories):
+        total = sum(category.budget for category in categories)
+        return {
+            category.pk: float(category.budget / total) for category in categories
+        }
+    share = 1 / len(categories)
+    return {category.pk: share for category in categories}
+
+
+class FinanceRedactedSerializer(serializers.ModelSerializer):
+    """Omit the listed peso keys unless the active role sees finance."""
+
+    finance_fields: tuple[str, ...] = ()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        role = self.context.get('role')
+        if self.finance_fields and not capabilities.sees_finance(role):
+            for field in self.finance_fields:
+                data.pop(field, None)
+        return data
 
 
 class SiteSerializer(serializers.ModelSerializer):
+    """Unchanged Phase 3 tenant (`sites/`); `site_inventory` and `requisitions` use it."""
+
     project_count = serializers.IntegerField(source='projects.count', read_only=True)
 
     class Meta:
         model = Site
         fields = (
-            'id', 'code', 'name', 'address', 'city', 'province',
-            'status', 'notes', 'project_count', 'created_at', 'updated_at',
+            'id', 'code', 'name', 'address', 'city', 'province', 'status', 'notes',
+            'project_count', 'created_at', 'updated_at',
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        read_only_fields = fields
 
 
-class ContractSerializer(serializers.ModelSerializer):
-    project_code = serializers.CharField(source='project.code', read_only=True)
-
+class ClientSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Contract
+        model = Client
         fields = (
-            'id', 'project', 'project_code', 'contract_no', 'client_name',
-            'client_contact', 'amount', 'retention_percent', 'signed_date',
-            'completion_date', 'status', 'notes', 'created_at', 'updated_at',
+            'id', 'name', 'contact_person', 'email', 'phone', 'address',
+            'user_id', 'created_at', 'updated_at',
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
-
-    def validate_retention_percent(self, value):
-        if value > 100:
-            raise serializers.ValidationError('Retention percent cannot exceed 100.')
-        return value
+        read_only_fields = fields
 
 
-class MilestoneSerializer(serializers.ModelSerializer):
-    is_complete = serializers.BooleanField(read_only=True)
-    is_late = serializers.BooleanField(read_only=True)
-
-    class Meta:
-        model = Milestone
-        fields = (
-            'id', 'project', 'phase', 'title', 'due_date', 'completed_date',
-            'is_complete', 'is_late', 'notes', 'created_at', 'updated_at',
-        )
-        read_only_fields = ('id', 'created_at', 'updated_at')
-
-
-class ProjectPhaseSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProjectPhase
-        fields = (
-            'id', 'project', 'name', 'sequence', 'status', 'planned_start',
-            'planned_end', 'actual_start', 'actual_end', 'progress_percent',
-            'notes', 'created_at', 'updated_at',
-        )
-        read_only_fields = ('id', 'created_at', 'updated_at')
-
-    def validate_progress_percent(self, value):
-        if value > 100:
-            raise serializers.ValidationError('Progress cannot exceed 100%.')
-        return value
-
-
-class ProjectSerializer(serializers.ModelSerializer):
-    site_name = serializers.CharField(source='site.name', read_only=True)
-    manager_name = serializers.CharField(source='manager.full_name', read_only=True)
-    is_overdue = serializers.BooleanField(read_only=True)
-    phase_count = serializers.IntegerField(source='phases.count', read_only=True)
+class ProjectSerializer(FinanceRedactedSerializer):
+    # A client sees their own contract terms; admin and site engineer do not.
+    finance_fields = ('contract_amount', 'down_payment_pct', 'retention_pct')
+    client_id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Project
         fields = (
-            'id', 'code', 'name', 'site', 'site_name', 'manager', 'manager_name',
-            'status', 'description', 'start_date', 'target_end_date',
-            'actual_end_date', 'budget_amount', 'is_overdue', 'phase_count',
+            'id', 'code', 'name', 'location', 'latitude', 'longitude',
+            'client_id', 'contract_amount', 'down_payment_pct', 'retention_pct',
+            'start_date', 'target_end_date', 'actual_end_date', 'status',
             'created_at', 'updated_at',
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        read_only_fields = fields
 
-    def validate(self, attrs):
-        start = attrs.get('start_date', getattr(self.instance, 'start_date', None))
-        target = attrs.get('target_end_date', getattr(self.instance, 'target_end_date', None))
-        if start and target and target < start:
-            raise serializers.ValidationError(
-                {'target_end_date': 'Target end date cannot precede the start date.'}
-            )
-        return attrs
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # The client's own contract terms are visible; only staff finance roles
+        # and the client get them (decision 06 #2).
+        role = self.context.get('role')
+        if role == Role.CLIENT:
+            for field in self.finance_fields:
+                data[field] = str(getattr(instance, field))
+        return data
 
 
-class ProjectDetailSerializer(ProjectSerializer):
-    """Project with its nested timeline, phases and contracts."""
+class ProjectAssignmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectAssignment
+        fields = (
+            'id', 'project_id', 'user_id', 'role_on_project', 'response', 'note',
+            'responded_at', 'created_at', 'updated_at',
+        )
+        read_only_fields = fields
 
-    phases = ProjectPhaseSerializer(many=True, read_only=True)
-    milestones = MilestoneSerializer(many=True, read_only=True)
-    contracts = ContractSerializer(many=True, read_only=True)
 
-    class Meta(ProjectSerializer.Meta):
-        fields = ProjectSerializer.Meta.fields + ('phases', 'milestones', 'contracts')
+class ProjectRequestSerializer(serializers.BaseSerializer):
+    """`{project, assignment}` for a pending request (`repositories/project_repository.dart:6-11`)."""
+
+    def to_representation(self, instance):
+        return {
+            'project': ProjectSerializer(
+                instance.project, context=self.context,
+            ).data,
+            'assignment': ProjectAssignmentSerializer(instance).data,
+        }
+
+
+class CategorySerializer(FinanceRedactedSerializer):
+    finance_fields = ('budget',)
+    weight = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = (
+            'id', 'project_id', 'name', 'budget', 'weight', 'sort_order',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = fields
+
+    def get_weight(self, category):
+        return self.context.get('weights', {}).get(category.pk, 0.0)
+
+
+class TodoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Todo
+        fields = (
+            'id', 'category_id', 'title', 'start_date', 'end_date', 'is_done',
+            'done_by', 'done_at', 'is_verified', 'verified_by', 'verified_at',
+            'daily_report_id', 'created_at', 'updated_at',
+        )
+        read_only_fields = fields

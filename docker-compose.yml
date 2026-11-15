@@ -3,15 +3,21 @@ services:
     image: postgres:15-alpine
     container_name: cpms_db
     environment:
-      POSTGRES_DB: buildpro_cpms
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
+      # Read from the environment / repo-root .env; the dev defaults keep the
+      # local stack working with no setup.
+      POSTGRES_DB: ${POSTGRES_DB:-buildpro_cpms}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adminpassword}
     ports:
-      - "5434:5432" # Host 5434 -> container 5432 (POS owns 5433, keeps both DBs running side by side)
+      - "5434:5432" # Host 5434; POS owns 5433, so both DBs run side by side
     volumes:
       - cpms_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d buildpro_cpms"]
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U ${POSTGRES_USER:-admin}
+          -d ${POSTGRES_DB:-buildpro_cpms}
       interval: 3s
       timeout: 5s
       retries: 10
@@ -21,16 +27,44 @@ services:
     container_name: cpms_backend
     command: >
       sh -c "python manage.py migrate &&
+             python manage.py seed_demo --auto-pos-payer &&
              python manage.py runserver 0.0.0.0:8001"
     volumes:
       - ./django-backend:/app
+    # Later files win: your django-backend/.env overrides the demo bridge defaults.
     env_file:
+      - path: ./django-backend/pos-bridge.defaults.env
       - path: ./django-backend/.env
         required: false
     ports:
       - "8001:8001"
     # Lets the CPMS container reach the POS API published on the host at :8000
-    # (http://host.docker.internal:8000) — used for requisition / release-token / collectibles sync.
+    # (http://host.docker.internal:8000) — requisitions, release tokens,
+    # collectibles sync.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Durable POS outbox worker (`manage.py run_pos_outbox`, loop mode).
+  # A broken POS configuration makes the command exit, so the container restart
+  # policy IS the supervisor: it backs off and retries after the settings are
+  # fixed. See docs/DEPLOYMENT.md for the cron (`--once`) alternative.
+  pos_outbox:
+    build: ./django-backend
+    container_name: cpms_pos_outbox
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py run_pos_outbox"
+    restart: unless-stopped
+    volumes:
+      - ./django-backend:/app
+    # Later files win: your django-backend/.env overrides the demo bridge defaults.
+    env_file:
+      - path: ./django-backend/pos-bridge.defaults.env
+      - path: ./django-backend/.env
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

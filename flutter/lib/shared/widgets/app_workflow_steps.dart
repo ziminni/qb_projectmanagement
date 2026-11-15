@@ -1,0 +1,135 @@
+import '../../data/models/daily_report.dart';
+import '../../data/models/material_request.dart';
+import '../../data/models/payroll_period.dart';
+import '../../data/models/progress_billing.dart';
+import '../../data/models/variation_order.dart';
+import 'app_status_steps.dart';
+
+/// Step indicators for each approval workflow in the design document, so
+/// every screen shows the same stages and who acts next.
+abstract final class AppWorkflowSteps {
+  static AppStatusSteps billing(BillingStatus status) {
+    const steps = [
+      AppStep('Prepared', who: 'Owner'),
+      AppStep('Client approval', who: 'Client'),
+      AppStep('Payment', who: 'Accountant'),
+    ];
+    return switch (status) {
+      BillingStatus.draft => const AppStatusSteps(steps: steps, current: 0),
+      BillingStatus.pendingClient => const AppStatusSteps(
+        steps: steps,
+        current: 1,
+      ),
+      BillingStatus.disputed => const AppStatusSteps(
+        steps: steps,
+        current: 1,
+        stoppedLabel: 'Disputed',
+      ),
+      BillingStatus.approved => const AppStatusSteps(steps: steps, current: 2),
+      BillingStatus.paid => const AppStatusSteps(
+        steps: steps,
+        current: 2,
+        allDone: true,
+      ),
+      BillingStatus.rejected => const AppStatusSteps(
+        steps: steps,
+        current: 0,
+        stoppedLabel: 'Withdrawn',
+      ),
+    };
+  }
+
+  static AppStatusSteps variationOrder(VariationOrder vo) {
+    const steps = [
+      AppStep('Proposed', who: 'Site engineer / owner'),
+      AppStep('Sent to client', who: 'Owner'),
+      AppStep('Client approval', who: 'Client'),
+    ];
+    return switch (vo.status) {
+      VariationOrderStatus.proposed => const AppStatusSteps(
+        steps: steps,
+        current: 0,
+      ),
+      VariationOrderStatus.pendingClient => const AppStatusSteps(
+        steps: steps,
+        current: 2,
+      ),
+      VariationOrderStatus.approved => const AppStatusSteps(
+        steps: steps,
+        current: 2,
+        allDone: true,
+      ),
+      VariationOrderStatus.rejected => AppStatusSteps(
+        steps: steps,
+        current: vo.approvedByOwner == null ? 1 : 2,
+        stoppedLabel: 'Rejected',
+      ),
+    };
+  }
+
+  static AppStatusSteps materialRequest(MaterialRequestStatus status) {
+    const steps = [
+      AppStep('Count and request', who: 'Site engineer'),
+      AppStep('Order or buy', who: 'Owner'),
+      AppStep('Ordered'),
+    ];
+    return switch (status) {
+      MaterialRequestStatus.pending => const AppStatusSteps(
+        steps: steps,
+        current: 1,
+      ),
+      MaterialRequestStatus.ordered => const AppStatusSteps(
+        steps: steps,
+        current: 2,
+        allDone: true,
+      ),
+      MaterialRequestStatus.rejected => const AppStatusSteps(
+        steps: steps,
+        current: 1,
+        stoppedLabel: 'Rejected',
+      ),
+    };
+  }
+
+  static AppStatusSteps dailyReport(DailyReportStatus status) {
+    const steps = [
+      AppStep('Draft', who: 'Site engineer'),
+      AppStep('Review', who: 'Owner'),
+      AppStep('Approved'),
+    ];
+    return switch (status) {
+      DailyReportStatus.draft => const AppStatusSteps(steps: steps, current: 0),
+      DailyReportStatus.submitted => const AppStatusSteps(
+        steps: steps,
+        current: 1,
+      ),
+      DailyReportStatus.returned => const AppStatusSteps(
+        steps: steps,
+        current: 1,
+        stoppedLabel: 'Returned',
+      ),
+      DailyReportStatus.approved => const AppStatusSteps(
+        steps: steps,
+        current: 2,
+        allDone: true,
+      ),
+    };
+  }
+
+  static AppStatusSteps payroll(PayrollStatus status) {
+    const steps = [
+      AppStep('Attendance', who: 'Site engineer'),
+      AppStep('Verify at cut-off', who: 'Owner'),
+      AppStep('Process pay', who: 'Accountant'),
+    ];
+    return switch (status) {
+      PayrollStatus.open => const AppStatusSteps(steps: steps, current: 1),
+      PayrollStatus.verified => const AppStatusSteps(steps: steps, current: 2),
+      PayrollStatus.processed => const AppStatusSteps(
+        steps: steps,
+        current: 2,
+        allDone: true,
+      ),
+    };
+  }
+}

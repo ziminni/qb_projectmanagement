@@ -23,7 +23,11 @@ from .serializers import (
     RejectRequestSerializer,
     ReleaseTokenSerializer,
 )
-from .services import PosAPIError, get_pos_client, issue_release_token_for
+
+# Task 3.1b removed the legacy `PosAPIClient` (static `POS_API_TOKEN`, no queue,
+# calling POS routes this contract does not use) together with its two dead
+# actions in this module. Every route here is retired (`urls.py`); the real
+# bridge is `apps/requisitions/pos_client.py` + `pos_worker.py`.
 
 
 class MaterialRequestViewSet(viewsets.ModelViewSet):
@@ -95,49 +99,6 @@ class MaterialRequestViewSet(viewsets.ModelViewSet):
             reason=serializer.validated_data.get('reason', ''),
         )
         return Response(MaterialRequestSerializer(material_request).data)
-
-    @action(detail=True, methods=['post'], permission_classes=[IsProjectManagerOrAdmin])
-    def issue_token(self, request, pk=None):
-        """Issue a digital release token and register it with the POS."""
-        material_request = self.get_object()
-
-        if material_request.status not in (
-            RequestStatus.APPROVED,
-            RequestStatus.PARTIALLY_APPROVED,
-            RequestStatus.RELEASED,
-        ):
-            return Response(
-                {'detail': 'The requisition must be approved before a release token is issued.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        token = issue_release_token_for(material_request, user=request.user)
-        return Response(
-            ReleaseTokenSerializer(token).data,
-            status=status.HTTP_201_CREATED,
-        )
-
-    @action(detail=True, methods=['post'], permission_classes=[IsProjectManagerOrAdmin])
-    def push_to_pos(self, request, pk=None):
-        """Push this requisition to the POS backend."""
-        material_request = self.get_object()
-        items = [
-            {
-                'item_sku': item.item_sku,
-                'quantity': str(item.quantity_approved or item.quantity_requested),
-                'unit': item.unit,
-                'unit_cost': str(item.unit_cost),
-            }
-            for item in material_request.items.all()
-        ]
-        try:
-            response = get_pos_client().push_requisition(material_request, items)
-        except PosAPIError as exc:
-            return Response(
-                {'detail': 'POS backend unavailable.', 'error': str(exc)},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-        return Response({'detail': 'Pushed to POS.', 'pos_response': response})
 
 
 class MaterialRequestItemViewSet(viewsets.ModelViewSet):

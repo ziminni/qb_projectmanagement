@@ -1,0 +1,721 @@
+import 'package:buildpro_frontend/core/di/service_locator.dart';
+import 'package:buildpro_frontend/core/network/api_config.dart';
+import 'package:buildpro_frontend/data/models/app_role.dart';
+import 'package:buildpro_frontend/data/models/attendance.dart';
+import 'package:buildpro_frontend/data/models/payroll_line.dart';
+import 'package:buildpro_frontend/data/models/payroll_period.dart';
+import 'package:buildpro_frontend/data/models/worker.dart';
+import 'package:buildpro_frontend/data/repositories/http_labor_repository.dart';
+import 'package:buildpro_frontend/data/repositories/labor_repository.dart';
+import 'package:buildpro_frontend/data/repositories/mock_labor_repository.dart';
+import 'package:buildpro_frontend/data/services/business_rule_exception.dart';
+import 'package:buildpro_frontend/features/labor/viewmodels/project_labor_viewmodel.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'fake_api.dart';
+
+// Wire shapes from the 4.1a build: a non-finance role gets the worker row
+// without `daily_rate` or any government identifier — omitted, never zero.
+
+Map<String, dynamic> workerRow({
+  int id = 1,
+  String name = 'Nilo Aguilar',
+  bool finance = true,
+  bool active = true,
+}) => {
+  'id': id,
+  'full_name': name,
+  'trade': 'Mason',
+  if (finance) 'daily_rate': '750.00',
+  if (finance) 'sss_no': '34-1234567-8',
+  if (finance) 'philhealth_no': '12-345678901-2',
+  if (finance) 'pagibig_no': '1234-5678-9012',
+  'is_active': active,
+  'created_at': '2026-10-01T09:00:00Z',
+  'updated_at': '2026-10-01T09:00:00Z',
+};
+
+Map<String, dynamic> attendanceRow({
+  int id = 1,
+  int workerId = 1,
+  String date = '2026-10-20',
+  String status = 'present',
+  String overtime = '0.00',
+}) => {
+  'id': id,
+  'project_id': 1,
+  'worker_id': workerId,
+  'work_date': date,
+  'status': status,
+  'overtime_hours': overtime,
+  'recorded_by': 4,
+  'created_at': '2026-10-20T09:00:00Z',
+  'updated_at': '2026-10-20T09:00:00Z',
+};
+
+// Wire shapes from the 4.1c payroll build: one `statutory_deductions` total
+// and a `deductions_policy` flag instead of the demo's three columns.
+Map<String, dynamic> payrollPeriodRow({
+  int id = 1,
+  int projectId = 1,
+  String start = '2026-10-01',
+  String end = '2026-10-15',
+  String status = 'open',
+}) => {
+  'id': id,
+  'project_id': projectId,
+  'period_start': start,
+  'period_end': end,
+  'status': status,
+  'created_at': '2026-10-01T09:00:00Z',
+  'updated_at': '2026-10-01T09:00:00Z',
+};
+
+Map<String, dynamic> payrollLineRow({
+  int id = 0,
+  int workerId = 1,
+  String gross = '4593.75',
+  String statutory = '0.00',
+  String policy = 'unconfigured',
+  String cashAdvance = '0.00',
+  String net = '4593.75',
+}) => {
+  'id': id,
+  'payroll_period_id': 1,
+  'worker_id': workerId,
+  'days_worked': '5.50',
+  'overtime_pay': '468.75',
+  'gross_pay': gross,
+  'cash_advance': cashAdvance,
+  'statutory_deductions': statutory,
+  'deductions_policy': policy,
+  'net_pay': net,
+};
+
+HttpLaborRepository laborRepoFor(
+  FakeApi api, {
+  AppRole active = AppRole.owner,
+}) => HttpLaborRepository(
+  testClient(
+    api: api,
+    tokens: InMemoryTokenStore(access: testAccess, refresh: testRefresh),
+    session: signedInSession(active: active),
+  ),
+);
+
+void main() {
+  group('workers', () {
+    test('reads the staff picker and follows DRF pages', () async {
+      final nextPageUrl = '$apiBaseUrl/workers/?page=2&active_only=true';
+      final api = FakeApi((options) {
+        final second = options.uri.queryParameters['page'] == '2';
+        return json({
+          'count': 2,
+          'next': second ? null : nextPageUrl,
+          'previous': null,
+          'results': [workerRow(id: second ? 2 : 1)],
+        });
+      });
+
+      final workers = await laborRepoFor(api).getWorkers(activeOnly: true);
+
+      expect(api.last('workers/').method, 'GET');
+      expect(api.last('workers/').uri.queryParameters['active_only'], 'true');
+      expect(workers.map((w) => w.id), [1, 2]);
+      expect(workers.first.dailyRate, 750);
+      expect(workers.first.sssNo, '34-1234567-8');
+      expect(workers.first.dailyRateHidden, isFalse);
+    });
+
+    test('asks for the full history when active_only is off', () async {
+      final api = FakeApi((options) => json([workerRow(active: false)]));
+
+      final workers = await laborRepoFor(api).getWorkers();
+
+      expect(
+        api.last('workers/').uri.queryParameters.containsKey('active_only'),
+        isFalse,
+      );
+      expect(workers.single.isActive, isFalse);
+    });
+
+    test('a redacted answer has no wage, not a zero wage', () async {
+      final api = FakeApi(
+        (options) => json([workerRow(finance: false, name: 'Nilo Aguilar')]),
+      );
+
+      final worker = (await laborRepoFor(
+        api,
+        active: AppRole.siteEngineer,
+      ).getWorkers()).single;
+
+      expect(worker.fullName, 'Nilo Aguilar');
+      expect(worker.trade, 'Mason');
+      // The server withheld the money: zero would be a wage nobody quoted.
+      expect(worker.dailyRateHidden, isTrue);
+      expect(worker.dailyRate, 0);
+      expect(worker.sssNo, isNull);
+      expect(worker.philhealthNo, isNull);
+      expect(worker.pagibigNo, isNull);
+      // Sending it back must not invent a rate the server never gave.
+      final sent = worker.toJson();
+      expect(sent.containsKey('daily_rate'), isFalse);
+      expect(sent.containsKey('sss_no'), isFalse);
+    });
+
+    test('a finance answer without the wage key is a parse error', () async {
+      final row = workerRow()..remove('daily_rate');
+      final api = FakeApi((options) => json([row]));
+
+      // A finance role is always sent the rate; its absence is a broken
+      // response, not a zero the screens may show.
+      expect(
+        laborRepoFor(api, active: AppRole.accountant).getWorkers(),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('creates a worker with a trimmed name and the rate', () async {
+      final api = FakeApi((options) => json(workerRow(), status: 201));
+
+      final saved = await laborRepoFor(api).saveWorker(
+        const Worker(
+          id: 0,
+          fullName: '  Nilo Aguilar ',
+          trade: 'Mason',
+          dailyRate: 750,
+          sssNo: '34-1234567-8',
+        ),
+      );
+
+      final request = api.last('workers/');
+      expect(request.method, 'POST');
+      final body = sentBody(request);
+      expect(body['full_name'], 'Nilo Aguilar');
+      expect(body['trade'], 'Mason');
+      expect(body['daily_rate'], 750.0);
+      expect(body['is_active'], isTrue);
+      expect(body['sss_no'], '34-1234567-8');
+      expect(body.containsKey('id'), isFalse);
+      expect(saved.id, 1);
+    });
+
+    test('updates by PATCH, never PUT', () async {
+      final api = FakeApi((options) => json(workerRow(id: 5)));
+
+      await laborRepoFor(api).saveWorker(
+        const Worker(
+          id: 5,
+          fullName: 'Nilo Aguilar',
+          trade: 'Mason',
+          dailyRate: 800,
+        ),
+      );
+
+      final request = api.last('workers/5/');
+      expect(request.method, 'PATCH');
+      expect(sentBody(request)['daily_rate'], 800.0);
+      expect(api.paths.where((p) => p == 'workers/5/').single, 'workers/5/');
+    });
+
+    test('keeps the server refusal text on a 400', () async {
+      final api = FakeApi(
+        (options) =>
+            json({'detail': 'Choose the worker\'s trade.'}, status: 400),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.accountant).saveWorker(
+          const Worker(
+            id: 0,
+            fullName: 'Nilo Aguilar',
+            trade: 'Carpenter',
+            dailyRate: 750,
+          ),
+        ),
+        throwsA(
+          isA<BusinessRuleException>().having(
+            (e) => e.message,
+            'message',
+            'Choose the worker\'s trade.',
+          ),
+        ),
+      );
+    });
+  });
+
+  group('attendance', () {
+    test('reads one project over an inclusive date range', () async {
+      // Attendance answers with a plain list, not a DRF page.
+      final api = FakeApi(
+        (options) => json([
+          attendanceRow(id: 1, workerId: 1),
+          attendanceRow(
+            id: 2,
+            workerId: 2,
+            status: 'half_day',
+            overtime: '2.50',
+          ),
+        ]),
+      );
+
+      final rows = await laborRepoFor(api, active: AppRole.siteEngineer)
+          .getAttendance(
+            projectId: 3,
+            from: DateTime(2026, 10, 19),
+            to: DateTime(2026, 10, 25),
+          );
+
+      final request = api.last('attendance/');
+      expect(request.method, 'GET');
+      expect(request.uri.queryParameters['project'], '3');
+      expect(request.uri.queryParameters['from'], '2026-10-19');
+      expect(request.uri.queryParameters['to'], '2026-10-25');
+      expect(rows.map((a) => a.status), [
+        AttendanceStatus.present,
+        AttendanceStatus.halfDay,
+      ]);
+      expect(rows.last.overtimeHours, 2.5);
+      expect(rows.first.recordedBy, 4);
+      expect(rows.first.workDate, DateTime(2026, 10, 20));
+    });
+
+    test('saves a day without claiming the actor', () async {
+      final api = FakeApi((options) => json([attendanceRow()]));
+
+      await laborRepoFor(
+        api,
+        active: AppRole.siteEngineer,
+      ).saveAttendance(3, DateTime(2026, 10, 21), const [
+        (workerId: 1, status: AttendanceStatus.present, overtimeHours: 0.0),
+        (workerId: 2, status: AttendanceStatus.absent, overtimeHours: 0.0),
+      ], userId: 4);
+
+      final request = api.last('attendance/save-day/');
+      expect(request.method, 'POST');
+      final body = sentBody(request);
+      expect(body['project_id'], 3);
+      expect(body['work_date'], '2026-10-21');
+      expect(body['entries'], [
+        {'worker_id': 1, 'status': 'present', 'overtime_hours': 0.0},
+        {'worker_id': 2, 'status': 'absent', 'overtime_hours': 0.0},
+      ]);
+      expect(body.containsKey('recorded_by'), isFalse);
+      expect(body.containsKey('user_id'), isFalse);
+    });
+
+    test('a cross-project refusal reaches the user unchanged', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail':
+              'Nilo Aguilar is already marked present on another '
+              'project that day.',
+        }, status: 400),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.siteEngineer).saveAttendance(
+          3,
+          DateTime(2026, 10, 21),
+          const [
+            (workerId: 1, status: AttendanceStatus.present, overtimeHours: 0.0),
+          ],
+          userId: 4,
+        ),
+        throwsA(
+          isA<BusinessRuleException>().having(
+            (e) => e.message,
+            'message',
+            contains('already marked present on another project'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('payroll periods', () {
+    test('reads the cut-off calendar of one project', () async {
+      final api = FakeApi((options) => json([payrollPeriodRow(projectId: 3)]));
+
+      final periods = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).getPeriods(projectIds: [3]);
+
+      final request = api.last('payroll-periods/');
+      expect(request.method, 'GET');
+      expect(request.uri.queryParameters['project'], '3');
+      expect(periods.single.id, 1);
+      expect(periods.single.projectId, 3);
+      expect(periods.single.periodStart, DateTime(2026, 10, 1));
+      expect(periods.single.status, PayrollStatus.open);
+    });
+
+    test('a wider project list asks for all and filters here', () async {
+      // The route filters one project, so a longer list is filtered here
+      // instead of asking for a guess.
+      final api = FakeApi(
+        (options) => json([
+          payrollPeriodRow(id: 1, projectId: 3),
+          payrollPeriodRow(id: 2, projectId: 4),
+          payrollPeriodRow(id: 3, projectId: 5),
+        ]),
+      );
+
+      final periods = await laborRepoFor(
+        api,
+        active: AppRole.owner,
+      ).getPeriods(projectIds: [3, 4]);
+
+      expect(
+        api.last('payroll-periods/').uri.queryParameters.containsKey('project'),
+        isFalse,
+      );
+      expect(periods.map((p) => p.id), [1, 2]);
+    });
+
+    test('one period is null when the server will not show it', () async {
+      final api = FakeApi(
+        (options) => json({'detail': 'Not found.'}, status: 404),
+      );
+
+      expect(
+        await laborRepoFor(api, active: AppRole.accountant).getPeriod(7),
+        isNull,
+      );
+      expect(api.last('payroll-periods/7/').method, 'GET');
+    });
+
+    test('creates a period and leaves the status to the server', () async {
+      final api = FakeApi(
+        (options) => json(payrollPeriodRow(id: 9), status: 201),
+      );
+
+      final created = await laborRepoFor(api, active: AppRole.accountant)
+          .createPeriod(
+            3,
+            DateTime(2026, 10, 1),
+            DateTime(2026, 10, 15),
+            userId: 3,
+          );
+
+      final request = api.last('payroll-periods/');
+      expect(request.method, 'POST');
+      final body = sentBody(request);
+      expect(body, {
+        'project_id': 3,
+        'period_start': '2026-10-01',
+        'period_end': '2026-10-15',
+      });
+      expect(created.id, 9);
+    });
+
+    test('verification is its own route with no body', () async {
+      final api = FakeApi(
+        (options) => json(payrollPeriodRow(id: 4, status: 'verified')),
+      );
+
+      final verified = await laborRepoFor(
+        api,
+        active: AppRole.owner,
+      ).verifyPeriod(4, userId: 7);
+
+      final request = api.last('payroll-periods/4/verify/');
+      expect(request.method, 'POST');
+      expect(request.data, isNull);
+      expect(verified.status, PayrollStatus.verified);
+    });
+
+    test('processing returns the locked period', () async {
+      final api = FakeApi(
+        (options) => json(payrollPeriodRow(id: 4, status: 'processed')),
+      );
+
+      final processed = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).processPeriod(4, userId: 3);
+
+      expect(api.last('payroll-periods/4/process/').method, 'POST');
+      expect(processed.status, PayrollStatus.processed);
+    });
+
+    test('an overlap refusal reaches the user unchanged', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'This overlaps an existing payroll period for the project.',
+        }, status: 400),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.accountant).createPeriod(
+          3,
+          DateTime(2026, 10, 1),
+          DateTime(2026, 10, 15),
+          userId: 3,
+        ),
+        throwsA(
+          isA<BusinessRuleException>().having(
+            (e) => e.message,
+            'message',
+            contains('overlaps an existing payroll period'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('payroll lines', () {
+    test('reads the server lines with one statutory total', () async {
+      // The lines route answers with a bare list, not a DRF page.
+      final api = FakeApi(
+        (options) => json([
+          payrollLineRow(id: 11, workerId: 2, cashAdvance: '100.00'),
+          payrollLineRow(id: 12, workerId: 1),
+        ]),
+      );
+
+      final lines = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).getLines(4);
+
+      expect(api.last('payroll-periods/4/lines/').method, 'GET');
+      expect(lines.map((l) => l.id), [11, 12]);
+      expect(lines.first.workerId, 2);
+      expect(lines.first.daysWorked, 5.5);
+      expect(lines.first.overtimePay, 468.75);
+      expect(lines.first.grossPay, 4593.75);
+      expect(lines.first.cashAdvance, 100);
+    });
+
+    test(
+      'configured statutory breakdown parses sss, philhealth, and pagibig without double-counting',
+      () async {
+        final api = FakeApi(
+          (options) => json([
+            {
+              ...payrollLineRow(
+                statutory: '129.14',
+                policy: 'configured',
+                cashAdvance: '50.00',
+                net: '1180.24',
+              ),
+              'sss': '67.97',
+              'philhealth': '33.98',
+              'pagibig': '27.19',
+            },
+          ]),
+        );
+
+        final line = (await laborRepoFor(
+          api,
+          active: AppRole.accountant,
+        ).getLines(4)).single;
+
+        expect(line.deductionsPolicy, PayrollLine.deductionsConfigured);
+        expect(line.sss, 67.97);
+        expect(line.philhealth, 33.98);
+        expect(line.pagibig, 27.19);
+        expect(line.statutoryDeductions, 129.14);
+        expect(line.deductions, closeTo(179.14, 0.001));
+      },
+    );
+
+    test(
+      'an unconfigured deductions policy is kept, not zeroed away',
+      () async {
+        final api = FakeApi((options) => json([payrollLineRow()]));
+
+        final line = (await laborRepoFor(
+          api,
+          active: AppRole.accountant,
+        ).getLines(4)).single;
+
+        expect(line.deductionsPolicy, PayrollLine.deductionsUnconfigured);
+        // The server deducts nothing yet, and the screens must say why rather
+        // than present three columns of zero contributions as compliance.
+        expect(line.statutoryDeductions, 0);
+        expect(line.sss, 0);
+        expect(line.philhealth, 0);
+        expect(line.pagibig, 0);
+        expect(line.netPay, 4593.75);
+      },
+    );
+
+    test('a line without its gross pay is a parse error', () async {
+      final row = payrollLineRow()..remove('gross_pay');
+      final api = FakeApi((options) => json([row]));
+
+      await expectLater(
+        laborRepoFor(api, active: AppRole.accountant).getLines(4),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a line without a deductions policy is a parse error', () async {
+      final row = payrollLineRow()..remove('deductions_policy');
+      final api = FakeApi((options) => json([row]));
+
+      await expectLater(
+        laborRepoFor(api, active: AppRole.accountant).getLines(4),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a finance refusal is not a line of zeros', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'Owner or Accountant role required to see payroll.',
+        }, status: 403),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.siteEngineer).getLines(4),
+        throwsA(isA<BusinessRuleException>()),
+      );
+    });
+
+    test('sets one worker cash advance on the period', () async {
+      final api = FakeApi(
+        (options) => json(payrollLineRow(id: 11, cashAdvance: '250.00')),
+      );
+
+      await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).setCashAdvance(4, 2, 250, userId: 3);
+
+      final request = api.last('payroll-periods/4/cash-advance/');
+      expect(request.method, 'POST');
+      final body = sentBody(request);
+      expect(body, {'worker_id': 2, 'amount': 250.0});
+      expect(body.containsKey('payroll_period_id'), isFalse);
+    });
+
+    test('an over-gross advance reaches the user unchanged', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'Cash advance cannot exceed gross pay.',
+        }, status: 400),
+      );
+
+      expect(
+        laborRepoFor(
+          api,
+          active: AppRole.accountant,
+        ).setCashAdvance(4, 2, 99999, userId: 3),
+        throwsA(
+          isA<BusinessRuleException>().having(
+            (e) => e.message,
+            'message',
+            'Cash advance cannot exceed gross pay.',
+          ),
+        ),
+      );
+    });
+  });
+
+  group('labor cost', () {
+    test('reads the processed payroll total as a number', () async {
+      final api = FakeApi(
+        (options) => json({'project_id': 3, 'labor_cost': '9187.50'}),
+      );
+
+      final cost = await laborRepoFor(
+        api,
+        active: AppRole.accountant,
+      ).laborCost(3);
+
+      final request = api.last('labor-cost/');
+      expect(request.method, 'GET');
+      expect(request.uri.queryParameters['project'], '3');
+      expect(cost, 9187.5);
+    });
+
+    test('a missing cost is a parse error, never zero', () async {
+      final api = FakeApi((options) => json({'project_id': 3}));
+
+      await expectLater(
+        laborRepoFor(api, active: AppRole.accountant).laborCost(3),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a non-finance role is refused, not told the cost is zero', () async {
+      final api = FakeApi(
+        (options) => json({
+          'detail': 'Owner or Accountant role required to see payroll.',
+        }, status: 403),
+      );
+
+      expect(
+        laborRepoFor(api, active: AppRole.siteEngineer).laborCost(3),
+        throwsA(isA<BusinessRuleException>()),
+      );
+    });
+  });
+
+  group('the project labor tab on an API backend', () {
+    test('a site engineer never asks for the payroll figures', () async {
+      // The payroll routes are finance-only, so asking would turn the whole
+      // tab into a 403 error instead of showing its attendance.
+      final api = FakeApi((options) {
+        if (options.path == 'workers/') {
+          return json([workerRow(finance: false)]);
+        }
+        if (options.path == 'attendance/') return json([attendanceRow()]);
+        return json({'detail': 'Not found.'}, status: 404);
+      });
+      final vm = ProjectLaborViewModel(
+        projectId: 1,
+        labor: laborRepoFor(api, active: AppRole.siteEngineer),
+        seesFinance: false,
+      );
+
+      await vm.load();
+
+      expect(vm.isLoading, isFalse);
+      expect(vm.error, isNull);
+      expect(vm.workers.single.fullName, 'Nilo Aguilar');
+      expect(vm.recentDays.single.present, 1);
+      expect(vm.periods, isEmpty);
+      expect(vm.laborCost, 0);
+      expect(api.paths, ['attendance/', 'workers/']);
+    });
+
+    test('an accountant sees the periods and the server cost', () async {
+      final api = FakeApi((options) {
+        if (options.path == 'attendance/') return json([attendanceRow()]);
+        if (options.path == 'workers/') return json([workerRow()]);
+        if (options.path == 'payroll-periods/') {
+          return json([payrollPeriodRow(projectId: 1)]);
+        }
+        if (options.path == 'labor-cost/') {
+          return json({'project_id': 1, 'labor_cost': '4593.75'});
+        }
+        return json({'detail': 'Not found.'}, status: 404);
+      });
+      final vm = ProjectLaborViewModel(
+        projectId: 1,
+        labor: laborRepoFor(api, active: AppRole.accountant),
+        seesFinance: true,
+      );
+
+      await vm.load();
+
+      expect(vm.error, isNull);
+      expect(vm.periods.single.status, PayrollStatus.open);
+      expect(vm.laborCost, 4593.75);
+    });
+  });
+
+  group('repository switch', () {
+    test('mocks stay the default until USE_API is set', () async {
+      expect(useApi, isFalse);
+      setupServiceLocator();
+      expect(getIt<LaborRepository>(), isA<MockLaborRepository>());
+      expect(getIt<LaborRepository>().supportsPayroll, isTrue);
+    });
+  });
+}
