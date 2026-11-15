@@ -79,10 +79,7 @@ void main() {
       final workers = await laborRepoFor(api).getWorkers(activeOnly: true);
 
       expect(api.last('workers/').method, 'GET');
-      expect(
-        api.last('workers/').uri.queryParameters['active_only'],
-        'true',
-      );
+      expect(api.last('workers/').uri.queryParameters['active_only'], 'true');
       expect(workers.map((w) => w.id), [1, 2]);
       expect(workers.first.dailyRate, 750);
       expect(workers.first.sssNo, '34-1234567-8');
@@ -177,17 +174,13 @@ void main() {
       final request = api.last('workers/5/');
       expect(request.method, 'PATCH');
       expect(sentBody(request)['daily_rate'], 800.0);
-      expect(
-        api.paths.where((p) => p == 'workers/5/').single,
-        'workers/5/',
-      );
+      expect(api.paths.where((p) => p == 'workers/5/').single, 'workers/5/');
     });
 
     test('keeps the server refusal text on a 400', () async {
       final api = FakeApi(
-        (options) => json({
-          'detail': 'Choose the worker\'s trade.',
-        }, status: 400),
+        (options) =>
+            json({'detail': 'Choose the worker\'s trade.'}, status: 400),
       );
 
       expect(
@@ -225,14 +218,12 @@ void main() {
         ]),
       );
 
-      final rows = await laborRepoFor(
-        api,
-        active: AppRole.siteEngineer,
-      ).getAttendance(
-        projectId: 3,
-        from: DateTime(2026, 10, 19),
-        to: DateTime(2026, 10, 25),
-      );
+      final rows = await laborRepoFor(api, active: AppRole.siteEngineer)
+          .getAttendance(
+            projectId: 3,
+            from: DateTime(2026, 10, 19),
+            to: DateTime(2026, 10, 25),
+          );
 
       final request = api.last('attendance/');
       expect(request.method, 'GET');
@@ -251,23 +242,13 @@ void main() {
     test('saves a day without claiming the actor', () async {
       final api = FakeApi((options) => json([attendanceRow()]));
 
-      await laborRepoFor(api, active: AppRole.siteEngineer).saveAttendance(
-        3,
-        DateTime(2026, 10, 21),
-        const [
-          (
-            workerId: 1,
-            status: AttendanceStatus.present,
-            overtimeHours: 0.0,
-          ),
-          (
-            workerId: 2,
-            status: AttendanceStatus.absent,
-            overtimeHours: 0.0,
-          ),
-        ],
-        userId: 4,
-      );
+      await laborRepoFor(
+        api,
+        active: AppRole.siteEngineer,
+      ).saveAttendance(3, DateTime(2026, 10, 21), const [
+        (workerId: 1, status: AttendanceStatus.present, overtimeHours: 0.0),
+        (workerId: 2, status: AttendanceStatus.absent, overtimeHours: 0.0),
+      ], userId: 4);
 
       final request = api.last('attendance/save-day/');
       expect(request.method, 'POST');
@@ -285,7 +266,8 @@ void main() {
     test('a cross-project refusal reaches the user unchanged', () async {
       final api = FakeApi(
         (options) => json({
-          'detail': 'Nilo Aguilar is already marked present on another '
+          'detail':
+              'Nilo Aguilar is already marked present on another '
               'project that day.',
         }, status: 400),
       );
@@ -295,11 +277,7 @@ void main() {
           3,
           DateTime(2026, 10, 21),
           const [
-            (
-              workerId: 1,
-              status: AttendanceStatus.present,
-              overtimeHours: 0.0,
-            ),
+            (workerId: 1, status: AttendanceStatus.present, overtimeHours: 0.0),
           ],
           userId: 4,
         ),
@@ -330,8 +308,12 @@ void main() {
       expect(repo.getPeriods(), matcher);
       expect(repo.getPeriod(1), matcher);
       expect(
-        repo.createPeriod(1, DateTime(2026, 10, 1), DateTime(2026, 10, 15),
-            userId: 3),
+        repo.createPeriod(
+          1,
+          DateTime(2026, 10, 1),
+          DateTime(2026, 10, 15),
+          userId: 3,
+        ),
         matcher,
       );
       expect(repo.verifyPeriod(1, userId: 3), matcher);
@@ -355,27 +337,31 @@ void main() {
   });
 
   group('the project labor tab on an API backend', () {
-    test('loads the site without a payroll figure and without hanging', () async {
-      final api = FakeApi((options) {
-        if (options.path == 'workers/') return json([workerRow(finance: false)]);
-        if (options.path == 'attendance/') return json([attendanceRow()]);
-        return json({'detail': 'Not found.'}, status: 404);
-      });
-      final vm = ProjectLaborViewModel(
-        projectId: 1,
-        labor: laborRepoFor(api, active: AppRole.siteEngineer),
-      );
+    test(
+      'loads the site without a payroll figure and without hanging',
+      () async {
+        final api = FakeApi((options) {
+          if (options.path == 'workers/')
+            return json([workerRow(finance: false)]);
+          if (options.path == 'attendance/') return json([attendanceRow()]);
+          return json({'detail': 'Not found.'}, status: 404);
+        });
+        final vm = ProjectLaborViewModel(
+          projectId: 1,
+          labor: laborRepoFor(api, active: AppRole.siteEngineer),
+        );
 
-      await vm.load();
+        await vm.load();
 
-      expect(vm.isLoading, isFalse);
-      expect(vm.error, isNull);
-      expect(vm.workers.single.fullName, 'Nilo Aguilar');
-      expect(vm.recentDays.single.present, 1);
-      expect(vm.periods, isEmpty);
-      expect(vm.laborCost, 0);
-      expect(api.paths, ['attendance/', 'workers/']);
-    });
+        expect(vm.isLoading, isFalse);
+        expect(vm.error, isNull);
+        expect(vm.workers.single.fullName, 'Nilo Aguilar');
+        expect(vm.recentDays.single.present, 1);
+        expect(vm.periods, isEmpty);
+        expect(vm.laborCost, 0);
+        expect(api.paths, ['attendance/', 'workers/']);
+      },
+    );
   });
 
   group('repository switch', () {

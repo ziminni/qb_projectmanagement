@@ -50,8 +50,12 @@ class ProjectLaborViewModel extends ChangeNotifier {
         for (final d in dates.take(7))
           DayHeadcount(
             d,
-            byDate[d]!.where((a) => a.status == AttendanceStatus.present).length,
-            byDate[d]!.where((a) => a.status == AttendanceStatus.halfDay).length,
+            byDate[d]!
+                .where((a) => a.status == AttendanceStatus.present)
+                .length,
+            byDate[d]!
+                .where((a) => a.status == AttendanceStatus.halfDay)
+                .length,
             byDate[d]!.where((a) => a.status == AttendanceStatus.absent).length,
           ),
       ];
