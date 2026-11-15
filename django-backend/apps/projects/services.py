@@ -785,6 +785,8 @@ _EMAIL = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 
 def _require_free_name(name, exclude_pk=None):
+    # shortcut: app-level check only, so two simultaneous creates can both pass; add a
+    # Lower(name) unique constraint once legacy contract-folded duplicates are reconciled.
     taken = Client.objects.filter(name__iexact=name)
     if exclude_pk is not None:
         taken = taken.exclude(pk=exclude_pk)
