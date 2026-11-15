@@ -201,3 +201,11 @@ docker exec -w /app cpms_test_backend python manage.py makemigrations --check --
 
 1. Run the POS seed, then compare with `GET /api/v1/integration/cpms/materials/` and fix any `pos_code` that differs (Master data, Materials).
 2. Find the POS customer that represents this CPMS company (`GET /api/v1/integration/cpms/customers/`) and run `python manage.py seed_demo --pos-payer-id <customer id>`. Without it the own-store supplier has no payer and POS refuses the import with a payer error. POS customer ids are not stable, so it is never defaulted.
+
+
+## `manage.py check --deploy` (verified 2026-11-15)
+
+With `DJANGO_DEBUG=false`, a real secret, one allowed host and explicit CORS origins, Django's deploy check reports only three warnings, all deliberate:
+
+- `security.W008` (`SECURE_SSL_REDIRECT` off): the Cloudflare tunnel terminates TLS and the `/api/health/` heartbeat speaks plain http, so redirecting would break both. `SECURE_PROXY_SSL_HEADER` is set instead.
+- `security.W005` / `security.W021` (HSTS subdomains and preload): turn these on only once the firm owns a domain and every subdomain is served over HTTPS. A Quick Tunnel hostname changes on each start, so HSTS preload would be wrong for the demo.

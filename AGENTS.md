@@ -6,9 +6,13 @@
 | Locked architectural decisions (revisable) | `planning/backend-integration/decisions/01-*.md` through `05-*.md` |
 | Flutter desktop models & repositories | `flutter/lib/data/models/`, `flutter/lib/data/repositories/`, `flutter/lib/core/di/service_locator.dart` |
 | Django backend (`django-backend/`) | `django-backend/config/urls.py`, `django-backend/apps/{users,projects,site_inventory,requisitions,financials}/` |
+| Current state, push order, what is verified vs not | `docs/HANDOFF.md` |
+| Running a demo / deploying (env, tunnel, outbox, seed) | `docs/DEPLOYMENT.md` |
 | POS counterpart integration contract | `../qb_pos_inventory_system/backend_django/apps/integration/{urls,views,serializers}.py` |
 
 ## Invariants
+
+0. **Mocks are the default; the real API is opt-in:** run the app with `--dart-define=USE_API=true --dart-define=API_BASE_URL=http://host:port/api/v1`. Never let a mock value (company id, demo password, hardcoded catalogue) reach the server in API mode.
 
 1. **Canonical backend path:** `django-backend/` (do not recreate `backend/`).
 2. **Living Plan:** If any discrepancy or better approach is found during building, update the relevant decision file in `planning/backend-integration/decisions/` and `planning/backend-integration/MAP.md` in place.
