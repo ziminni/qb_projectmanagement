@@ -294,6 +294,10 @@ void main() {
       await goTo(tester, '/projects/1/financials');
       expect(find.text(supplierAccountingUnavailable), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      // Only the derived cost half is blocked: the billings are the server's
+      // own rows and still show.
+      expect(find.text('Progress billings'), findsOneWidget);
+      expect(find.text('Billed'), findsOneWidget);
     });
 
     testWidgets('expense reports explain the block and stop loading', (

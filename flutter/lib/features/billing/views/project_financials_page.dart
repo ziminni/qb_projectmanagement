@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
+import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
@@ -39,8 +40,8 @@ class ProjectFinancialsPage extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (vm.error != null) return AppEmptyState(message: vm.error!);
-        final r = vm.report!;
-        final p = r.project;
+        final r = vm.report;
+        final p = vm.project!;
         const gap = SizedBox(height: AppSpacing.lg);
         return ListView(
           padding: pagePadding(context),
@@ -62,38 +63,43 @@ class ProjectFinancialsPage extends StatelessWidget {
                         label: 'Approved VOs',
                         value: Formatters.peso(vm.approvedVoTotal),
                       ),
-                      AppFigure(
-                        label: '% accomplished',
-                        value: Formatters.percent(r.progress.progress),
-                      ),
-                      AppFigure(
-                        label: 'Earned value',
-                        value: Formatters.peso(r.progress.earnedValue),
-                      ),
+                      if (r != null) ...[
+                        AppFigure(
+                          label: '% accomplished',
+                          value: Formatters.percent(r.progress.progress),
+                        ),
+                        AppFigure(
+                          label: 'Earned value',
+                          value: Formatters.peso(r.progress.earnedValue),
+                        ),
+                      ],
                       AppFigure(
                         label: 'Billed',
-                        value: Formatters.peso(vm.summary!.billed),
+                        value: Formatters.peso(vm.summary?.billed ?? 0),
                       ),
                       AppFigure(
                         label: 'Collected',
-                        value: Formatters.peso(vm.summary!.collected),
+                        value: Formatters.peso(vm.summary?.collected ?? 0),
                       ),
                       AppFigure(
                         label: 'Retention held',
                         value: Formatters.peso(vm.retentionHeld),
                       ),
-                      AppFigure(
-                        label: 'Actual cost',
-                        value: Formatters.peso(r.costs.total),
-                      ),
+                      if (r != null)
+                        AppFigure(
+                          label: 'Actual cost',
+                          value: Formatters.peso(r.costs.total),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  AppProgressBar(
-                    value: r.progress.progress,
-                    planned: r.progress.plannedProgress,
-                    semanticsLabel: 'Accomplishment',
-                  ),
+                  if (r != null) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    AppProgressBar(
+                      value: r.progress.progress,
+                      planned: r.progress.plannedProgress,
+                      semanticsLabel: 'Accomplishment',
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -101,7 +107,11 @@ class ProjectFinancialsPage extends StatelessWidget {
             AppSectionCard(
               title: 'Budget vs. actual',
               padding: EdgeInsets.zero,
-              child: BillingCostTable(report: r),
+              // Derived costs (materials, payroll, equipment) have no route
+              // yet: the billing half of the tab still shows.
+              child: r == null
+                  ? const ListTile(title: Text(supplierAccountingUnavailable))
+                  : BillingCostTable(report: r),
             ),
             gap,
             AppSectionCard(

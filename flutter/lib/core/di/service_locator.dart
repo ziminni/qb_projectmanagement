@@ -4,6 +4,7 @@ import '../../data/repositories/audit_log_repository.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/http_audit_log_repository.dart';
 import '../../data/repositories/http_auth_repository.dart';
+import '../../data/repositories/http_billing_repository.dart';
 import '../../data/repositories/http_client_repository.dart';
 import '../../data/repositories/http_company_repository.dart';
 import '../../data/repositories/http_daily_report_repository.dart';
@@ -121,13 +122,18 @@ void setupServiceLocator() {
       ]),
     )
     ..registerLazySingleton<BillingRepository>(
-      () => MockBillingRepository(
-        projects: getIt(),
-        schedule: getIt(),
-        users: getIt(),
-        auditLog: getIt(),
-        notifications: getIt(),
-      ),
+      // In API mode the server owns every billing status, amount, VO pricing
+      // and audit row: every method has a route (slice 4.2a), so the mock's
+      // local ledgers never run.
+      () => useApi
+          ? HttpBillingRepository(getIt<ApiClient>())
+          : MockBillingRepository(
+              projects: getIt(),
+              schedule: getIt(),
+              users: getIt(),
+              auditLog: getIt(),
+              notifications: getIt(),
+            ),
     )
     ..registerLazySingleton<DocumentRepository>(
       () => useApi

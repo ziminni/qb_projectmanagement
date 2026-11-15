@@ -341,8 +341,9 @@ void main() {
       'loads the site without a payroll figure and without hanging',
       () async {
         final api = FakeApi((options) {
-          if (options.path == 'workers/')
+          if (options.path == 'workers/') {
             return json([workerRow(finance: false)]);
+          }
           if (options.path == 'attendance/') return json([attendanceRow()]);
           return json({'detail': 'Not found.'}, status: 404);
         });

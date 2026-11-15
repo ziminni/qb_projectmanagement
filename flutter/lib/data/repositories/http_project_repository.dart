@@ -169,9 +169,11 @@ class HttpProjectRepository implements ProjectRepository {
     ),
   );
 
-  /// No public route: an approved variation order adjusts the contract amount
-  /// and target end on the server (Phase 4, `applyVariation` is called from
-  /// the billing repository there).
+  /// No route takes a contract delta, and none should: the server applies an
+  /// approved variation order to the contract amount and target end date in
+  /// the same transaction as `POST variation-orders/{id}/client-approve/`
+  /// (Phase 4, `HttpBillingRepository.clientApproveVo`), so this is never the
+  /// path that moves a contract.
   @override
   Future<Project> applyVariation(
     int projectId, {

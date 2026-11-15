@@ -339,3 +339,262 @@ class CollectiblePayment(models.Model):
         super().save(*args, **kwargs)
         # Keep the parent's cached rollup and status in step with its payments.
         self.collectible.recompute()
+
+# ---------------------------------------------------------------------------
+# Phase 4 slice 4.2a — client-facing billing
+# ---------------------------------------------------------------------------
+# Shapes mirror `flutter/lib/data/models/{progress_billing,payment,
+# variation_order,retention_release}.dart`; see the slice contract
+# `planning/backend-integration/contracts/phase-4-billing.md`.
+#
+# The legacy tables above are untouched. Nothing here aggregates project costs:
+# materials/labor/equipment costing stays blocked on procurement valuation and
+# payroll policy. Every row is append-only — a billing is withdrawn, never
+# deleted — and the actor of every change lives in the audit row written inside
+# the same transaction.
+
+class BillingStatus(models.TextChoices):
+    """Mirror of Flutter `BillingStatus` (`progress_billing.dart:3-8`)."""
+
+    DRAFT = 'draft', 'Draft'
+    PENDING_CLIENT = 'pending_client', 'Waiting for client'
+    DISPUTED = 'disputed', 'Disputed'
+    APPROVED = 'approved', 'Approved by client'
+    PAID = 'paid', 'Paid'
+    REJECTED = 'rejected', 'Withdrawn'
+
+
+# A project may have one billing in any of these statuses at a time.
+IN_PROGRESS_BILLING_STATUSES = (
+    BillingStatus.DRAFT,
+    BillingStatus.PENDING_CLIENT,
+    BillingStatus.DISPUTED,
+    BillingStatus.APPROVED,
+)
+
+# Statuses a client portal may see: a billing is "billed" once it is sent.
+BILLED_STATUSES = (
+    BillingStatus.PENDING_CLIENT,
+    BillingStatus.DISPUTED,
+    BillingStatus.APPROVED,
+    BillingStatus.PAID,
+)
+
+# Statuses whose retention is withheld from the contractor.
+RETENTION_HELD_STATUSES = (BillingStatus.APPROVED, BillingStatus.PAID)
+
+
+class ClientPaymentMethod(models.TextChoices):
+    """Mirror of Flutter `PaymentMethod` (`payment_method.dart:3-8`).
+
+    Deliberately separate from the legacy uppercase `PaymentMethod` above: that
+    one belongs to the utang/collectibles ledger and its rows must not change.
+    """
+
+    CASH = 'cash', 'Cash'
+    CHECK = 'check', 'Check'
+    BANK_TRANSFER = 'bank_transfer', 'Bank transfer'
+    E_WALLET = 'e_wallet', 'GCash / e-wallet'
+
+
+class VariationOrderType(models.TextChoices):
+    """Mirror of Flutter `VariationOrderType` (`variation_order.dart:3-7`)."""
+
+    ADDITIVE = 'additive', 'Added work'
+    DEDUCTIVE = 'deductive', 'Deleted work'
+    CHANGE = 'change', 'Design change'
+
+
+class VariationOrderStatus(models.TextChoices):
+    """Mirror of Flutter `VariationOrderStatus` (`variation_order.dart:20-25`)."""
+
+    PROPOSED = 'proposed', 'Proposed'
+    PENDING_CLIENT = 'pending_client', 'Waiting for client'
+    APPROVED = 'approved', 'Approved'
+    REJECTED = 'rejected', 'Rejected'
+
+
+class ProgressBilling(models.Model):
+    """One progress billing of a project (`progress_billing.dart`).
+
+    `gross_earned` is cumulative to `period_end`; the deductions apply to this
+    period's portion only. The figures are computed once, when the billing is
+    created, so a later to-do verification never rewrites an issued invoice.
+    """
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name='progress_billings',
+    )
+    billing_no = models.PositiveIntegerField()
+    period_end = models.DateField()
+    pct_accomplished = models.DecimalField(max_digits=7, decimal_places=6)
+    gross_earned = models.DecimalField(max_digits=14, decimal_places=2)
+    less_previous = models.DecimalField(max_digits=14, decimal_places=2)
+    less_dp_recoupment = models.DecimalField(max_digits=14, decimal_places=2)
+    less_retention = models.DecimalField(max_digits=14, decimal_places=2)
+    net_due = models.DecimalField(max_digits=14, decimal_places=2)
+    status = models.CharField(
+        max_length=16, choices=BillingStatus.choices,
+        default=BillingStatus.DRAFT, db_index=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-period_end', '-id')
+        verbose_name = 'Progress Billing'
+        verbose_name_plural = 'Progress Billings'
+        indexes = [models.Index(fields=['project', 'status'])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=('project', 'billing_no'),
+                name='apps_financials_billing_unique_project_no',
+            ),
+            # One billing in progress per project (the view refuses first; this
+            # is the backstop for two simultaneous creates).
+            models.UniqueConstraint(
+                fields=('project',),
+                condition=models.Q(status__in=IN_PROGRESS_BILLING_STATUSES),
+                name='apps_financials_billing_one_in_progress',
+            ),
+            # One billing per period; a withdrawn one frees its period again.
+            models.UniqueConstraint(
+                fields=('project', 'period_end'),
+                condition=~models.Q(status=BillingStatus.REJECTED),
+                name='apps_financials_billing_unique_project_period',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.project.code} #{self.billing_no} ({self.status})'
+
+    @property
+    def this_period(self):
+        return self.gross_earned - self.less_previous
+
+
+class ClientPayment(models.Model):
+    """The client's money against one progress billing (`payment.dart`).
+
+    Append-only: a wrong payment is never deleted, because the money already
+    moved. `received_by` deliberately does not exist — the audit row written in
+    the same transaction carries the actor.
+    """
+
+    progress_billing = models.ForeignKey(
+        ProgressBilling, on_delete=models.PROTECT, related_name='payments',
+    )
+    amount = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    paid_on = models.DateField(default=timezone.localdate)
+    method = models.CharField(
+        max_length=16, choices=ClientPaymentMethod.choices,
+        default=ClientPaymentMethod.CASH,
+    )
+    reference_no = models.CharField(max_length=64, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-paid_on', '-id')
+        verbose_name = 'Client Payment'
+        verbose_name_plural = 'Client Payments'
+        indexes = [models.Index(fields=['progress_billing', 'paid_on'])]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name='apps_financials_client_payment_amount_positive',
+            ),
+        ]
+
+    def __str__(self):
+        return f'payment {self.pk} — {self.amount}'
+
+
+class VariationOrder(models.Model):
+    """A proposed change to the contract (`variation_order.dart`).
+
+    `amount` is signed: negative for deleted work. `approved_by_client` is only
+    set together with the project's new contract amount and target end date,
+    inside one transaction.
+    """
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name='variation_orders',
+    )
+    vo_no = models.CharField(max_length=16)
+    type = models.CharField(max_length=16, choices=VariationOrderType.choices)
+    description = models.CharField(max_length=255)
+    amount = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+    )
+    days_impact = models.IntegerField(default=0)
+    status = models.CharField(
+        max_length=16, choices=VariationOrderStatus.choices,
+        default=VariationOrderStatus.PROPOSED, db_index=True,
+    )
+    approved_by_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='+',
+    )
+    approved_by_client = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='+',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-created_at', '-id')
+        verbose_name = 'Variation Order'
+        verbose_name_plural = 'Variation Orders'
+        indexes = [models.Index(fields=['project', 'status'])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=('project', 'vo_no'),
+                name='apps_financials_vo_unique_project_no',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.vo_no} — {self.project.code} ({self.status})'
+
+
+class RetentionRelease(models.Model):
+    """Retention paid back after completion (`retention_release.dart`)."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name='retention_releases',
+    )
+    amount = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    released_on = models.DateField(default=timezone.localdate)
+    method = models.CharField(
+        max_length=16, choices=ClientPaymentMethod.choices,
+        default=ClientPaymentMethod.CASH,
+    )
+    reference_no = models.CharField(max_length=64, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-released_on', '-id')
+        verbose_name = 'Retention Release'
+        verbose_name_plural = 'Retention Releases'
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name='apps_financials_retention_release_amount_positive',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.project.code} — {self.amount}'
