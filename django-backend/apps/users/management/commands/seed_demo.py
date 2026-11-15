@@ -27,6 +27,12 @@ documented demo password instead.
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
+from django.db.models import ProtectedError
+from django.utils import timezone
+
 from apps.company.models import Company, CompanySettings
 from apps.labor.models import Attendance, AttendanceStatus, Worker
 from apps.master_data.models import EquipmentItem, MaterialItem, Supplier, Trade
@@ -39,11 +45,6 @@ from apps.projects.models import (
 )
 from apps.users import demo_data
 from apps.users.models import AuditLog, Notification, User
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
-from django.db.models import ProtectedError
-from django.utils import timezone
 
 REQUIRED_FLAG = '--i-know-this-is-demo'
 # The largest id `Supplier.pos_payer_id` (`PositiveBigIntegerField`) can store.
