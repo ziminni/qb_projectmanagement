@@ -21,25 +21,27 @@ docker compose up -d --build
 On startup, `docker compose` automatically:
 - Applies all Django migrations (`python manage.py migrate --noinput`).
 - Seeds the demo accounts and projects (`python manage.py seed_demo --auto-pos-payer`).
-- Connects to POS at `http://host.docker.internal:8000` using `cpms_service` / `demo1234` and links the seeded POS contractor customer (`Queen Builders Construction`) automatically. Even if POS is started after CPMS, the outbox worker (`run_pos_worker`) automatically discovers and links the POS contractor customer ID on the first requisition sync.
+- Connects to POS at `http://host.docker.internal:8000` as `cpms_service` / `demo1234` (demo defaults in `django-backend/pos-bridge.defaults.env`; anything in `django-backend/.env` overrides them) and links the own-store supplier to the POS contractor customer (**Dela Cruz Construction** in the POS demo seed). If POS starts after CPMS, the outbox worker (`run_pos_outbox`) makes that link on the first request it pushes.
 
-### Option B: Two Different PCs via Cloudflare Quick Tunnel
+### Option B: POS on a different computer (Cloudflare tunnel)
 
-When POS runs on Store PC A and CPMS runs on Office PC B:
-
-1. On **Store PC A (`qb_pos_inventory_system`)**, start POS and run the included Cloudflare Quick Tunnel script:
+1. On the **store PC**, in `qb_pos_inventory_system`, run `docker compose up -d`, then the tunnel helper:
    - **Windows PowerShell:** `.\scripts\start-tunnel.ps1`
    - **Linux / macOS:** `./scripts/start-tunnel.sh`
-2. Copy the `https://<random-name>.trycloudflare.com` URL printed by `cloudflared`.
-3. On **Office PC B (`qb_project_management_system`)**, copy `django-backend/.env.example` to `django-backend/.env` and set:
+
+   This exposes only a key-protected gateway (CPMS sign-in and the `/api/v1/integration/cpms/` routes), never the whole POS. The script prints four lines.
+2. On **this PC**, paste those four lines into `django-backend/.env` (create the file if needed):
 
 ```env
 POS_API_BASE_URL=https://<random-name>.trycloudflare.com
-POS_API_SERVICE_USERNAME=cpms_service
-POS_API_SERVICE_PASSWORD=demo1234
+POS_API_ALLOW_INSECURE_LOCAL=False
+POS_API_GATEWAY_HEADER_NAME=X-QB-Gateway-Key
+POS_API_GATEWAY_HEADER_VALUE=<key printed by the script>
 ```
 
-4. Restart CPMS (`docker compose up -d`).
+3. Run `docker compose up -d` here again.
+
+The Quick Tunnel URL changes every time the tunnel restarts. When it does, rerun the script on the store PC and update `POS_API_BASE_URL`. Until then, CPMS keeps unsent requests in its outbox and retries them. The POS README (section 6) has the full guide.
 
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for production/tunnel hardening (`DJANGO_DEBUG=False`, Cloudflare Quick Tunnel, database + `private_media/` backups) and [`docs/HANDOFF.md`](docs/HANDOFF.md) for verification status.
 
@@ -94,7 +96,7 @@ Company finances are confidential: only the owner and the accountant see peso am
 
 ## 4. End-to-End POS ↔ CPMS Workflows
 
-- **Material Request & Own-Store Fulfilment:** Site engineer (`ana@example.ph`) submits a material requisition → Owner/PM (`ramon@example.ph`) approves and routes own-store items to Queen Builders Hardware Store → CPMS outbox worker pushes the request to POS (`POST /api/v1/integration/cpms/requisitions/`) and pulls live catalogue/stock and release status (`GET /api/v1/projects/<id>/pos-requests/`).
+- **Material Request & Own-Store Fulfilment:** Site engineer (`ana@example.ph`) submits a material request. The owner/PM (`ramon@example.ph`) orders it from our own store (an own-store purchase order with live POS prices and stock status). The CPMS outbox worker pushes it to POS (`POST /api/v1/integration/cpms/requests/`). In POS, the **Store Manager** accepts it, and the **cashier** finds it under **Release materials**, releases it with one click and prints the official receipt. CPMS shows the store's status on the order (`GET /api/v1/purchase-orders/<id>/pos-status/`), and the charge appears under **Financials → Owed to the store**.
 - **Per-Category Store Material Cost Attribution:** Own-store charges from POS (`GET /api/v1/projects/<id>/pos-payables/`) include `by_category`, attributing released/delivered store materials directly to each WBS / BOQ category in `ProjectCostService` while keeping unallocated store balance in `storeMaterials` without double-counting.
-- **Online Payment Receipts to Store (Phase 1c):** From **Financials → Store Balance**, the owner or accountant can click **Submit payment receipt** (reference number, amount, Bank Transfer / GCash / Cheque, notes) to send a payment receipt to POS (`POST /api/v1/projects/<id>/pos-payment-receipts/`). Once the POS store manager approves the receipt in **Sales → Receivables**, the CPMS store balance updates automatically.
-- **Statutory Payroll Deductions:** Generating a payroll period (`POST /api/v1/payroll-periods/generate/`) computes employee statutory deductions (`SSS` 5%, `PhilHealth` 2.5%, `Pag-IBIG` 2% capped at ₱100/period) alongside cash-advance deductions under `deductions_policy = 'configured'`.
+- **Online Payment Receipts to Store (Phase 1c):** From the **Owed to the store** card on **Financials**, the owner or accountant clicks **Submit payment receipt** (reference number, amount, Bank Transfer / GCash / Cheque, notes) to send a payment receipt to POS (`POST /api/v1/projects/<id>/pos-payment-receipts/`). Once the POS store manager approves the receipt in **Sales → Receivables**, the CPMS store balance updates automatically.
+- **Payroll Deductions:** Each payroll line deducts SSS 5%, PhilHealth 2.5% and Pag-IBIG 2% (capped at ₱100 per period) plus cash advances. These are **simplified flat rates for the demo, not the official SSS/PhilHealth/Pag-IBIG contribution tables**, so check them before real payouts.

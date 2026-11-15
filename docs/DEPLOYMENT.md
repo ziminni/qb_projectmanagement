@@ -40,6 +40,10 @@ The Phase 5 demo runs with **no purchased domain and no inbound firewall
 changes**: a Quick Tunnel publishes the local backend on a throwaway
 `https://<random>.trycloudflare.com` host.
 
+> This section exposes the **CPMS** API to CPMS users elsewhere. Connecting CPMS to a
+> **POS on another computer** is a different tunnel, run on the store PC: see README
+> "Option B" and the POS README section 6 (`scripts/start-tunnel`, key-protected gateway).
+
 ```
  Flutter desktop client  ──https──▶  Cloudflare edge (TLS terminated)
                                           │  https://<random>.trycloudflare.com
