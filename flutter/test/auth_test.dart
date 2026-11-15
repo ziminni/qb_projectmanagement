@@ -1,6 +1,9 @@
 import 'package:buildpro_frontend/data/repositories/mock_auth_repository.dart';
+import 'package:buildpro_frontend/data/repositories/mock_data.dart';
 import 'package:buildpro_frontend/data/repositories/mock_user_repository.dart';
 import 'package:buildpro_frontend/data/services/business_rule_exception.dart';
+import 'package:buildpro_frontend/data/services/session_service.dart';
+import 'package:buildpro_frontend/features/auth/viewmodels/login_viewmodel.dart';
 import 'package:buildpro_frontend/features/auth/widgets/login_dialog.dart';
 import 'package:buildpro_frontend/features/landing/views/landing_page.dart';
 import 'package:flutter/material.dart';
@@ -114,6 +117,74 @@ void main() {
     await tester.tap(find.text('Send reset link'));
     await tester.pumpAndSettle();
     expect(find.textContaining('If nobody@example.ph belongs'), findsOneWidget);
+  });
+
+  group('login demo helpers', () {
+    LoginViewModel login({required bool usesApi}) => LoginViewModel(
+      auth: MockAuthRepository(users: MockUserRepository()),
+      users: MockUserRepository(),
+      session: SessionService(),
+      usesApi: usesApi,
+    );
+
+    test('API mode lists no demo accounts', () async {
+      final vm = login(usesApi: true);
+      await vm.loadDemoAccounts();
+      expect(vm.demoAccounts, isEmpty);
+    });
+
+    test('mock mode still lists the demo accounts', () async {
+      final vm = login(usesApi: false);
+      await vm.loadDemoAccounts();
+      expect(vm.demoAccounts, isNotEmpty);
+    });
+
+    testWidgets('API mode hides the demo password hint and prefill', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: LoginDialog(usesApi: true))),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Demo accounts'), findsNothing);
+      expect(find.textContaining(MockData.demoPassword), findsNothing);
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.widgetWithText(TextFormField, 'Password'),
+            )
+            .controller
+            ?.text,
+        isEmpty,
+      );
+    });
+
+    testWidgets('mock mode still fills the demo password on a tap', (
+      tester,
+    ) async {
+      // Taller viewport: the demo list sits below a 600px-tall dialog.
+      tester.view.physicalSize = const Size(1200, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: LoginDialog(usesApi: false))),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Demo accounts'), findsOneWidget);
+      await tester.tap(find.text('Demo accounts'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ramon Dela Cruz').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.widgetWithText(TextFormField, 'Password'),
+            )
+            .controller
+            ?.text,
+        MockData.demoPassword,
+      );
+    });
   });
 
   testWidgets('profile edits update the signed-in user', (tester) async {

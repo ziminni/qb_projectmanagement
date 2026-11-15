@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/network/api_config.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/user.dart';
@@ -19,13 +20,16 @@ class LoginViewModel extends ChangeNotifier with ActionRunner {
     required AuthRepository auth,
     required UserRepository users,
     required SessionService session,
+    bool? usesApi,
   }) : _auth = auth,
        _users = users,
-       _session = session;
+       _session = session,
+       _usesApi = usesApi ?? useApi;
 
   final AuthRepository _auth;
   final UserRepository _users;
   final SessionService _session;
+  final bool _usesApi;
 
   String? _error;
   List<DemoAccount> _demoAccounts = const [];
@@ -36,7 +40,12 @@ class LoginViewModel extends ChangeNotifier with ActionRunner {
   /// Mock accounts listed on the login screen until a real backend exists.
   List<DemoAccount> get demoAccounts => _demoAccounts;
 
+  bool get usesApi => _usesApi;
+
+  /// Real accounts in API mode: the demo list (which names users and prints
+  /// the shared demo password) stays mock-only.
   Future<void> loadDemoAccounts() async {
+    if (_usesApi) return;
     final users = await _users.getUsers();
     _demoAccounts = [
       for (final u in users)

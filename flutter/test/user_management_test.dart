@@ -9,6 +9,7 @@ import 'package:buildpro_frontend/data/services/session_service.dart';
 import 'package:buildpro_frontend/features/user_management/viewmodels/admin_audit.dart';
 import 'package:buildpro_frontend/features/user_management/viewmodels/audit_log_viewmodel.dart';
 import 'package:buildpro_frontend/features/user_management/viewmodels/settings_viewmodel.dart';
+import 'package:buildpro_frontend/features/user_management/viewmodels/user_form_viewmodel.dart';
 import 'package:buildpro_frontend/data/repositories/mock_audit_log_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_client_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_company_repository.dart';
@@ -70,6 +71,61 @@ void main() {
       ]);
       final mine = await projects.getAssignmentsForUser(4);
       expect(mine.single.projectId, 2);
+    });
+  });
+
+  group('user form company id', () {
+    late _RecordingUserRepository users;
+    late SessionService session;
+
+    setUp(() {
+      users = _RecordingUserRepository();
+      session = SessionService()
+        ..signIn(
+          const User(
+            id: 99,
+            companyId: 42,
+            fullName: 'Admin',
+            email: 'admin@example.ph',
+          ),
+          const [AppRole.admin],
+        );
+    });
+
+    UserFormViewModel form({required bool usesApi}) => UserFormViewModel(
+      userId: null,
+      users: users,
+      projects: MockProjectRepository(
+        users: users,
+        auditLog: MockAuditLogRepository(),
+      ),
+      clients: MockClientRepository(),
+      session: session,
+      usesApi: usesApi,
+    );
+
+    Future<void> createNewUser(UserFormViewModel vm) async {
+      await vm.load();
+      vm.toggleRole(AppRole.owner, true);
+      expect(
+        await vm.save(
+          fullName: 'New Owner',
+          email: 'new@example.ph',
+          phone: '',
+        ),
+        isNull,
+      );
+    }
+
+    test('API mode saves the session company, never the mock one', () async {
+      await createNewUser(form(usesApi: true));
+      expect(users.lastSaved!.companyId, 42);
+      expect(users.lastSaved!.companyId, isNot(MockData.companyId));
+    });
+
+    test('mock mode keeps the mock company id', () async {
+      await createNewUser(form(usesApi: false));
+      expect(users.lastSaved!.companyId, MockData.companyId);
     });
   });
 
@@ -333,6 +389,17 @@ void main() {
       );
     });
   });
+}
+
+/// Captures the user the form hands to the repository.
+class _RecordingUserRepository extends MockUserRepository {
+  User? lastSaved;
+
+  @override
+  Future<User> saveUser(User user, List<AppRole> roles) {
+    lastSaved = user;
+    return super.saveUser(user, roles);
+  }
 }
 
 class _FixedAuditLog implements AuditLogRepository {

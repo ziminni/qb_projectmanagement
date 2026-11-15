@@ -14,6 +14,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 
 
@@ -255,6 +256,9 @@ SIMPLE_JWT = {
 # Wildcard is the dev convenience; production must name its origins.
 # =============================================
 CORS_ALLOW_ALL_ORIGINS = env_bool('CORS_ALLOW_ALL_ORIGINS', True)
+# The desktop/web client sends the active role in a custom header; a browser only
+# sends it when the preflight allows it. Extend the defaults, never replace them.
+CORS_ALLOW_HEADERS = (*default_headers, 'x-active-role')
 CORS_ALLOWED_ORIGINS = [
     o.strip()
     for o in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')

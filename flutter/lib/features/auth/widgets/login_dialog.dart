@@ -31,7 +31,10 @@ Future<void> showLoginDialog(BuildContext context) {
 
 /// Sign-in form, with a "forgot password" step, shown as a modal.
 class LoginDialog extends StatefulWidget {
-  const LoginDialog({super.key});
+  const LoginDialog({super.key, this.usesApi});
+
+  /// Overrides the build-time [useApi] flag in tests.
+  final bool? usesApi;
 
   @override
   State<LoginDialog> createState() => _LoginDialogState();
@@ -50,6 +53,7 @@ class _LoginDialogState extends State<LoginDialog> {
     auth: getIt(),
     users: getIt(),
     session: getIt(),
+    usesApi: widget.usesApi,
   )..loadDemoAccounts();
   late final _reset = ForgotPasswordViewModel(auth: getIt());
 
@@ -245,7 +249,8 @@ class _LoginDialogState extends State<LoginDialog> {
             accounts: _login.demoAccounts,
             onSelected: (a) {
               _email.text = a.user.email;
-              _password.text = MockData.demoPassword;
+              // Only the mock accounts share the demo password.
+              if (!_login.usesApi) _password.text = MockData.demoPassword;
             },
           ),
         ],

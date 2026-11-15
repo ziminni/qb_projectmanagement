@@ -21,7 +21,7 @@ class ApiClient {
        _session = session,
        _dio = dio ?? Dio() {
     _dio.options
-      ..baseUrl = apiBaseUrl
+      ..baseUrl = withTrailingSlash(apiBaseUrl)
       ..connectTimeout = const Duration(seconds: 15)
       ..receiveTimeout = const Duration(seconds: 30)
       ..headers['Accept'] = Headers.jsonContentType

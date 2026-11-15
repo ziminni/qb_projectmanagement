@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/network/api_config.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/client.dart';
@@ -25,11 +26,13 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     required ClientRepository clients,
     required SessionService session,
     AdminAudit? audit,
+    bool? usesApi,
   }) : _users = users,
        _projects = projects,
        _clients = clients,
        _session = session,
-       _audit = audit;
+       _audit = audit,
+       _usesApi = usesApi ?? useApi;
 
   /// Null when creating a user.
   final int? userId;
@@ -38,6 +41,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
   final ClientRepository _clients;
   final SessionService _session;
   final AdminAudit? _audit;
+  final bool _usesApi;
 
   bool _loading = true;
   String? _error;
@@ -58,6 +62,19 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
   List<Project> get projects => _allProjects;
   List<Client> get clients => _allClients;
   bool get isSelf => userId != null && userId == _session.user?.id;
+
+  /// Company a user is created under. The API scopes every row to the
+  /// signed-in user's company, so the mock id must never be sent there.
+  int get _companyId {
+    final known = _user?.companyId;
+    if (known != null) return known;
+    if (!_usesApi) return MockData.companyId;
+    final sessionCompanyId = _session.user?.companyId;
+    if (sessionCompanyId == null) {
+      throw const BusinessRuleException('Sign in again to save a user.');
+    }
+    return sessionCompanyId;
+  }
 
   /// Roles that can be assigned to projects, limited to those selected.
   List<AppRole> get assignableRoles => [
@@ -169,7 +186,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     final saved = await _users.saveUser(
       User(
         id: userId ?? 0,
-        companyId: _user?.companyId ?? MockData.companyId,
+        companyId: _companyId,
         fullName: fullName,
         email: email,
         phone: phone.trim().isEmpty ? null : phone.trim(),

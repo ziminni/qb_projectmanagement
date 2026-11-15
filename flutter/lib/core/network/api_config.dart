@@ -21,6 +21,10 @@ String resolveApiBaseUrl({required String configured, required bool debug}) {
   );
 }
 
+/// Dio joins a relative path onto the base by plain concatenation, so a base
+/// without a trailing slash turns `users/` into `/api/v1users/`.
+String withTrailingSlash(String base) => base.endsWith('/') ? base : '$base/';
+
 /// `--dart-define=USE_API=true` swaps the mock repositories for the HTTP ones.
 /// Task 5.2 makes the HTTP set the default; until then mocks stay in place.
 const bool useApi = bool.fromEnvironment('USE_API');
