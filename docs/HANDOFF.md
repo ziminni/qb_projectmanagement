@@ -1,6 +1,6 @@
 # CPMS backend integration: handoff
 
-State on 2026-11-15. Nothing here is pushed. History is linear, so the tip branch contains every earlier branch.
+State on 2026-11-16. Nothing here is pushed. History is linear, so the tip branch contains every earlier branch.
 
 ## What to push
 
@@ -31,8 +31,13 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 | `e9e0483` | Payables in API mode: what each project owes our store, read from the store, read-only |
 | `c400400` | Fix: a user with no phone can be saved (admin form and own profile) |
 | `7a87455`, `4a320c7` | Billing, variation-order and payroll hand-offs now send notifications (mirrors the mock) |
+| `5385fdb` | Auto-seed on start and automatic POS payer link, live API by default on `flutter run`, flat-rate payroll deductions, payment receipts to the store (Phase 1c) |
+| `349361a` | `django-backend/.env` really overrides the POS bridge settings; tunnel guide |
 
 ## Verified (all on disposable stacks)
+
+- **2026-11-16 full check:** backend 667 tests OK, Flutter 433 tests OK, analyze clean, no migration drift. Live real-HTTP run on **freshly seeded** CPMS and POS databases with **no manual setup**: payer and material codes linked automatically, then request → own-store order → POS accept → cashier release (receipt `OR-…`, ₱1,100) → CPMS read-back of status and store debt. Payment receipts: ₱400 approved of ₱600 dropped the balance to ₱700, and a declined receipt left it unchanged. Report: `../temp/verify-1116/e2e-report.md` (local only). The one defect found was on the POS side (a cashier could approve receipts) and is fixed in POS `25f7362`.
+- **Tunnel (2026-11-16):** CPMS's real `PosClient` reached POS through a live `trycloudflare.com` URL and the POS key-protected gateway: customers and materials read with status 200. Without the key, sign-in got 403, and admin/users/requisitions got 404. Torn down afterwards.
 
 - Backend 643 tests OK, `check` clean, no migration drift. Flutter analyze clean, 392+ tests OK.
 - Labor received independent approval. Billing/payroll review blockers were fixed and regression-tested, but fresh independent post-fix approvals are not evidenced. Runtime API QA found no confirmed defects for billing, labor and payroll.
@@ -42,9 +47,9 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 ## NOT verified
 
 - Screen-level browser QA of the Flutter **web** build against a real disposable backend (reports `temp/cpms/5.3ui*/report.md`, local only). Verified: owner login, dashboard, projects list/detail, workers and attendance, billing draft create (preview equals persisted amount), accountant payroll period with advance and net, client sees only his project and no draft billing, site engineer accepts assignment, saves attendance and a daily report, and creates a material request, then the owner creates an own-store purchase order from it (20 bags, server material, POS panel says pending, never Synced). Defects found and fixed: API paths missing a slash, CORS blocking `X-Active-Role`, mock company id and demo password leaking into API mode, hardcoded store catalogue, payroll notice below the fold.
-- **Not clicked yet:** admin user management, variation orders, notifications, client billing after verify, daily-report photo upload, a person clicking through the desktop window (no screenshot/click-automation tools here). Mocks are still the default; API mode is `--dart-define=USE_API=true --dart-define=API_BASE_URL=http://host:port/api/v1`.
+- **Not clicked yet:** admin user management, variation orders, notifications, client billing after verify, daily-report photo upload, a person clicking through the desktop window (no screenshot/click-automation tools here). Live API is now the default on `flutter run` (`USE_API=false` for mocks; `flutter test` still uses mocks).
 - Teammate design notes (not changed): the site engineer is chosen only in the new-project wizard; the material request form lists only **ongoing** projects; the landing hero image is an external Unsplash URL that now returns 404.
-- No tunnel run with the real stack; Windows/macOS packaging and native desktop GUI click-through remain unverified. Linux release/keyring verification is recorded below.
+- Windows/macOS packaging and native desktop GUI click-through remain unverified (the tunnel path was verified 2026-11-16, see above). Linux release/keyring verification is recorded below.
 - Derived project costs work in API mode (`3dc70dc`). Supplier payables in API mode list what each project owes our store, read from the store, read-only (outside purchases are paid at the counter, so they are never payables; payments are recorded at the store).
 
 - **Linux desktop (verified by the controller, `temp/cpms/5.8/report.md`, local only):** the release build succeeds with `USE_API=true`, links `libsecret`, launches under WSLg, and an integration test on the native Linux app signed in to a real backend, kept the tokens in the OS keyring and loaded the owner's 3 scoped projects. Linux hosts need a keyring service (for example gnome-keyring). Windows and macOS builds were not tried.
@@ -53,11 +58,11 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 
 ## Needs an owner decision (nothing invented)
 
-1. ~~Payroll statutory deductions~~ **Decided 2026-11-15: basic payroll for now**, improving it later. Current implementation uses per-worker rates, half-days, overtime and cash advances, with statutory deductions unconfigured. Detailed formula and incomplete-hour handling remain delegated defaults, not separately owner-confirmed policies. Real contributions and the firm's payslip format remain follow-ups in `contracts/phase-4-payroll.md`.
+1. ~~Payroll statutory deductions~~ **Decided 2026-11-15: basic payroll for now**, improving it later. Current implementation uses per-worker rates, half-days, overtime, cash advances and **simplified flat-rate deductions** (SSS 5%, PhilHealth 2.5%, Pag-IBIG 2% capped at ₱100/period), not the official contribution tables. Detailed formula and incomplete-hour handling remain delegated defaults, not separately owner-confirmed policies. Real contributions and the firm's payslip format remain follow-ups in `contracts/phase-4-payroll.md`.
 2. ~~Invoice valuation and debt ownership~~ **Decided 2026-11-15:** the store's price is the real price and the store holds the debt; CPMS asks the store through the service account. Built: live store catalogue (price, stock status) and an "Owed to the store" card. Materials cost: one "Materials from our store" line at the store's charge, categories are outside purchases only (owner option 1, may revisit the per-category split later; MAP 5.10).
 3. Negative-net payroll handling; multi-project deductions.
 4. Unconfirmed defaults recorded in `planning/backend-integration/decisions/06-phase-2-contract-rulings.md` and the phase 4 contracts.
 
 ## Setting up a demo
 
-See `docs/DEPLOYMENT.md`. After `seed_demo`, map materials to the live POS catalogue and run `seed_demo --pos-payer-id <POS customer id>` or own-store orders will be refused.
+See the README: `docker compose up -d` migrates, seeds and links the POS payer automatically (same PC). POS on another PC: README Option B (POS tunnel helper). `docs/DEPLOYMENT.md` covers hardening.
