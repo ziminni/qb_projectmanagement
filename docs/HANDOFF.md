@@ -24,10 +24,12 @@ Open ONE pull request, base `frontendend-progress`, compare `feat/cpms-clients-w
 | `a136c43` | `seed_demo` and deployment hardening |
 | `60220f2` | Client create/link API |
 | `6375fb5`, `bfcdd72` | Seed maps real POS barcodes; import order |
+| `e1483ce` to `0d0be7d` | Fixes from screen QA: API path slash, CORS `X-Active-Role`, no mock leaks in API mode, server-backed store catalogue, payroll notice placement, order form prefill |
+| `7a87455`, `4a320c7` | Billing, variation-order and payroll hand-offs now send notifications (mirrors the mock) |
 
 ## Verified (all on disposable stacks)
 
-- Backend 637 tests OK, `check` clean, no migration drift. Flutter analyze clean, 392+ tests OK.
+- Backend 643 tests OK, `check` clean, no migration drift. Flutter analyze clean, 392+ tests OK.
 - Independent reviews approved for labor, billing, payroll (after fixes). Runtime API QA found no confirmed defects for billing, labor and payroll.
 - Live HTTP bridge CPMS to POS passed (catalog, own-store import with token, manager accept, cashier partial release, read-back, cancel/close, retry with stable identity, `CPMS_SCOPE` fence, external PO isolation). Report: `temp/cpms/5.2/report.md` (local only).
 
