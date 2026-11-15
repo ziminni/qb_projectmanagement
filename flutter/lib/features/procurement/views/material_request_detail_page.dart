@@ -148,13 +148,30 @@ class MaterialRequestDetailPage extends StatelessWidget {
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
-                    for (final o in vm.orders)
+                    for (final o in vm.orders) ...[
                       ProcurementPoTile(
                         order: o,
                         projectCode: l.projectCode(o.projectId),
                         supplierName: l.storeName(o),
                         onTap: () => context.go(AppRoutes.purchaseOrder(o.id)),
                       ),
+                      if (vm.storeStatusFor(o) case final storeStatus?)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            56,
+                            0,
+                            AppSpacing.lg,
+                            AppSpacing.sm,
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              storeStatus,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),

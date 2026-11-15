@@ -24,7 +24,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import DatabaseError
 
 from ...pos_client import PosConfigError
-from ...pos_worker import run_once
+from ...pos_worker import enqueue_auto_refresh, run_once
 
 logger = logging.getLogger(__name__)
 
@@ -49,15 +49,31 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options['once']:
+            self._auto_refresh()
             processed = self._pass(options['limit'])
             self.stdout.write(f'POS outbox: {processed} job(s) processed.')
             return
 
         pause = max(1, int(options['sleep']))
         self.stdout.write(f'POS outbox worker looping every {pause}s (Ctrl-C to stop).')
+        last_auto_refresh = None
         while True:
+            refresh_every = max(
+                1, int(getattr(settings, 'POS_AUTO_REFRESH_SECONDS', 60)),
+            )
+            now_mono = time.monotonic()
+            if last_auto_refresh is None or (now_mono - last_auto_refresh) >= refresh_every:
+                self._auto_refresh()
+                last_auto_refresh = now_mono
             self._pass(options['limit'])
-            time.sleep(pause)
+            time.sleep(min(pause, refresh_every))
+
+    def _auto_refresh(self):
+        try:
+            return enqueue_auto_refresh()
+        except DatabaseError:
+            logger.exception('POS auto-refresh enqueue failed on the database; retrying later.')
+            return 0
 
     def _pass(self, limit):
         try:

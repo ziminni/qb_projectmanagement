@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../data/models/material_source.dart';
 import '../../../data/models/purchase_order.dart';
 import '../../../shared/widgets/app_status_chip.dart';
 
 class ProcurementPoStatusChip extends StatelessWidget {
-  const ProcurementPoStatusChip({super.key, required this.status});
+  const ProcurementPoStatusChip({super.key, required this.status, this.source});
 
   final PurchaseOrderStatus status;
+  final MaterialSource? source;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +31,10 @@ class ProcurementPoStatusChip extends StatelessWidget {
         AppColors.surfaceMuted,
       ),
     };
-    return AppStatusChip(label: status.label, foreground: fg, background: bg);
+    return AppStatusChip(
+      label: status.labelFor(source),
+      foreground: fg,
+      background: bg,
+    );
   }
 }

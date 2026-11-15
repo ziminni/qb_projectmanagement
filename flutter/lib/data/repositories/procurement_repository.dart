@@ -1,9 +1,11 @@
 import '../models/store_balance.dart';
 import 'dart:typed_data';
 
+import '../../core/utils/input_parsers.dart';
 import '../models/app_role.dart';
 import '../models/delivery.dart';
 import '../models/delivery_item.dart';
+import '../models/json_utils.dart';
 import '../models/material_request.dart';
 import '../models/material_request_item.dart';
 import '../models/material_source.dart';
@@ -153,6 +155,34 @@ class Payable {
   double get balance => deliveredValue - paid;
 }
 
+/// Per-line quantities reported by the store for one own-store order.
+class PosStatusLine {
+  const PosStatusLine({
+    required this.code,
+    required this.description,
+    required this.unit,
+    required this.requested,
+    required this.released,
+    required this.outstanding,
+  });
+
+  final String code;
+  final String description;
+  final String unit;
+  final double requested;
+  final double released;
+  final double outstanding;
+
+  factory PosStatusLine.fromJson(Map<String, dynamic> json) => PosStatusLine(
+    code: json['code'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    unit: json['unit'] as String? ?? '',
+    requested: JsonUtils.toDouble(json['requested'] ?? 0),
+    released: JsonUtils.toDouble(json['released'] ?? 0),
+    outstanding: JsonUtils.toDouble(json['outstanding'] ?? 0),
+  );
+}
+
 /// Cached operational snapshot only; no gateway identity or money is retained.
 class PosStatus {
   const PosStatus({
@@ -164,6 +194,7 @@ class PosStatus {
     required this.declineReason,
     required this.closePending,
     required this.closeNeedsReview,
+    this.lines = const [],
   });
 
   final String syncStatus;
@@ -174,19 +205,63 @@ class PosStatus {
   final String declineReason;
   final bool closePending;
   final bool closeNeedsReview;
+  final List<PosStatusLine> lines;
 
-  factory PosStatus.fromJson(Map<String, dynamic> json) => PosStatus(
-    syncStatus: json['pos_sync_status'] as String,
-    storeStatus: json['pos_status'] as String?,
-    lastCheckedAt: json['last_checked_at'] == null
-        ? null
-        : DateTime.parse(json['last_checked_at'] as String),
-    stale: json['stale'] as bool,
-    detail: json['detail'] as String? ?? '',
-    declineReason: json['decline_reason'] as String? ?? '',
-    closePending: json['close_pending'] as bool,
-    closeNeedsReview: json['close_needs_review'] as bool,
-  );
+  String get statusSentence {
+    final raw = storeStatus?.trim() ?? '';
+    if (raw.isNotEmpty) {
+      return switch (raw.toUpperCase()) {
+        'WAITING' => 'Waiting for the store manager to accept',
+        'ACCEPTED' => 'Accepted — ready for the cashier to release',
+        'PARTIAL' || 'PARTIALLY_RELEASED' => 'Partly released',
+        'RELEASED' => 'Released — picked up from the store',
+        'DECLINED' =>
+          declineReason.trim().isEmpty
+              ? 'Declined by the store'
+              : 'Declined by the store: ${declineReason.trim()}',
+        'CLOSED' => 'Closed at the store',
+        _ => raw,
+      };
+    }
+    return switch (syncStatus) {
+      'pending_sync' => 'Waiting to send this order to the store',
+      'failed' => 'Could not send this order to the store',
+      'synced' => 'Sent to the store — waiting for store status',
+      _ => 'Not checked with the store yet',
+    };
+  }
+
+  String get compactSummary {
+    if (lines.isEmpty) return statusSentence;
+    final released = lines.fold<double>(0, (s, l) => s + l.released);
+    final requested = lines.fold<double>(0, (s, l) => s + l.requested);
+    return '$statusSentence · released ${InputParsers.amountText(released)} '
+        'of ${InputParsers.amountText(requested)}';
+  }
+
+  factory PosStatus.fromJson(Map<String, dynamic> json) {
+    final rawLines = json['lines'];
+    final parsedLines = rawLines is List
+        ? [
+            for (final item in rawLines)
+              if (item is Map)
+                PosStatusLine.fromJson(item.cast<String, dynamic>()),
+          ]
+        : const <PosStatusLine>[];
+    return PosStatus(
+      syncStatus: json['pos_sync_status'] as String,
+      storeStatus: json['pos_status'] as String?,
+      lastCheckedAt: json['last_checked_at'] == null
+          ? null
+          : DateTime.parse(json['last_checked_at'] as String),
+      stale: json['stale'] as bool,
+      detail: json['detail'] as String? ?? '',
+      declineReason: json['decline_reason'] as String? ?? '',
+      closePending: json['close_pending'] as bool,
+      closeNeedsReview: json['close_needs_review'] as bool,
+      lines: parsedLines,
+    );
+  }
 }
 
 abstract interface class ProcurementRepository {

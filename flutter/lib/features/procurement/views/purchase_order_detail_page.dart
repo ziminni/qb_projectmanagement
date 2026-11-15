@@ -56,7 +56,7 @@ class PurchaseOrderDetailPage extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(o.poNo, style: Theme.of(context).textTheme.headlineSmall),
-                ProcurementPoStatusChip(status: o.status),
+                ProcurementPoStatusChip(status: o.status, source: o.source),
                 AppPdfButton(build: vm.pdfReport),
               ],
             ),

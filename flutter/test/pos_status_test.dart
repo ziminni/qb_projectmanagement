@@ -10,6 +10,7 @@ import 'package:buildpro_frontend/data/services/business_rule_exception.dart';
 import 'package:buildpro_frontend/data/services/session_service.dart';
 import 'package:buildpro_frontend/features/procurement/viewmodels/procurement_lookups.dart';
 import 'package:buildpro_frontend/features/procurement/viewmodels/purchase_order_detail_viewmodel.dart';
+import 'package:buildpro_frontend/features/procurement/widgets/procurement_po_status_chip.dart';
 import 'package:buildpro_frontend/features/procurement/widgets/procurement_pos_status_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -76,6 +77,32 @@ class StatusRepo extends ApiLikeProcurement {
   }
 }
 
+class RequestPosStatusRepo extends ApiLikeProcurement {
+  RequestPosStatusRepo({
+    this.enablePosStatus = true,
+    Map<int, PosStatus>? statuses,
+    Set<int>? failingIds,
+  }) : statuses = statuses ?? {},
+       failingIds = failingIds ?? {};
+
+  final bool enablePosStatus;
+  final Map<int, PosStatus> statuses;
+  final Set<int> failingIds;
+  final List<int> statusReads = [];
+
+  @override
+  bool get supportsPosStatus => enablePosStatus;
+
+  @override
+  Future<PosStatus> getPosStatus(int id) async {
+    statusReads.add(id);
+    if (failingIds.contains(id)) {
+      throw const BusinessRuleException('Store status unavailable.');
+    }
+    return statuses[id] ?? PosStatus.fromJson(snapshot());
+  }
+}
+
 void main() {
   test('HTTP cached GET and queue-only POST use no body or query', () async {
     final api = FakeApi((_) => json(snapshot(review: true)));
@@ -118,6 +145,34 @@ void main() {
       });
     }
   }
+
+  test('PosStatus.fromJson parses lines and tolerates missing lines key', () {
+    final withLines = PosStatus.fromJson({
+      ...snapshot(),
+      'pos_status': 'PARTIAL',
+      'lines': [
+        {
+          'code': 'CEM-40KG',
+          'description': 'Portland cement 40 kg',
+          'unit': 'bag',
+          'requested': '5.00',
+          'released': '3.00',
+          'outstanding': '2.00',
+        },
+      ],
+    });
+    expect(withLines.lines, hasLength(1));
+    expect(withLines.lines.single.code, 'CEM-40KG');
+    expect(withLines.lines.single.description, 'Portland cement 40 kg');
+    expect(withLines.lines.single.unit, 'bag');
+    expect(withLines.lines.single.requested, 5);
+    expect(withLines.lines.single.released, 3);
+    expect(withLines.lines.single.outstanding, 2);
+    expect(withLines.compactSummary, 'Partly released · released 3 of 5');
+
+    final withoutLines = PosStatus.fromJson(snapshot());
+    expect(withoutLines.lines, isEmpty);
+  });
 
   group('VM and panel', () {
     late StatusRepo repo;
@@ -243,13 +298,14 @@ void main() {
             ),
           ),
         );
-        expect(find.text('Stale cached data'), findsOneWidget);
+        expect(find.text('At the store'), findsOneWidget);
         expect(find.text('awaiting_counter'), findsOneWidget);
         expect(find.textContaining('store may still hold'), findsOneWidget);
         expect(
           find.textContaining('not proof of physical release'),
-          findsOneWidget,
+          findsNothing,
         );
+        expect(find.textContaining('Cached snapshot'), findsNothing);
         for (final secret in [
           '987654.32',
           'SECRET',
@@ -261,10 +317,10 @@ void main() {
         }
         await tester.tap(find.text('Retry store sync'));
         await tester.pumpAndSettle();
-        expect(find.text('Queued'), findsOneWidget);
+        expect(find.textContaining('Queued'), findsOneWidget);
         expect(find.text('Synced'), findsNothing);
         final reads = repo.reads;
-        await tester.tap(find.text('Refresh cached snapshot'));
+        await tester.tap(find.text('Check store now'));
         await tester.pumpAndSettle();
         expect(repo.reads, reads + 1);
         expect(repo.writes, 1);
@@ -286,12 +342,255 @@ void main() {
         ),
       );
       expect(find.text('Status unavailable. Retry.'), findsOneWidget);
-      expect(find.text('Refresh cached snapshot'), findsOneWidget);
+      expect(find.text('Check store now'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       repo.fail = false;
-      await tester.tap(find.text('Refresh cached snapshot'));
+      await tester.tap(find.text('Check store now'));
       await tester.pumpAndSettle();
       expect(find.text('awaiting_counter'), findsOneWidget);
     });
+
+    testWidgets(
+      'panel shows plain status sentences, per-line quantities and relative time',
+      (tester) async {
+        final now = DateTime.utc(2026, 11, 16, 10, 5);
+        final checkedTwoMinutesAgo = now
+            .subtract(const Duration(minutes: 2))
+            .toIso8601String();
+        final cases = <(String, String, String)>[
+          ('WAITING', '', 'Waiting for the store manager to accept'),
+          ('ACCEPTED', '', 'Accepted — ready for the cashier to release'),
+          ('PARTIAL', '', 'Partly released'),
+          ('RELEASED', '', 'Released — picked up from the store'),
+          ('DECLINED', 'Out of stock', 'Declined by the store: Out of stock'),
+          ('CLOSED', '', 'Closed at the store'),
+          ('LEGACY_STATE', '', 'LEGACY_STATE'),
+        ];
+
+        for (final (rawStatus, reason, expectedSentence) in cases) {
+          repo.response = {
+            'purchase_order_id': 5,
+            'source': 'own_store',
+            'pos_sync_status': 'synced',
+            'pos_status': rawStatus,
+            'last_checked_at': checkedTwoMinutesAgo,
+            'stale': false,
+            'detail': '',
+            'decline_reason': reason,
+            'close_pending': false,
+            'close_needs_review': false,
+            'lines': [
+              {
+                'code': 'CEM-40KG',
+                'description': 'Portland cement 40 kg',
+                'unit': 'bag',
+                'requested': '5.00',
+                'released': '3.00',
+                'outstanding': '2.00',
+              },
+            ],
+          };
+          await vm.load();
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: AnimatedBuilder(
+                  animation: vm,
+                  builder: (_, _) =>
+                      ProcurementPosStatusPanel(vm: vm, clock: () => now),
+                ),
+              ),
+            ),
+          );
+          expect(find.text('At the store'), findsOneWidget);
+          expect(find.text(expectedSentence), findsOneWidget);
+          expect(
+            find.text('Portland cement 40 kg — released 3 of 5 bag'),
+            findsOneWidget,
+          );
+          expect(find.text('Last checked 2 minutes ago'), findsOneWidget);
+          expect(find.text('Check store now'), findsOneWidget);
+        }
+      },
+    );
+  });
+
+  testWidgets(
+    'PO status chip shows Sent to store for own-store released orders only',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                ProcurementPoStatusChip(
+                  status: PurchaseOrderStatus.released,
+                  source: MaterialSource.ownStore,
+                ),
+                ProcurementPoStatusChip(
+                  status: PurchaseOrderStatus.released,
+                  source: MaterialSource.external,
+                ),
+                ProcurementPoStatusChip(
+                  status: PurchaseOrderStatus.purchased,
+                  source: MaterialSource.external,
+                ),
+                ProcurementPoStatusChip(
+                  status: PurchaseOrderStatus.delivered,
+                  source: MaterialSource.ownStore,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Sent to store'), findsOneWidget);
+      expect(find.text('Released'), findsOneWidget);
+      expect(find.text('Bought'), findsOneWidget);
+      expect(find.text('Delivered'), findsOneWidget);
+    },
+  );
+
+  group('material request detail store status', () {
+    setUp(resetServices);
+
+    testWidgets(
+      'shows Sent to store chip and compact store status line in API mode',
+      (tester) async {
+        final repo = RequestPosStatusRepo();
+        await getIt.unregister<ProcurementRepository>();
+        getIt.registerSingleton<ProcurementRepository>(repo);
+
+        // Place two own-store orders and one external order on request 4.
+        final ownOk = await repo.placeOrder(
+          const OrderDraft.ownStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [
+              (
+                materialId: 9,
+                description: 'Tie wire #16',
+                unit: 'kg',
+                quantity: 10,
+                unitPrice: 95,
+              ),
+            ],
+            coversItemIds: [12],
+            deliveryAddress: 'Site Gate',
+          ),
+          userId: 3,
+        );
+        final ownFail = await repo.placeOrder(
+          const OrderDraft.ownStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [
+              (
+                materialId: 1,
+                description: 'Portland cement 40 kg',
+                unit: 'bag',
+                quantity: 5,
+                unitPrice: 260,
+              ),
+            ],
+            deliveryAddress: 'Site Gate',
+          ),
+          userId: 3,
+        );
+        repo.statuses[ownOk.id] = const PosStatus(
+          syncStatus: 'synced',
+          storeStatus: 'RELEASED',
+          lastCheckedAt: null,
+          stale: false,
+          detail: '',
+          declineReason: '',
+          closePending: false,
+          closeNeedsReview: false,
+          lines: [
+            PosStatusLine(
+              code: 'TIE-16',
+              description: 'Tie wire #16',
+              unit: 'kg',
+              requested: 10,
+              released: 10,
+              outstanding: 0,
+            ),
+          ],
+        );
+        repo.failingIds.add(ownFail.id);
+        await repo.placeOrder(
+          const OrderDraft.otherStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [
+              (
+                materialId: 10,
+                description: 'Roof sheets (long span)',
+                unit: 'lin.m',
+                quantity: 220,
+                unitPrice: 450,
+              ),
+            ],
+            coversItemIds: [11],
+            storeName: 'Southern Roofing',
+            orNumber: 'OR-1182',
+            receiptPhotoUrl: '/tmp/r.jpg',
+          ),
+          userId: 3,
+        );
+
+        await pumpApp(tester);
+        await signInAs(tester, 'ramon@example.ph');
+        await goTo(tester, '/material-requests/4');
+
+        expect(find.text('Orders and purchases'), findsOneWidget);
+        expect(find.text('Sent to store'), findsNWidgets(2));
+        expect(find.text('Bought'), findsOneWidget);
+        expect(
+          find.text('Released — picked up from the store · released 10 of 10'),
+          findsOneWidget,
+        );
+        expect(find.text('Store status unavailable'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'mock mode (supportsPosStatus=false) hides store status lines',
+      (tester) async {
+        final repo = RequestPosStatusRepo(enablePosStatus: false);
+        await getIt.unregister<ProcurementRepository>();
+        getIt.registerSingleton<ProcurementRepository>(repo);
+
+        // An own-store order, so this proves mock mode never asks the store.
+        await repo.placeOrder(
+          const OrderDraft.ownStore(
+            requestId: 4,
+            categoryId: 3,
+            lines: [
+              (
+                materialId: 9,
+                description: 'Tie wire #16',
+                unit: 'kg',
+                quantity: 10,
+                unitPrice: 95,
+              ),
+            ],
+            coversItemIds: [12],
+            deliveryAddress: 'Site Gate',
+          ),
+          userId: 3,
+        );
+
+        await pumpApp(tester);
+        await signInAs(tester, 'ramon@example.ph');
+        await goTo(tester, '/material-requests/4');
+
+        expect(find.text('Orders and purchases'), findsOneWidget);
+        expect(repo.statusReads, isEmpty);
+        expect(find.textContaining('released '), findsNothing);
+        expect(find.text('Store status unavailable'), findsNothing);
+      },
+    );
   });
 }

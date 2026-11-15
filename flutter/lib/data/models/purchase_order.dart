@@ -17,6 +17,13 @@ enum PurchaseOrderStatus implements JsonEnum {
   final String apiValue;
   final String label;
 
+  /// Human label for a specific [source]; own-store orders waiting in `released`
+  /// are shown as "Sent to store" so PMs do not mistake it for pickup.
+  String labelFor(MaterialSource? source) =>
+      this == PurchaseOrderStatus.released && source == MaterialSource.ownStore
+      ? 'Sent to store'
+      : label;
+
   /// Still expecting deliveries on site.
   bool get awaitsDelivery =>
       this == PurchaseOrderStatus.released ||
@@ -90,6 +97,8 @@ class PurchaseOrder {
   bool get paidOnPurchase =>
       source == MaterialSource.external &&
       (financeKeysOmitted || orNumber != null);
+
+  String get statusLabel => status.labelFor(source);
 
   PurchaseOrder copyWith({
     PurchaseOrderStatus? status,
