@@ -369,6 +369,18 @@ class PosWorkflowCase(ProcurementCase):
 
 
 class ImportJobTests(PosWorkflowCase):
+    def test_the_payer_is_the_suppliers_current_one_at_send_time(self):
+        # A payer fixed in the supplier list (or by seed_demo) must heal an order
+        # whose stored payload still carries the old, refused payer.
+        self.own_store.pos_payer_id = 9
+        self.own_store.save(update_fields=['pos_payer_id'])
+        fake = FakePosClient().script('import', import_body(self.po_no, self.sent_lines()))
+        self.run_worker(fake)
+
+        self.assertEqual(fake.imports[0]['project']['payer'], 9)
+        job = PosOutboxJob.objects.get(pk=self.import_job.pk)
+        self.assertEqual(job.payload['project']['payer'], 9)
+
     def test_a_201_marks_the_order_synced_and_snapshots_the_status(self):
         fake = FakePosClient().script('import', import_body(self.po_no, self.sent_lines()))
         processed = self.run_worker(fake)
