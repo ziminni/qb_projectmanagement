@@ -38,6 +38,7 @@ differently (contract "Durable identity, retry and history"):
 import ipaddress
 import logging
 import re
+import threading
 import time
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
@@ -210,11 +211,27 @@ def _decimal(value):
     return number.quantize(Decimal('0.01'))
 
 
+# The service JWT, shared by every default client in this process (memory only).
+# Each request builds a new client, and signing in per call ran into the tunnel
+# gateway's sign-in limit (about six a minute): CPMS then got HTTP 429 for every
+# store read. Keyed by store address and account, so changing either signs in anew.
+_SHARED_TOKENS = {}
+_SHARED_LOCK = threading.Lock()
+_LOGIN_LOCK = threading.Lock()
+
+
+def forget_shared_tokens():
+    """Drop the shared sign-in (tests; the next call signs in again)."""
+    with _SHARED_LOCK:
+        _SHARED_TOKENS.clear()
+
+
 class PosClient:
     """One configured connection to the store's CPMS boundary.
 
-    Holds the service JWT in memory only: a new client logs in again, so a
-    crashed worker cannot leave a token behind anywhere.
+    Holds the service JWT in memory only, never on disk. Clients built with the
+    default session share one sign-in per process; a client given its own
+    session (tests) keeps its own.
     """
 
     def __init__(self, base_url=None, timeout=None, username=None, password=None,
@@ -229,9 +246,11 @@ class PosClient:
         self.password = (
             password if password is not None else settings.POS_API_SERVICE_PASSWORD
         )
+        self._shared = session is None
         self.session = session if session is not None else requests.Session()
         self._access = None
         self._refresh_token = None
+        self._load_shared()
 
     # --- internals ------------------------------------------------------
     def _headers(self, *, has_body):
@@ -273,6 +292,18 @@ class PosClient:
         except ValueError:
             return None
 
+    def _load_shared(self):
+        if self._shared:
+            with _SHARED_LOCK:
+                self._access, self._refresh_token = _SHARED_TOKENS.get(
+                    (self.base_url, self.username), (None, None))
+
+    def _save_shared(self):
+        if self._shared:
+            with _SHARED_LOCK:
+                _SHARED_TOKENS[(self.base_url, self.username)] = (
+                    self._access, self._refresh_token)
+
     def _store_tokens(self, body):
         access = (body or {}).get('access')
         if not access:
@@ -280,6 +311,7 @@ class PosClient:
         self._access = access
         if (body or {}).get('refresh'):
             self._refresh_token = body['refresh']
+        self._save_shared()
 
     def _login(self):
         if not self.username or not self.password:
@@ -296,6 +328,16 @@ class PosClient:
             )
         self._store_tokens(self._json(response))
 
+    def _sign_in_once(self):
+        """Sign in, unless another thread did while this one waited."""
+        if not self._shared:
+            self._login()
+            return
+        with _LOGIN_LOCK:
+            self._load_shared()
+            if not self._access:
+                self._login()
+
     def _refresh_access(self):
         if not self._refresh_token:
             self._login()
@@ -306,6 +348,7 @@ class PosClient:
         if not 200 <= response.status_code < 300:
             self._access = None
             self._refresh_token = None
+            self._save_shared()
             self._login()
             return
         self._store_tokens(self._json(response))
@@ -354,7 +397,7 @@ class PosClient:
         error = ''
         try:
             if not self._access:
-                self._login()
+                self._sign_in_once()
             response = self._send(method, path, payload)
             if response.status_code == 401:
                 # The access token expired: refresh once, then give up.
