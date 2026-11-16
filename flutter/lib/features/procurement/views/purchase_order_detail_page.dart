@@ -56,7 +56,12 @@ class PurchaseOrderDetailPage extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(o.poNo, style: Theme.of(context).textTheme.headlineSmall),
-                ProcurementPoStatusChip(status: o.status, source: o.source),
+                ProcurementPoStatusChip(
+                  status: o.status,
+                  source: o.source,
+                  // The live reading wins, so the auto-refresh updates it too.
+                  storeStatus: vm.posStatus?.storeStatus ?? o.storeStatus,
+                ),
                 AppPdfButton(build: vm.pdfReport),
               ],
             ),

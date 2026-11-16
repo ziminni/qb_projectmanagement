@@ -31,7 +31,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ..users.models import Role
-from . import pos_worker
+from . import pos_client, pos_worker
 from .models import (
     PosOutboxJob,
     PosOutboxOperation,
@@ -230,6 +230,66 @@ class PosClientConfigurationTests(ProcurementCase):
         headers = session.requests[-1]['headers']
         self.assertEqual(headers['X-Store-Gateway'], 'let-me-in')
         self.assertIn('Authorization', headers)
+
+
+@override_settings(**POS_SETTINGS)
+class PosClientTokenReuseTests(ProcurementCase):
+    """Every call builds a new client; they must share one store sign-in.
+
+    The tunnel gateway allows about six sign-ins a minute. Signing in per call
+    locked CPMS out (HTTP 429) as soon as a screen read several projects.
+    """
+
+    def setUp(self):
+        super().setUp()
+        pos_client.forget_shared_tokens()
+        self.addCleanup(pos_client.forget_shared_tokens)
+
+    def test_new_clients_reuse_the_first_sign_in(self):
+        session = FakeSession(
+            FakeResponse(200, {'access': 'jwt-one', 'refresh': 'refresh-one'}),
+            FakeResponse(200, {'cpms_request_id': 'PO-1', 'items': []}),
+            FakeResponse(200, {'cpms_request_id': 'PO-2', 'items': []}),
+        )
+        with mock.patch.object(pos_client.requests, 'Session', return_value=session):
+            PosClient().read_request('PO-1')
+            PosClient().read_request('PO-2')
+
+        paths = [r['url'].removeprefix('https://pos.example.test') for r in session.requests]
+        self.assertEqual(paths.count(pos_client.LOGIN_PATH), 1)
+        self.assertEqual(session.requests[-1]['headers']['Authorization'], 'Bearer jwt-one')
+
+    def test_an_expired_shared_token_is_refreshed_once_for_everyone(self):
+        session = FakeSession(
+            FakeResponse(200, {'access': 'jwt-one', 'refresh': 'refresh-one'}),
+            FakeResponse(200, {'cpms_request_id': 'PO-1', 'items': []}),
+            FakeResponse(401, {}),
+            FakeResponse(200, {'access': 'jwt-two'}),
+            FakeResponse(200, {'cpms_request_id': 'PO-2', 'items': []}),
+            FakeResponse(200, {'cpms_request_id': 'PO-3', 'items': []}),
+        )
+        with mock.patch.object(pos_client.requests, 'Session', return_value=session):
+            PosClient().read_request('PO-1')
+            PosClient().read_request('PO-2')
+            PosClient().read_request('PO-3')
+
+        self.assertEqual(session.requests[-1]['headers']['Authorization'], 'Bearer jwt-two')
+        self.assertEqual(session.responses, [])
+
+    def test_a_client_with_its_own_session_keeps_its_own_sign_in(self):
+        pos_client.forget_shared_tokens()
+        first = FakeSession(
+            FakeResponse(200, {'access': 'jwt-one', 'refresh': 'r'}),
+            FakeResponse(200, {'cpms_request_id': 'PO-1', 'items': []}),
+        )
+        second = FakeSession(
+            FakeResponse(200, {'access': 'jwt-two', 'refresh': 'r'}),
+            FakeResponse(200, {'cpms_request_id': 'PO-1', 'items': []}),
+        )
+        PosClient(session=first).read_request('PO-1')
+        PosClient(session=second).read_request('PO-1')
+
+        self.assertEqual(second.requests[-1]['headers']['Authorization'], 'Bearer jwt-two')
 
 
 @override_settings(**POS_SETTINGS)
@@ -1043,6 +1103,19 @@ class PosRouteAccessTests(PosWorkflowCase):
                 'outstanding': '3.00',
             },
         ])
+
+    def test_order_rows_carry_the_store_status_for_their_chip(self):
+        # Lists and the order header show where the store is; without this the
+        # chip read "Sent to store" even after the cashier released everything.
+        self.act_as(self.owner, Role.OWNER)
+        listed = self.client.get('/api/v1/purchase-orders/').data
+        self.assertIsNone(next(r for r in listed if r['id'] == self.order.pk)['store_status'])
+
+        PosRequestSnapshot.objects.create(purchase_order=self.order, pos_status='RELEASED')
+        listed = self.client.get('/api/v1/purchase-orders/').data
+        detail = self.client.get(f'/api/v1/purchase-orders/{self.order.pk}/').data
+        self.assertEqual(next(r for r in listed if r['id'] == self.order.pk)['store_status'], 'RELEASED')
+        self.assertEqual(detail['order']['store_status'], 'RELEASED')
 
     def test_the_client_portal_has_no_pos_surface(self):
         self.act_as(self.client_user, Role.CLIENT)

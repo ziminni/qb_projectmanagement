@@ -452,6 +452,41 @@ void main() {
     },
   );
 
+  test('own-store chip follows the store once it has answered', () {
+    String label(String? store) => PurchaseOrderStatus.released.labelFor(
+      MaterialSource.ownStore,
+      storeStatus: store,
+    );
+    expect(label(null), 'Sent to store');
+    expect(label('WAITING'), 'Sent to store');
+    expect(label('ACCEPTED'), 'Accepted by store');
+    expect(label('PARTIAL'), 'Partly released');
+    expect(label('RELEASED'), 'Released by store');
+    expect(label('DECLINED'), 'Declined by store');
+    // The store's answer never relabels an order that moved on in CPMS.
+    expect(
+      PurchaseOrderStatus.delivered.labelFor(
+        MaterialSource.ownStore,
+        storeStatus: 'RELEASED',
+      ),
+      'Delivered',
+    );
+  });
+
+  test('an order row reads store_status from the API', () {
+    final order = PurchaseOrder.fromJson({
+      'id': 2,
+      'po_no': 'PO-2026-0002',
+      'project_id': 1,
+      'source': 'own_store',
+      'status': 'released',
+      'total_amount': '544.00',
+      'store_status': 'RELEASED',
+    });
+    expect(order.storeStatus, 'RELEASED');
+    expect(order.statusLabel, 'Released by store');
+  });
+
   group('material request detail store status', () {
     setUp(resetServices);
 

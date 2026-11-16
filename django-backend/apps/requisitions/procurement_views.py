@@ -174,7 +174,7 @@ class PurchaseOrderViewSet(ScopedViewSet):
     def get_queryset(self):
         return PurchaseOrder.objects.filter(
             project__in=self.projects(),
-        ).select_related('project', 'material_request', 'supplier')
+        ).select_related('project', 'material_request', 'supplier', 'pos_snapshot')
 
     def list(self, request):
         role = self.role()
