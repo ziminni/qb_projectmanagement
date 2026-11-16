@@ -6,10 +6,19 @@ import '../../../data/models/purchase_order.dart';
 import '../../../shared/widgets/app_status_chip.dart';
 
 class ProcurementPoStatusChip extends StatelessWidget {
-  const ProcurementPoStatusChip({super.key, required this.status, this.source});
+  const ProcurementPoStatusChip({
+    super.key,
+    required this.status,
+    this.source,
+    this.storeStatus,
+  });
 
   final PurchaseOrderStatus status;
   final MaterialSource? source;
+
+  /// The store's raw status for an own-store order; see
+  /// [PurchaseOrderStatus.labelFor].
+  final String? storeStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +41,7 @@ class ProcurementPoStatusChip extends StatelessWidget {
       ),
     };
     return AppStatusChip(
-      label: status.labelFor(source),
+      label: status.labelFor(source, storeStatus: storeStatus),
       foreground: fg,
       background: bg,
     );

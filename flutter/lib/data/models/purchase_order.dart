@@ -17,12 +17,22 @@ enum PurchaseOrderStatus implements JsonEnum {
   final String apiValue;
   final String label;
 
-  /// Human label for a specific [source]; own-store orders waiting in `released`
-  /// are shown as "Sent to store" so PMs do not mistake it for pickup.
-  String labelFor(MaterialSource? source) =>
-      this == PurchaseOrderStatus.released && source == MaterialSource.ownStore
-      ? 'Sent to store'
-      : label;
+  /// Human label for a specific [source]. An own-store order in `released`
+  /// follows the store's own status ([storeStatus], the raw POS string), so it
+  /// reads "Sent to store" only until the store has answered.
+  String labelFor(MaterialSource? source, {String? storeStatus}) {
+    if (this != PurchaseOrderStatus.released ||
+        source != MaterialSource.ownStore) {
+      return label;
+    }
+    return switch (storeStatus?.trim().toUpperCase()) {
+      'ACCEPTED' => 'Accepted by store',
+      'PARTIAL' || 'PARTIALLY_RELEASED' => 'Partly released',
+      'RELEASED' => 'Released by store',
+      'DECLINED' => 'Declined by store',
+      _ => 'Sent to store',
+    };
+  }
 
   /// Still expecting deliveries on site.
   bool get awaitsDelivery =>
@@ -58,6 +68,7 @@ class PurchaseOrder {
     this.createdAt,
     this.updatedAt,
     this.financeKeysOmitted = false,
+    this.storeStatus,
   });
 
   final int id;
@@ -91,6 +102,10 @@ class PurchaseOrder {
   /// True when the server withheld the finance keys for this row.
   final bool financeKeysOmitted;
 
+  /// The store's last known status for an own-store order (`RELEASED`, …);
+  /// null before the store answered and always null in mocks.
+  final String? storeStatus;
+
   /// Paid at the counter when bought, so it is never a payable. `or_number`
   /// is finance-only, so a role it was redacted from decides by the source,
   /// which the server never hides.
@@ -98,7 +113,7 @@ class PurchaseOrder {
       source == MaterialSource.external &&
       (financeKeysOmitted || orNumber != null);
 
-  String get statusLabel => status.labelFor(source);
+  String get statusLabel => status.labelFor(source, storeStatus: storeStatus);
 
   PurchaseOrder copyWith({
     PurchaseOrderStatus? status,
@@ -121,6 +136,7 @@ class PurchaseOrder {
     createdAt: createdAt,
     updatedAt: DateTime.now(),
     financeKeysOmitted: financeKeysOmitted,
+    storeStatus: storeStatus,
   );
 
   /// [financeKeysOmitted] is what a role without finance access receives: the
@@ -150,6 +166,7 @@ class PurchaseOrder {
     createdAt: JsonUtils.toDateOrNull(json['created_at']),
     updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
     financeKeysOmitted: financeKeysOmitted,
+    storeStatus: json['store_status'] as String?,
   );
 
   Map<String, dynamic> toJson() => {

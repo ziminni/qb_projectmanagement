@@ -40,7 +40,11 @@ class ProcurementPoTile extends StatelessWidget {
       ),
       trailing:
           trailing ??
-          ProcurementPoStatusChip(status: order.status, source: order.source),
+          ProcurementPoStatusChip(
+            status: order.status,
+            source: order.source,
+            storeStatus: order.storeStatus,
+          ),
     );
   }
 }

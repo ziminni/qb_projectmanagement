@@ -116,6 +116,9 @@ class PurchaseOrderItemSerializer(RedactedSerializer):
 
 class PurchaseOrderSerializer(RedactedSerializer):
     receipt_photo_url = serializers.SerializerMethodField()
+    # The store's raw status from the cached snapshot (no POS call), so lists
+    # and the order header can say "Released by store" instead of "Sent to store".
+    store_status = serializers.SerializerMethodField()
     # OR evidence is finance-sensitive too (contract access section); the
     # operational roles keep the order row without it.
     finance_only = ('total_amount', 'or_number', 'receipt_photo_url')
@@ -126,9 +129,15 @@ class PurchaseOrderSerializer(RedactedSerializer):
             'id', 'po_no', 'project_id', 'material_request_id', 'category_id',
             'supplier_id', 'store_name', 'source', 'status', 'total_amount',
             'delivery_address', 'or_number', 'receipt_photo_url', 'approved_by',
-            'created_at', 'updated_at',
+            'created_at', 'updated_at', 'store_status',
         )
         read_only_fields = fields
+
+    def get_store_status(self, order):
+        try:
+            return order.pos_snapshot.pos_status or None
+        except PosRequestSnapshot.DoesNotExist:
+            return None
 
     def get_receipt_photo_url(self, order):
         if not order.receipt_file_name:
