@@ -123,6 +123,10 @@ def count_first(name):
     return f'Count the {name} on site before requesting more.'
 
 
+def no_store_price(name):
+    return f'The store has no price for {name}, so it cannot be ordered yet.'
+
+
 def already_covered(description):
     return f'{description} is already covered by another order.'
 

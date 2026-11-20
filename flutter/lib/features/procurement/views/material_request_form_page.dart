@@ -188,8 +188,9 @@ class _MaterialRequestFormPageState extends State<MaterialRequestFormPage> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              'Type each item and how many you need. The owner '
-                              'picks the exact materials when ordering.',
+                              'Type or pick each item, then how many and in '
+                              'what unit (bags, kilos, pieces...). The owner '
+                              'picks the exact store products when ordering.',
                               style: small,
                             ),
                             const SizedBox(height: AppSpacing.sm),
@@ -198,7 +199,9 @@ class _MaterialRequestFormPageState extends State<MaterialRequestFormPage> {
                                 key: ObjectKey(line),
                                 line: line,
                                 nameLabel: 'Item',
-                                showUnit: false,
+                                unitChoices: commonUnits,
+                                suggestions: vm.lookups.materials.values
+                                    .toList(),
                                 onChanged: vm.changed,
                                 onRemove: () => vm.removeLine(line),
                               ),

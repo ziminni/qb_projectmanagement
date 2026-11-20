@@ -426,17 +426,31 @@ void main() {
     await pumpApp(tester);
     await signInAs(tester, 'ana@example.ph');
     await goTo(tester, '/material-requests/new?projectId=1');
-    // Items are typed: no category, material or unit pickers.
+    // No category picker; the unit is chosen from a list, never typed.
     expect(find.textContaining('Category'), findsNothing);
     expect(find.widgetWithText(TextFormField, 'Unit'), findsNothing);
+    expect(
+      find.widgetWithText(DropdownButtonFormField<String>, 'Unit'),
+      findsOneWidget,
+    );
     final counts = find.widgetWithText(TextFormField, 'Counted');
     expect(counts, findsWidgets);
     for (var i = 0; i < counts.evaluate().length; i++) {
       await tester.enterText(counts.at(i), '5');
     }
     await tester.enterText(find.widgetWithText(TextFormField, 'Item'), 'Nails');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Qty'), '3');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Qty'), '2.5');
     expect(find.textContaining('₱'), findsNothing);
+    // Without a unit the request is not sent: "2.5" of what?
+    await tester.tap(find.text('Send to owner'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose a unit.'), findsOneWidget);
+    await tester.tap(
+      find.widgetWithText(DropdownButtonFormField<String>, 'Unit'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('kg').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Send to owner'));
     await tester.pumpAndSettle();
     expect(find.text('Request sent to the owner.'), findsOneWidget);
@@ -454,34 +468,44 @@ void main() {
     await tester.tap(find.text('Own hardware store'));
     await tester.pumpAndSettle();
     expect(find.text('Order from own hardware store'), findsOneWidget);
-    expect(find.text('Requested by the site engineer'), findsOneWidget);
+    expect(
+      find.text('Match requested items to store products'),
+      findsOneWidget,
+    );
     await tester.tap(
       find.widgetWithText(DropdownButtonFormField<int>, 'Charge to category'),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Roofing').last);
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Search name or SKU'),
-      'tie',
+    // Each requested item gets its own "Choose store product" button; the
+    // picker opens already searching for the engineer's words.
+    final tieRow = find.ancestor(
+      of: find.textContaining('Tie wire ·'),
+      matching: find.byType(Row),
+    );
+    await tester.tap(
+      find.descendant(
+        of: tieRow.first,
+        matching: find.text('Choose store product'),
+      ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Add to order'));
+    expect(find.widgetWithText(TextField, 'Tie wire'), findsOneWidget);
+    await tester.tap(find.text('Tie wire #16').last);
     await tester.pumpAndSettle();
-    // Tick the requested item this order covers.
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'Tie wire'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Send order'));
-    await tester.pumpAndSettle();
-    // Qty starts empty, so the form asks for it first.
-    expect(find.text('Quantity must be greater than 0.'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextFormField, 'Qty'), '10');
+    // The store's price is shown, locked; the quantity comes from the request.
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Unit price'), findsNothing);
     await tester.tap(find.text('Send order'));
     await tester.pumpAndSettle();
     // Confirmation: the site engineer's list next to the order.
     expect(find.text('Confirm order'), findsOneWidget);
     expect(find.text('You are ordering'), findsOneWidget);
-    expect(find.text('Roof sheets (long span)'), findsWidgets);
+    expect(
+      find.text('Roof sheets (long span) (left for another order)'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Back to edit'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Ordered from own store'), findsNothing);

@@ -137,6 +137,7 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
         deliveryAddress = project!.location;
         catalogCategories = await _catalog.getCategories();
         await _search();
+        await reloadCatalog();
       } else {
         lines.add(LineDraft());
       }
@@ -176,6 +177,90 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
   Future<void> setCategoryFilter(String? c) {
     categoryFilter = c;
     return _search();
+  }
+
+  // --- Line-by-line matching (own store) ------------------------------
+
+  /// The whole store catalogue, read once on load for the product picker.
+  List<StoreProduct> allProducts = const [];
+
+  /// Why the catalogue could not be read, or null. Without it no store price
+  /// can be confirmed, so nothing can be ordered.
+  String? catalogError;
+
+  /// Requested item id → the order line that answers it.
+  final matches = <int, LineDraft>{};
+
+  LineDraft? matchFor(int itemId) => matches[itemId];
+
+  Future<void> reloadCatalog() async {
+    try {
+      allProducts = await _catalog.getProducts();
+      catalogError = allProducts.any((p) => p.fromStore)
+          ? null
+          : 'The store could not be reached, so its products and prices '
+                'are not available. Try again in a moment.';
+    } catch (e) {
+      allProducts = const [];
+      catalogError = 'Could not read the store catalogue. $e';
+    }
+    notifyListeners();
+  }
+
+  /// Answers [item] with [p]: the engineer's quantity, the store's unit and
+  /// price. A product chosen earlier for the same item is replaced.
+  void match(MaterialRequestItem item, StoreProduct p) {
+    final old = matches.remove(item.id);
+    if (old != null) lines.remove(old);
+    final line = LineDraft(
+      materialId: p.materialId,
+      description: p.name,
+      unit: p.unit,
+      quantity: item.quantity,
+      unitPrice: p.price ?? 0,
+      priceHidden: p.price == null,
+    );
+    matches[item.id] = line;
+    lines.add(line);
+    covers.add(item.id);
+    notifyListeners();
+  }
+
+  void unmatch(int itemId) {
+    final old = matches.remove(itemId);
+    if (old != null) lines.remove(old);
+    covers.remove(itemId);
+    notifyListeners();
+  }
+
+  /// The catalogue ordered by how well each product answers [text]: words
+  /// shared with its name or code first ("nails 4" finds "Common Nail 4in").
+  /// Products sharing no word are left out unless none share one.
+  List<StoreProduct> rankFor(String text) {
+    List<String> words(String s) => s
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    final asked = words(text);
+    int score(StoreProduct p) {
+      final have = words('${p.name} ${p.sku}');
+      return asked
+          .where((a) => have.any((h) => h.startsWith(a) || a.startsWith(h)))
+          .length;
+    }
+
+    int byName(StoreProduct a, StoreProduct b) =>
+        a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    if (asked.isEmpty) return [...allProducts]..sort(byName);
+    final scored = [
+      for (final p in allProducts) (p: p, s: score(p)),
+    ]..sort((a, b) => b.s != a.s ? b.s - a.s : byName(a.p, b.p));
+    final hits = [
+      for (final r in scored)
+        if (r.s > 0) r.p,
+    ];
+    return hits.isEmpty ? [for (final r in scored) r.p] : hits;
   }
 
   bool isPicked(StoreProduct p) =>
@@ -223,6 +308,14 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
 
   void removeLine(LineDraft line) {
     lines.remove(line);
+    final matched = [
+      for (final e in matches.entries)
+        if (identical(e.value, line)) e.key,
+    ];
+    for (final id in matched) {
+      matches.remove(id);
+      covers.remove(id);
+    }
     notifyListeners();
   }
 
@@ -242,7 +335,7 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
     if (lines.isEmpty) {
       throw BusinessRuleException(
         isOwnStore
-            ? 'Pick at least one product from the catalog.'
+            ? 'Choose a store product for at least one requested item.'
             : 'Add at least one material.',
       );
     }
@@ -250,8 +343,10 @@ class OrderFormViewModel extends ChangeNotifier with ActionRunner {
       throw const BusinessRuleException('Choose the budget category.');
     }
     if (covers.isEmpty) {
-      throw const BusinessRuleException(
-        'Tick the requested items this order covers.',
+      throw BusinessRuleException(
+        isOwnStore
+            ? 'Choose a store product for at least one requested item.'
+            : 'Tick the requested items this order covers.',
       );
     }
     final orderLines = [for (final l in lines) l.toOrderLine()];

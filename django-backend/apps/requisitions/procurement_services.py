@@ -32,6 +32,7 @@ from datetime import date
 from decimal import Decimal
 from typing import NoReturn
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound
@@ -77,6 +78,41 @@ def _text(value):
 
 def _refuse(message) -> NoReturn:
     raise RuleRefused(message)
+
+
+STORE_PRICE_UNREACHABLE = (
+    'The store could not be reached, so its price could not be confirmed. Try again.'
+)
+
+
+def store_prices(codes):
+    """The store's current price per selling code, asked live through `PosClient`.
+
+    The store's price is the real price (owner decision 2026-11-15), so an own-store
+    order is priced here and never by the app. A code the store did not price is
+    left out; a store that cannot be asked refuses the order.
+    """
+    from .pos_client import PosError, _decimal, get_pos_client
+
+    try:
+        rows = get_pos_client().list_materials()
+    except PosError:
+        _refuse(STORE_PRICE_UNREACHABLE)
+    prices = {}
+    for row in rows or []:
+        if not isinstance(row, dict) or str(row.get('code')) not in codes:
+            continue
+        price = _decimal(row.get('price'))
+        if price is not None and price >= 0:
+            prices[str(row['code'])] = price.quantize(Decimal('0.01'))
+    return prices
+
+
+def _send_soon():
+    """Hand a just-saved own-store order to the store now, not on the next pass."""
+    from .pos_worker import send_soon
+
+    send_soon()
 
 
 def _json_list(value, message=rules.BAD_LINES, allow_scalars=False):
@@ -468,6 +504,13 @@ def place_order(user, role, project, data, upload=None):
         supplier = _own_store_supplier()
         if any(not _text(line['material'].pos_code) for line in order_lines):
             _refuse(rules.MISSING_POS_CODE)
+        # The store sets the price; whatever the app sent is ignored.
+        prices = store_prices({_text(line['material'].pos_code) for line in order_lines})
+        for line in order_lines:
+            price = prices.get(_text(line['material'].pos_code))
+            if price is None:
+                _refuse(rules.no_store_price(line['material'].name))
+            line['unit_price'] = price
     else:
         if not store_name:
             _refuse(rules.ENTER_STORE_NAME)
@@ -563,6 +606,8 @@ def place_order(user, role, project, data, upload=None):
             locked.save(update_fields=['status', 'category', 'approved_by', 'updated_at'])
             if own_store:
                 _enqueue_import(order, user)
+                if getattr(settings, 'POS_SEND_ON_ORDER', True):
+                    transaction.on_commit(lambda: _send_soon())
             record(
                 user,
                 'purchase_order_created' if own_store else 'purchase_logged',

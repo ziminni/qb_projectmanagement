@@ -9,6 +9,7 @@ from unittest import mock
 
 from rest_framework.test import APITestCase
 
+from ..master_data.models import MaterialItem
 from ..users.models import Role
 from .models import Delivery, DeliveryItem, MaterialSource, PurchaseOrder, PurchaseOrderItem
 from .pos_client import PosConfigError, PosNotFound, PosTransportError
@@ -85,8 +86,49 @@ class PosCatalogTests(ProcurementFixtures, APITestCase):
         self.assertEqual(cement['price'], '275.00')
         self.assertEqual(cement['stock_status'], 'low')
         self.assertEqual(cement['unit'], 'BAG')
-        # A store item no CPMS material points at cannot be ordered yet.
-        self.assertIsNone(by_code['NAIL-4']['material_id'])
+        # A store item no CPMS material pointed at is linked on the spot.
+        self.assertIsNotNone(by_code['NAIL-4']['material_id'])
+
+    def test_an_unlinked_store_product_gets_a_cpms_material(self):
+        before = MaterialItem.objects.count()
+
+        data = self.get(FakePos(materials=ROWS)).data
+
+        nail = MaterialItem.objects.get(pos_code='NAIL-4')
+        self.assertEqual(MaterialItem.objects.count(), before + 1)
+        self.assertEqual(nail.name, 'Common Nail 4in')
+        self.assertEqual(nail.unit, 'KG')
+        self.assertEqual(nail.store_sku, 'NAIL-4')
+        self.assertEqual(nail.default_unit_cost, Decimal('95.50'))
+        self.assertEqual({r['code']: r['material_id'] for r in data}['NAIL-4'], nail.pk)
+        # A second read links nothing new.
+        self.get(FakePos(materials=ROWS))
+        self.assertEqual(MaterialItem.objects.count(), before + 1)
+
+    def test_an_unlinked_cpms_material_with_the_same_name_is_linked(self):
+        nail = MaterialItem.objects.create(name='common nail 4IN ', unit='kg')
+        before = MaterialItem.objects.count()
+
+        data = self.get(FakePos(materials=ROWS)).data
+
+        nail.refresh_from_db()
+        self.assertEqual(MaterialItem.objects.count(), before)
+        self.assertEqual(nail.pos_code, 'NAIL-4')
+        self.assertEqual({r['code']: r['material_id'] for r in data}['NAIL-4'], nail.pk)
+
+    def test_a_name_taken_by_another_code_gets_the_code_in_brackets(self):
+        MaterialItem.objects.create(name='Common Nail 4in', unit='kg', pos_code='OLD-1')
+        rows = ROWS + [dict(ROWS[1], code='NAIL-4B')]
+
+        data = self.get(FakePos(materials=rows)).data
+
+        self.assertEqual(
+            MaterialItem.objects.get(pos_code='NAIL-4').name, 'Common Nail 4in (NAIL-4)',
+        )
+        self.assertEqual(
+            MaterialItem.objects.get(pos_code='NAIL-4B').name, 'Common Nail 4in (NAIL-4B)',
+        )
+        self.assertTrue(all(row['material_id'] for row in data))
 
     def test_a_row_carries_only_the_allowed_keys(self):
         leaky = [dict(ROWS[0], cost='1.00', on_hand='99', id=5)]

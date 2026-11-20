@@ -19,6 +19,7 @@ import json
 import threading
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connections
@@ -114,6 +115,20 @@ class ProcurementFixtures:
         self.own_store = Supplier.objects.create(
             name='BuildPro Hardware', is_own_store=True, pos_payer_id=7,
         )
+        # The store prices own-store orders. A stand-in store answers here, and
+        # the instant send after an order is stubbed so no test reaches a store.
+        self.store_prices = {'CEM-40KG': Decimal('250.00')}
+        prices = mock.patch(
+            'apps.requisitions.procurement_services.store_prices',
+            side_effect=lambda codes: {
+                c: self.store_prices[c] for c in codes if c in self.store_prices
+            },
+        )
+        self.store_prices_mock = prices.start()
+        self.addCleanup(prices.stop)
+        send = mock.patch('apps.requisitions.procurement_services._send_soon')
+        self.send_soon_mock = send.start()
+        self.addCleanup(send.stop)
 
     # --- fixtures -------------------------------------------------------
     def make_project(self, code, name, status=ProjectStatus.ONGOING):
@@ -785,6 +800,50 @@ class PurchaseOrderTests(ProcurementCase):
         self.assertEqual(order.total_amount, Decimal('2500.00'))
         self.assertNotEqual(order.po_no, 'PO-FAKE')
         self.assertEqual(order.approved_by, self.owner)
+
+
+class StorePriceTests(ProcurementCase):
+    """Own-store orders are priced by the store, never by the app."""
+
+    def line(self, price):
+        return [{
+            'material_id': self.cement.pk, 'description': 'Portland Cement',
+            'unit': 'bag', 'quantity': 4, 'unit_price': price,
+        }]
+
+    def test_own_store_order_uses_the_store_price_not_the_apps(self):
+        _, response = self.place_order(lines=self.line('1.00'))
+
+        self.assertEqual(response.status_code, 201, response.data)
+        order = PurchaseOrder.objects.get()
+        self.assertEqual(order.items.get().unit_price, Decimal('250.00'))
+        self.assertEqual(order.total_amount, Decimal('1000.00'))
+
+    def test_own_store_order_is_refused_when_the_store_is_down(self):
+        from .procurement_services import STORE_PRICE_UNREACHABLE
+        from ..projects.rules import RuleRefused
+
+        self.store_prices_mock.side_effect = RuleRefused(STORE_PRICE_UNREACHABLE)
+        _, response = self.place_order()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('could not be reached', str(response.data))
+        self.assertFalse(PurchaseOrder.objects.exists())
+
+    def test_own_store_order_is_refused_when_the_store_has_no_price(self):
+        self.store_prices = {}
+        _, response = self.place_order()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('The store has no price for Portland Cement', str(response.data))
+        self.assertFalse(PurchaseOrder.objects.exists())
+
+    def test_placing_an_own_store_order_schedules_a_send(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            _, response = self.place_order()
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.send_soon_mock.assert_called_once_with()
 
 
 class RedactionAndScopeTests(ProcurementCase):

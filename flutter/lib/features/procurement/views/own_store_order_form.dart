@@ -17,13 +17,11 @@ import '../viewmodels/order_form_viewmodel.dart';
 import '../viewmodels/procurement_lookups.dart';
 import '../widgets/procurement_budget_card.dart';
 import '../widgets/procurement_category_field.dart';
-import '../widgets/store_product_subtitle.dart';
-import '../widgets/procurement_line_editor.dart';
+import '../widgets/own_store_match_card.dart';
 import '../widgets/procurement_order_confirm_dialog.dart';
-import '../widgets/procurement_request_summary.dart';
 
-/// The "Own hardware store" tab: the owner picks products from the store
-/// catalog, sets quantities and prices, and says where to deliver.
+/// The "Own hardware store" tab: the owner matches each requested item to a
+/// store product (at the store's price), and says where to deliver.
 class OwnStoreOrderForm extends StatefulWidget {
   const OwnStoreOrderForm({super.key, required this.requestId});
 
@@ -96,103 +94,9 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
                         style: small,
                       ),
                       gap,
-                      ProcurementRequestedItems(
-                        items: vm.detail!.items,
-                        orderNo: vm.orderNo,
-                        selected: vm.covers,
-                        onToggle: vm.toggleCover,
-                      ),
+                      OwnStoreMatchCard(vm: vm),
                       gap,
                       ProcurementCategoryField(vm: vm),
-                      gap,
-                      AppSectionCard(
-                        title: 'Store catalog',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            TextField(
-                              decoration: const InputDecoration(
-                                prefixIcon: Icon(Icons.search),
-                                hintText: 'Search name or SKU',
-                              ),
-                              onChanged: vm.setQuery,
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Wrap(
-                              spacing: AppSpacing.xs,
-                              runSpacing: AppSpacing.xs,
-                              children: [
-                                ChoiceChip(
-                                  label: const Text('All'),
-                                  selected: vm.categoryFilter == null,
-                                  onSelected: (_) => vm.setCategoryFilter(null),
-                                ),
-                                for (final c in vm.catalogCategories)
-                                  ChoiceChip(
-                                    label: Text(c),
-                                    selected: vm.categoryFilter == c,
-                                    onSelected: (_) => vm.setCategoryFilter(c),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            if (vm.products.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.all(AppSpacing.md),
-                                child: Text('No products match.'),
-                              ),
-                            for (final p in vm.products)
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(p.name),
-                                subtitle: Text(storeProductSubtitle(p)),
-                                trailing: vm.isPicked(p)
-                                    ? const Icon(Icons.check_circle)
-                                    : IconButton(
-                                        tooltip: 'Add to order',
-                                        icon: const Icon(
-                                          Icons.add_circle_outline,
-                                        ),
-                                        onPressed: () => vm.addProduct(p),
-                                      ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      gap,
-                      AppSectionCard(
-                        title: 'Your order',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (vm.lines.isEmpty)
-                              Text(
-                                'Add products from the catalog above.',
-                                style: small,
-                              ),
-                            for (final line in vm.lines)
-                              ProcurementLineEditor(
-                                key: ObjectKey(line),
-                                line: line,
-                                nameLabel: 'Product',
-                                fixedName: true,
-                                showPrice: true,
-                                onChanged: vm.changed,
-                                onRemove: () => vm.removeLine(line),
-                              ),
-                            if (vm.lines.isNotEmpty)
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: Text(
-                                  'Total ${Formatters.peso(vm.total)}',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
                       if (vm.budget != null) ...[
                         gap,
                         ProcurementBudgetCard(check: vm.budget!),
@@ -241,7 +145,9 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
                       'The site engineer confirms the delivery when it arrives.',
                   children: [
                     FilledButton.icon(
-                      onPressed: vm.isBusy ? null : _submit,
+                      onPressed: vm.isBusy || vm.catalogError != null
+                          ? null
+                          : _submit,
                       icon: const Icon(Icons.send),
                       label: const Text('Send order'),
                     ),

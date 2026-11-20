@@ -12,6 +12,7 @@ generic message and the detail stays in the CPMS log and `PosSyncLog`.
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.db import IntegrityError, transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
 from django.utils import timezone
 from rest_framework import status as http_status
@@ -52,6 +53,71 @@ def _store_down(problem):
     )
 
 
+def _linked_ids(codes):
+    ids = {}
+    for code, pk in MaterialItem.objects.filter(
+        pos_code__in=codes,
+    ).order_by('-pk').values_list('pos_code', 'pk'):
+        ids[code] = pk  # ascending pk wins when two materials share a code
+    return ids
+
+
+def link_store_products(rows):
+    """Code → CPMS material id for every store row, linking the ones CPMS lacks.
+
+    A store product no CPMS material points at gets one: an unlinked CPMS material
+    with the same name (case-insensitive) is linked, otherwise a material is created
+    from the store's name, unit and price. A name already used by a material linked to
+    another code gets the code in brackets, so the unique-name rule holds. Only the
+    CPMS database is written; the store is never changed.
+    """
+    codes = [str(row['code']) for row in rows]
+    ids = _linked_ids(codes)
+    missing = [row for row in rows if str(row['code']) not in ids]
+    if not missing:
+        return ids
+    for attempt in range(2):
+        try:
+            with transaction.atomic():
+                for row in missing:
+                    code = str(row['code'])
+                    if code in ids:
+                        continue  # the same code twice in one answer
+                    ids[code] = _link_one(row, code).pk
+            return ids
+        except IntegrityError:
+            if attempt:
+                raise
+            # Another read linked the same product at the same moment: re-read.
+            ids = _linked_ids(codes)
+            missing = [row for row in rows if str(row['code']) not in ids]
+    return ids
+
+
+def _link_one(row, code):
+    name = str(row.get('product') or code).strip()[:200] or code
+    unit = str(row.get('unit') or '').strip()[:32]
+    same_name = MaterialItem.objects.filter(name__iexact=name).order_by('pk').first()
+    if same_name is not None and not (same_name.pos_code or '').strip():
+        same_name.pos_code = code
+        if not (same_name.store_sku or '').strip():
+            same_name.store_sku = code[:64]
+        same_name.save(update_fields=['pos_code', 'store_sku', 'updated_at'])
+        return same_name
+    if same_name is not None:
+        # Taken by a material that already sells under another code.
+        name = f'{name[:200 - len(code) - 3]} ({code})'
+    price = _decimal(row.get('price'))
+    return MaterialItem.objects.create(
+        name=name,
+        unit=unit,
+        default_unit_cost=price if price is not None and price >= 0 else Decimal('0.00'),
+        store_sku=code[:64],
+        pos_code=code[:64],
+    )
+
+
+
 @api_view(['GET'])
 def pos_catalog_view(request):
     """`pos-catalog/` — the store's selling units with its price and stock status.
@@ -68,11 +134,7 @@ def pos_catalog_view(request):
         return _store_down(problem)
 
     rows = [row for row in rows if isinstance(row, dict) and row.get('code')]
-    ids = {}
-    for code, pk in MaterialItem.objects.filter(
-        pos_code__in=[str(row['code']) for row in rows],
-    ).order_by('-pk').values_list('pos_code', 'pk'):
-        ids[code] = pk  # ascending pk wins when two materials share a code
+    ids = link_store_products(rows)
     result = []
     for row in rows:
         price = _decimal(row.get('price'))

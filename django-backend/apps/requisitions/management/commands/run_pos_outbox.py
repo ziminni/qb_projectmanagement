@@ -43,7 +43,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--sleep', type=int,
-            default=getattr(settings, 'POS_OUTBOX_POLL_SECONDS', 30),
+            default=getattr(settings, 'POS_OUTBOX_POLL_SECONDS', 10),
             help='Seconds to wait between passes when looping.',
         )
 

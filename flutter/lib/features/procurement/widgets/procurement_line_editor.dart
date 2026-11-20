@@ -22,8 +22,17 @@ class ProcurementLineEditor extends StatelessWidget {
     this.showPrice = false,
     this.showUnit = true,
     this.fixedName = false,
+    this.lockPrice = false,
     this.suggestions = const [],
+    this.unitChoices = const [],
   });
+
+  /// When set, the unit is chosen from this list (plus the line's own unit if
+  /// it is not on it) instead of typed, and a unit is required.
+  final List<String> unitChoices;
+
+  /// Shows the unit price as read-only text: the own store sets it.
+  final bool lockPrice;
 
   final LineDraft line;
   final String nameLabel;
@@ -71,7 +80,14 @@ class ProcurementLineEditor extends StatelessWidget {
       if (showUnit) ...[
         const SizedBox(width: AppSpacing.sm),
         Expanded(
-          child: fixedName
+          child: unitChoices.isNotEmpty && !fixedName
+              ? _UnitDropdown(
+                  key: ValueKey('unit-${line.materialId}-${line.unit}'),
+                  line: line,
+                  choices: unitChoices,
+                  onChanged: onChanged,
+                )
+              : fixedName
               ? InputDecorator(
                   decoration: const InputDecoration(labelText: 'Unit'),
                   child: Text(line.unit),
@@ -87,7 +103,25 @@ class ProcurementLineEditor extends StatelessWidget {
                 ),
         ),
       ],
-      if (showPrice) ...[
+      if (showPrice && lockPrice) ...[
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Store price',
+              suffixIcon: Tooltip(
+                message: 'Set by the store. It cannot be changed here.',
+                child: Icon(Icons.lock_outline, size: 18),
+              ),
+            ),
+            child: Text(
+              line.priceHidden
+                  ? 'Unavailable'
+                  : Formatters.peso(line.unitPrice),
+            ),
+          ),
+        ),
+      ] else if (showPrice) ...[
         const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: TextFormField(
@@ -139,6 +173,66 @@ class ProcurementLineEditor extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Units a site engineer asks in, most common first.
+const commonUnits = [
+  'bag',
+  'kg',
+  'pc',
+  'box',
+  'roll',
+  'sheet',
+  'length',
+  'm',
+  'ft',
+  'sq.m',
+  'cu.m',
+  'L',
+  'gal',
+  'pail',
+  'set',
+];
+
+class _UnitDropdown extends StatelessWidget {
+  const _UnitDropdown({
+    super.key,
+    required this.line,
+    required this.choices,
+    required this.onChanged,
+  });
+
+  final LineDraft line;
+  final List<String> choices;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = line.unit.trim();
+    final known = choices.firstWhere(
+      (c) => c.toLowerCase() == current.toLowerCase(),
+      orElse: () => '',
+    );
+    final options = [
+      ...choices,
+      // A unit that came from the price list but is not a common one.
+      if (current.isNotEmpty && known.isEmpty) current,
+    ];
+    return DropdownButtonFormField<String>(
+      initialValue: current.isEmpty ? null : (known.isEmpty ? current : known),
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Unit'),
+      items: [
+        for (final u in options) DropdownMenuItem(value: u, child: Text(u)),
+      ],
+      validator: (v) =>
+          (v == null || v.trim().isEmpty) ? 'Choose a unit.' : null,
+      onChanged: (v) {
+        line.unit = v ?? '';
+        onChanged();
+      },
     );
   }
 }
