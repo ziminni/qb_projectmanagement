@@ -252,6 +252,118 @@ void main() {
     });
   });
 
+  group('matching a requested item to a store product', () {
+    const nails = StoreProduct(
+      sku: 'NAIL-4',
+      name: 'Common Nail 4in',
+      unit: 'KG',
+      price: 95.5,
+      materialId: 2,
+    );
+    MaterialRequestItem askedNails() => const MaterialRequestItem(
+      id: 2,
+      materialRequestId: 1,
+      description: 'nails 4 inch',
+      unit: 'kg',
+      quantity: 3,
+    );
+
+    Future<OrderFormViewModel> loaded() async {
+      final vm = OrderFormViewModel(
+        requestId: 1,
+        source: MaterialSource.ownStore,
+        session: getIt<SessionService>()
+          ..signIn(testUser, const [AppRole.owner], activeRole: AppRole.owner),
+        procurement: AskedRequestProcurement([
+          askedCement(unit: 'bags'),
+          askedNails(),
+        ]),
+        catalog: FixedCatalog([nails, cementProduct]),
+        lookups: ProcurementLookups.fromServices(),
+      );
+      await vm.load();
+      // The mock owner is not on project 1, so load() stops before the
+      // catalogue; read it directly.
+      await vm.reloadCatalog();
+      return vm;
+    }
+
+    test('match fills qty from the request and the store price, and covers '
+        'the item', () async {
+      final vm = await loaded();
+
+      vm.match(askedCement(unit: 'bags'), cementProduct);
+
+      final line = vm.matchFor(1)!;
+      expect(line.quantity, 20);
+      expect(line.unit, 'bag');
+      expect(line.unitPrice, 260);
+      expect(line.materialId, 1);
+      expect(vm.covers, {1});
+      expect(vm.lines, [line]);
+      expect(vm.total, 5200);
+    });
+
+    test('re-matching replaces the earlier product: one line, one cover', () async {
+      final vm = await loaded();
+      vm.match(askedCement(), nails);
+
+      vm.match(askedCement(), cementProduct);
+
+      expect(vm.lines, hasLength(1));
+      expect(vm.lines.single.materialId, 1);
+      expect(vm.covers, {1});
+    });
+
+    test('unmatch removes the line and the cover', () async {
+      final vm = await loaded();
+      vm.match(askedCement(), cementProduct);
+      vm.match(askedNails(), nails);
+
+      vm.unmatch(1);
+
+      expect(vm.matchFor(1), isNull);
+      expect(vm.lines.single.materialId, 2);
+      expect(vm.covers, {2});
+    });
+
+    test('rankFor puts the closest product first', () async {
+      final vm = await loaded();
+
+      expect(vm.rankFor('portland cement').first, cementProduct);
+      expect(vm.rankFor('nails 4').first, nails);
+      expect(vm.rankFor(''), hasLength(2));
+    });
+
+    testWidgets('a locked price is shown as text, not a field', (tester) async {
+      final vm = await loaded();
+      vm.match(askedCement(), cementProduct);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Form(
+              child: ProcurementLineEditor(
+                line: vm.lines.single,
+                nameLabel: 'Product',
+                fixedName: true,
+                showPrice: true,
+                lockPrice: true,
+                onChanged: vm.changed,
+                onRemove: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('₱260.00'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+      // Only the quantity can be typed.
+      expect(find.byType(TextFormField), findsOneWidget);
+    });
+  });
+
   test('mock mode keeps the demo catalogue', () async {
     final products = await MockStoreCatalogRepository().getProducts();
 

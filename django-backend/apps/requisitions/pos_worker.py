@@ -596,6 +596,28 @@ def run_once(client=None, limit=None, now=None):
     return processed
 
 
+def send_soon():
+    """Run a short outbox pass in the background, right after an order is saved.
+
+    The store sees the request in seconds instead of on the worker's next pass. It
+    never blocks or fails the order: any problem is logged and the queued job stays
+    for the worker, whose stable request identity keeps a retry from duplicating it.
+    """
+    import threading
+
+    from django.db import connection
+
+    def _run():
+        try:
+            run_once(limit=5)
+        except Exception:  # noqa: BLE001 - the worker retries; the order stands.
+            logger.exception('Sending a new order to the store right away failed.')
+        finally:
+            connection.close()
+
+    threading.Thread(target=_run, name='pos-send-soon', daemon=True).start()
+
+
 def request_sync(user, role, order, now=None):
     """`POST purchase-orders/{id}/pos-sync/` — the owner asks the worker again.
 
