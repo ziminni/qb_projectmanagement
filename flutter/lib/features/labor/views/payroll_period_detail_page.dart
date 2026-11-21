@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
+import '../../../core/constants/app_text_styles.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
+import '../../../data/models/payroll_line.dart';
 import '../../../data/models/payroll_period.dart';
-import '../../../data/services/payroll_calculator.dart';
+import '../../../data/repositories/company_repository.dart';
+import '../../../shared/pdf/pdf_renderer.dart';
 import '../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_pdf_button.dart';
-import '../../../shared/widgets/app_figure.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
 import '../viewmodels/payroll_period_detail_viewmodel.dart';
@@ -26,6 +30,26 @@ class PayrollPeriodDetailPage extends StatelessWidget {
   const PayrollPeriodDetailPage({super.key, required this.periodId});
 
   final int periodId;
+
+  Future<void> _exportPayslip(
+    BuildContext context,
+    PayrollPeriodDetailViewModel vm,
+    PayrollLine line,
+  ) async {
+    try {
+      final report = vm.payslipReport(line);
+      final company = (await getIt<CompanyRepository>().getCompany()).name;
+      final bytes = await PdfRenderer.render(report, company: company);
+      await Printing.layoutPdf(
+        name: '${report.fileName}.pdf',
+        onLayout: (_) async => bytes,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        showAppMessage(context, 'Could not export payslip. $e');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,131 +69,131 @@ class PayrollPeriodDetailPage extends StatelessWidget {
         if (vm.error != null) return AppEmptyState(message: vm.error!);
         final p = vm.period!;
         final textTheme = Theme.of(context).textTheme;
+        final scheme = Theme.of(context).colorScheme;
+        final totalDays = vm.lines.fold<double>(0, (s, l) => s + l.daysWorked);
+
         return ListView(
           padding: pagePadding(context),
           children: [
             Wrap(
-              spacing: AppSpacing.sm,
+              alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppSpacing.lg,
+              runSpacing: AppSpacing.md,
               children: [
-                Text(
-                  'Payroll · ${Formatters.dateRange(p.periodStart, p.periodEnd)}',
-                  style: textTheme.headlineSmall,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Payroll · ${Formatters.dateRange(p.periodStart, p.periodEnd)}',
+                          style: textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        LaborPeriodStatusChip(status: p.status),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${vm.project!.code} · ${vm.project!.name}',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                LaborPeriodStatusChip(status: p.status),
-                AppPdfButton(build: vm.pdfReport),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (vm.canVerify)
+                      FilledButton.icon(
+                        onPressed: vm.isBusy || vm.verifyBlocker != null
+                            ? null
+                            : () async {
+                                final ok = await reportAction(
+                                  context,
+                                  vm.verify(),
+                                );
+                                if (ok && context.mounted) {
+                                  showSuccessAlert(
+                                    context,
+                                    'Attendance verified.',
+                                  );
+                                }
+                              },
+                        icon: const Icon(Icons.fact_check_outlined, size: 18),
+                        label: const Text('Verify attendance'),
+                      ),
+                    if (vm.canProcess)
+                      FilledButton.icon(
+                        onPressed: vm.isBusy
+                            ? null
+                            : () async {
+                                final ok = await showAppConfirmDialog(
+                                  context,
+                                  title: 'Process payroll?',
+                                  message:
+                                      'Pay is computed and locked, and the '
+                                      "period's attendance can no longer be "
+                                      'edited. Labor cost posts to the project.',
+                                  confirmLabel: 'Process',
+                                );
+                                if (ok && context.mounted) {
+                                  final done = await reportAction(
+                                    context,
+                                    vm.process(),
+                                  );
+                                  if (done && context.mounted) {
+                                    showSuccessAlert(
+                                      context,
+                                      'Payroll processed.',
+                                    );
+                                  }
+                                }
+                              },
+                        icon: const Icon(Icons.payments_outlined, size: 18),
+                        label: const Text('Process payroll'),
+                      ),
+                    AppPdfButton(build: vm.pdfReport, label: 'Export payroll'),
+                  ],
+                ),
               ],
             ),
-            Text(
-              '${vm.project!.code} · ${vm.project!.name}',
-              style: textTheme.bodySmall,
-            ),
+            if (vm.canVerify && vm.verifyBlocker != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                vm.verifyBlocker!,
+                style: textTheme.bodySmall?.copyWith(color: AppColors.warning),
+              ),
+            ],
             const SizedBox(height: AppSpacing.lg),
             AppWorkflowSteps.payroll(p.status),
             const SizedBox(height: AppSpacing.lg),
-            if (vm.canVerify)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                child: Wrap(
-                  spacing: AppSpacing.md,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: vm.isBusy || vm.verifyBlocker != null
-                          ? null
-                          : () => reportAction(
-                              context,
-                              vm.verify(),
-                              success: 'Attendance verified.',
-                            ),
-                      icon: const Icon(Icons.fact_check_outlined),
-                      label: const Text('Verify attendance'),
-                    ),
-                    if (vm.verifyBlocker != null)
-                      Text(vm.verifyBlocker!, style: textTheme.bodySmall),
-                  ],
-                ),
-              ),
-            if (vm.canProcess)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed: vm.isBusy
-                        ? null
-                        : () async {
-                            final ok = await showAppConfirmDialog(
-                              context,
-                              title: 'Process payroll?',
-                              message:
-                                  'Pay is computed and locked, and the '
-                                  "period's attendance can no longer be "
-                                  'edited. Labor cost posts to the project.',
-                              confirmLabel: 'Process',
-                            );
-                            if (ok && context.mounted) {
-                              await reportAction(
-                                context,
-                                vm.process(),
-                                success: 'Payroll processed.',
-                              );
-                            }
-                          },
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text('Process payroll'),
-                  ),
-                ),
-              ),
-            AppSectionCard(
-              title: 'Totals',
-              child: Wrap(
-                spacing: AppSpacing.xl,
-                runSpacing: AppSpacing.md,
-                children: [
-                  AppFigure(
-                    label: 'Workers',
-                    value: '${vm.lines.length}',
-                    detail:
-                        '${InputParsers.amountText(vm.lines.fold<double>(0, (s, l) => s + l.daysWorked))} total days',
-                  ),
-                  AppFigure(
-                    label: 'Gross pay (labor cost)',
-                    value: Formatters.peso(vm.totalGross),
-                    detail:
-                        'incl. ${Formatters.peso(vm.lines.fold<double>(0, (s, l) => s + l.overtimePay))} OT',
-                  ),
-                  AppFigure(
-                    label: 'Net pay',
-                    value: Formatters.peso(vm.totalNet),
-                    detail: vm.totalGross > 0
-                        ? '${Formatters.percent(vm.totalNet / vm.totalGross)} of gross'
-                        : null,
-                  ),
-                ],
-              ),
+            _PayrollTotalsStrip(
+              workerCount: vm.lines.length,
+              totalDays: totalDays,
+              totalCashAdvance: vm.totalCashAdvance,
+              totalNet: vm.totalNet,
             ),
             const SizedBox(height: AppSpacing.lg),
-            // Above the table, not below it: under a long pay table the note is
-            // off screen at laptop widths.
-            if (vm.basicPayroll)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                child: Text(
-                  'Basic payroll: pay is days worked × each worker\'s daily '
-                  'rate plus overtime, less cash advances. Government '
-                  'contributions (SSS, PhilHealth, Pag-IBIG) are not included '
-                  'yet. The server computes every amount shown here.',
-                  style: textTheme.bodySmall,
-                ),
-              ),
             AppSectionCard(
               title: p.status == PayrollStatus.processed
                   ? 'Pay'
                   : 'Pay preview',
+              subtitle: vm.lines.isEmpty
+                  ? null
+                  : 'Click the receipt icon on any row to export an individual payslip PDF',
+              icon: Icons.payments_outlined,
               padding: EdgeInsets.zero,
               child: LaborPayrollTable(
-                showContributions: !vm.basicPayroll,
                 lines: vm.lines,
                 workerName: vm.workerName,
                 onCashAdvance: vm.canEditCashAdvance
@@ -180,30 +204,158 @@ class PayrollPeriodDetailPage extends StatelessWidget {
                           workerName: vm.workerName(line.workerId),
                         );
                         if (amount != null && context.mounted) {
-                          await reportAction(
+                          final ok = await reportAction(
                             context,
                             vm.setCashAdvance(line, amount),
                           );
+                          if (ok && context.mounted) {
+                            showSuccessAlert(
+                              context,
+                              'Cash advance updated for ${vm.workerName(line.workerId)}.',
+                            );
+                          }
                         }
                       }
                     : null,
+                onExportPayslip: (line) => _exportPayslip(context, vm, line),
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
-            if (!vm.basicPayroll)
-              Text(
-                'Overtime at +${((ContributionRates.overtimePremium - 1) * 100).round()}% '
-                'of the hourly rate. Contributions use simplified employee-share '
-                'rates (SSS ${(ContributionRates.sss * 100).toStringAsFixed(1)}%, '
-                'PhilHealth ${(ContributionRates.philhealth * 100).toStringAsFixed(1)}%, '
-                'Pag-IBIG ${(ContributionRates.pagibig * 100).toStringAsFixed(0)}% '
-                'up to ₱${ContributionRates.pagibigCapPerPeriod.toStringAsFixed(0)}), '
-                'not the official contribution tables.',
-                style: textTheme.bodySmall,
-              ),
           ],
         );
       },
+    );
+  }
+}
+
+class _PayrollTotalsStrip extends StatelessWidget {
+  const _PayrollTotalsStrip({
+    required this.workerCount,
+    required this.totalDays,
+    required this.totalCashAdvance,
+    required this.totalNet,
+  });
+
+  final int workerCount;
+  final double totalDays;
+  final double totalCashAdvance;
+  final double totalNet;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final items = [
+      _TotalCell(
+        label: 'Workers',
+        value: '$workerCount',
+        detail: '${InputParsers.amountText(totalDays)} total days',
+      ),
+      _TotalCell(
+        label: 'Cash advances',
+        value: Formatters.peso(totalCashAdvance),
+        detail: totalCashAdvance > 0 ? 'Deducted from pay' : 'No cash advances',
+        accent: totalCashAdvance > 0 ? AppColors.warning : null,
+      ),
+      _TotalCell(
+        label: 'Net pay',
+        value: Formatters.peso(totalNet),
+        detail: 'Total payable for period',
+        accent: AppColors.success,
+      ),
+    ];
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 720) {
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (i, item) in items.indexed) ...[
+                      if (i > 0)
+                        VerticalDivider(
+                          width: AppSpacing.xl,
+                          thickness: 1,
+                          color: scheme.outlineVariant,
+                        ),
+                      Expanded(child: item),
+                    ],
+                  ],
+                ),
+              );
+            }
+            return Wrap(
+              spacing: AppSpacing.xl,
+              runSpacing: AppSpacing.md,
+              children: [
+                for (final item in items) SizedBox(width: 180, child: item),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _TotalCell extends StatelessWidget {
+  const _TotalCell({
+    required this.label,
+    required this.value,
+    this.detail,
+    this.accent,
+  });
+
+  final String label;
+  final String value;
+  final String? detail;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: textTheme.labelSmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: textTheme.titleLarge
+                ?.merge(AppTextStyles.numeric)
+                .copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: accent ?? scheme.onSurface,
+                ),
+          ),
+        ),
+        if (detail != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            detail!,
+            style: textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -48,6 +48,7 @@ import '../../data/repositories/schedule_repository.dart';
 import '../../data/repositories/store_catalog_repository.dart';
 import '../../data/repositories/system_admin_repository.dart';
 import '../../data/repositories/user_repository.dart';
+import '../../data/services/laborer_request_approval_source.dart';
 import '../../data/services/approval_inbox.dart';
 import '../../data/services/approval_sources.dart';
 import '../../data/services/category_catalog_service.dart';
@@ -151,6 +152,7 @@ void setupServiceLocator() {
         DailyReportApprovalSource(projects: getIt(), reports: getIt()),
         MaterialRequestApprovalSource(projects: getIt(), procurement: getIt()),
         PayrollVerificationSource(projects: getIt(), labor: getIt()),
+        LaborerRequestApprovalSource(projects: getIt(), labor: getIt()),
         VariationOrderApprovalSource(projects: getIt(), billing: getIt()),
       ]),
     )

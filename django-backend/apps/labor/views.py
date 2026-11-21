@@ -15,19 +15,31 @@ has no generic write route (only `save-day/`).
 # Pyright runs without django-stubs/DRF stubs (untyped managers, actions).
 # pyright: reportAttributeAccessIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
 
+from decimal import Decimal
+
+from django.db import transaction
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ..master_data.models import Trade
 from ..projects import scoping
 from ..projects.models import RoleOnProject
 from ..projects.rules import NotAllowed, RuleRefused
+from ..projects.services import notify_project_role
 from ..users import capabilities
 from ..users.models import Role
 from . import rules, services
-from .models import Attendance, Worker
+from .models import (
+    Attendance,
+    ProjectWorkerRequest,
+    Worker,
+    WorkerRequestStatus,
+)
 from .serializers import (
     AttendanceSerializer,
+    ProjectWorkerRequestCreateSerializer,
+    ProjectWorkerRequestSerializer,
     SaveDaySerializer,
     WorkerSerializer,
     parse_iso_date,
@@ -145,6 +157,27 @@ class WorkerViewSet(viewsets.GenericViewSet,
         worker = services.update_worker(request.user, serializer)
         return Response(self.get_serializer(worker).data)
 
+    @action(detail=True, methods=['post'], url_path='cash-advance')
+    def cash_advance(self, request, pk=None):
+        """Record a cash advance (vale) that auto-deducts across paydays."""
+        self.require_maintenance()
+        raw = request.data.get('amount')
+        try:
+            amount = Decimal(str(raw))
+        except Exception as error:
+            raise RuleRefused('Enter a valid cash advance amount.') from error
+        if amount <= 0:
+            raise RuleRefused('Cash advance amount must be greater than zero.')
+        with transaction.atomic():
+            worker = Worker.objects.select_for_update().get(
+                pk=self.get_object().pk,
+            )
+            worker.cash_advance_balance = (
+                worker.cash_advance_balance + amount.quantize(Decimal('0.01'))
+            )
+            worker.save(update_fields=['cash_advance_balance', 'updated_at'])
+        return Response(self.get_serializer(worker).data)
+
 
 class AttendanceViewSet(viewsets.GenericViewSet):
     """`attendance/` — scoped reads and the atomic `save-day/` action."""
@@ -207,3 +240,156 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             serializer.validated_data['entries'],
         )
         return Response(AttendanceSerializer(rows, many=True).data)
+
+
+class ProjectWorkerRequestViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Foreman requests to add a laborer to a project; PM approves or rejects."""
+
+    serializer_class = ProjectWorkerRequestSerializer
+
+    def role(self):
+        return capabilities.active_role(self.request)
+
+    def get_queryset(self):
+        role = self.role()
+        require_staff(role)
+        projects = scoping.projects_for(self.request.user, role)
+        qs = ProjectWorkerRequest.objects.filter(project__in=projects).select_related(
+            'requested_by', 'reviewed_by', 'project', 'worker',
+        )
+        raw_project = self.request.query_params.get('project')
+        if raw_project:
+            try:
+                qs = qs.filter(project_id=int(raw_project))
+            except (TypeError, ValueError) as error:
+                raise RuleRefused(rules.PROJECT_NOT_FOUND) from error
+        raw_status = self.request.query_params.get('status')
+        if raw_status:
+            qs = qs.filter(status=raw_status)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        role = self.role()
+        if role not in (Role.SITE_ENGINEER, Role.OWNER):
+            raise NotAllowed('Only the foreman or project manager can request a laborer.')
+        serializer = ProjectWorkerRequestCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            raise RuleRefused(first_error(serializer.errors))
+        data = serializer.validated_data
+        project = scoping.project_or_404(request.user, role, data['project_id'])
+
+        existing_worker = None
+        if data.get('worker_id'):
+            existing_worker = Worker.objects.filter(
+                pk=data['worker_id'], is_active=True,
+            ).first()
+            if existing_worker is None:
+                raise RuleRefused('Selected worker was not found or is inactive.')
+            full_name = existing_worker.full_name
+            address = existing_worker.address or ''
+            phone = existing_worker.phone or ''
+        else:
+            full_name = data['full_name']
+            address = data['address']
+            phone = data['phone']
+
+        req = ProjectWorkerRequest.objects.create(
+            project=project,
+            full_name=full_name,
+            address=address,
+            phone=phone,
+            worker=existing_worker,
+            status=WorkerRequestStatus.PENDING,
+            requested_by=request.user,
+        )
+        notify_project_role(
+            project,
+            RoleOnProject.OWNER,
+            'laborer_request',
+            f'{request.user.full_name} requested to add {req.full_name} to {project.code}.',
+            f'/projects/{project.pk}/laborers',
+        )
+        return Response(
+            ProjectWorkerRequestSerializer(req).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        role = self.role()
+        if role != Role.OWNER:
+            raise NotAllowed('Only the project manager can approve laborer requests.')
+        with transaction.atomic():
+            req = (
+                ProjectWorkerRequest.objects.select_for_update()
+                .select_related('project', 'requested_by')
+                .get(pk=self.get_object().pk)
+            )
+            if req.status != WorkerRequestStatus.PENDING:
+                raise RuleRefused('This laborer request has already been reviewed.')
+            worker = req.worker
+            if worker is None:
+                trade = (
+                    Trade.objects.filter(name__iexact='Laborer').first()
+                    or Trade.objects.filter(name__iexact='Helper').first()
+                    or Trade.objects.order_by('id').first()
+                )
+                if trade is None:
+                    trade = Trade.objects.create(name='Laborer')
+                worker = Worker.objects.create(
+                    full_name=req.full_name,
+                    address=req.address,
+                    phone=req.phone,
+                    trade=trade,
+                    daily_rate=Decimal('500.00'),
+                    is_active=True,
+                )
+            req.status = WorkerRequestStatus.APPROVED
+            req.reviewed_by = request.user
+            req.worker = worker
+            req.save(update_fields=['status', 'reviewed_by', 'worker', 'updated_at'])
+        notify_project_role(
+            req.project,
+            RoleOnProject.SITE_ENGINEER,
+            'laborer_request',
+            f'{req.full_name} was approved for {req.project.code}.',
+            f'/projects/{req.project_id}/laborers',
+        )
+        return Response(ProjectWorkerRequestSerializer(req).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        role = self.role()
+        if role != Role.OWNER:
+            raise NotAllowed('Only the project manager can reject laborer requests.')
+        reason = str(request.data.get('reason') or '').strip()
+        if not reason:
+            raise RuleRefused('Enter a reason for rejecting this request.')
+        with transaction.atomic():
+            req = (
+                ProjectWorkerRequest.objects.select_for_update()
+                .select_related('project', 'requested_by')
+                .get(pk=self.get_object().pk)
+            )
+            if req.status != WorkerRequestStatus.PENDING:
+                raise RuleRefused('This laborer request has already been reviewed.')
+            req.status = WorkerRequestStatus.REJECTED
+            req.reviewed_by = request.user
+            req.rejection_reason = reason[:255]
+            req.save(
+                update_fields=[
+                    'status', 'reviewed_by', 'rejection_reason', 'updated_at',
+                ],
+            )
+        notify_project_role(
+            req.project,
+            RoleOnProject.SITE_ENGINEER,
+            'laborer_request',
+            f'Laborer request for {req.full_name} on {req.project.code} was rejected: {reason}',
+            f'/projects/{req.project_id}/laborers',
+        )
+        return Response(ProjectWorkerRequestSerializer(req).data)

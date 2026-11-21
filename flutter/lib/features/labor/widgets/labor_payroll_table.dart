@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../../../core/di/service_locator.dart';
@@ -11,25 +10,24 @@ import '../../../data/models/payroll_line.dart';
 import '../../../data/services/session_service.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 
-/// Pay per worker: days, overtime, gross, contributions, cash advance, net.
+/// Pay per worker: days worked, cash advance, net pay, and payslip export.
 class LaborPayrollTable extends StatelessWidget {
   const LaborPayrollTable({
     super.key,
     required this.lines,
     required this.workerName,
     this.onCashAdvance,
-    this.showContributions = true,
+    this.onExportPayslip,
   });
 
   final List<PayrollLine> lines;
   final String Function(int id) workerName;
 
-  /// False for basic payroll: no government contributions are applied, so the
-  /// three zero columns are left out instead of looking computed.
-  final bool showContributions;
-
   /// Set while cash advances can still be changed.
   final ValueChanged<PayrollLine>? onCashAdvance;
+
+  /// Optional per-worker payslip PDF export action.
+  final ValueChanged<PayrollLine>? onExportPayslip;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +47,7 @@ class LaborPayrollTable extends StatelessWidget {
     double sum(double Function(PayrollLine l) f) =>
         lines.fold(0, (s, l) => s + f(l));
 
+    final scheme = Theme.of(context).colorScheme;
     final numStyle = Theme.of(
       context,
     ).textTheme.bodyMedium?.merge(AppTextStyles.numeric);
@@ -60,22 +59,17 @@ class LaborPayrollTable extends StatelessWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(minWidth: constraints.maxWidth),
           child: DataTable(
-            headingRowColor: const WidgetStatePropertyAll(
-              AppColors.tableHeader,
+            headingRowColor: WidgetStatePropertyAll(
+              scheme.surfaceContainerHighest.withValues(alpha: 0.6),
             ),
             columnSpacing: AppSpacing.lg,
             columns: [
               const DataColumn(label: Text('Worker')),
               const DataColumn(label: Text('Days'), numeric: true),
-              const DataColumn(label: Text('OT pay'), numeric: true),
-              const DataColumn(label: Text('Gross'), numeric: true),
-              if (showContributions) ...[
-                const DataColumn(label: Text('SSS'), numeric: true),
-                const DataColumn(label: Text('PhilHealth'), numeric: true),
-                const DataColumn(label: Text('Pag-IBIG'), numeric: true),
-              ],
               const DataColumn(label: Text('Cash adv.'), numeric: true),
               const DataColumn(label: Text('Net pay'), numeric: true),
+              if (onExportPayslip != null)
+                const DataColumn(label: Text('Payslip')),
             ],
             rows: [
               for (final l in lines)
@@ -88,13 +82,6 @@ class LaborPayrollTable extends StatelessWidget {
                         style: numStyle,
                       ),
                     ),
-                    DataCell(Text(p(l.overtimePay), style: numStyle)),
-                    DataCell(Text(p(l.grossPay), style: numStyle)),
-                    if (showContributions) ...[
-                      DataCell(Text(p(l.sss), style: numStyle)),
-                      DataCell(Text(p(l.philhealth), style: numStyle)),
-                      DataCell(Text(p(l.pagibig), style: numStyle)),
-                    ],
                     DataCell(
                       Text(p(l.cashAdvance), style: numStyle),
                       showEditIcon: onCashAdvance != null,
@@ -108,10 +95,18 @@ class LaborPayrollTable extends StatelessWidget {
                         style: numStyle?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ),
+                    if (onExportPayslip != null)
+                      DataCell(
+                        IconButton(
+                          tooltip: 'Export payslip PDF',
+                          icon: const Icon(Icons.receipt_outlined, size: 18),
+                          onPressed: () => onExportPayslip!(l),
+                        ),
+                      ),
                   ],
                 ),
               DataRow(
-                color: const WidgetStatePropertyAll(AppColors.surfaceSunken),
+                color: WidgetStatePropertyAll(scheme.surfaceContainerLowest),
                 cells: [
                   const DataCell(
                     Text(
@@ -126,24 +121,10 @@ class LaborPayrollTable extends StatelessWidget {
                     ),
                   ),
                   DataCell(
-                    Text(p(sum((l) => l.overtimePay)), style: boldNumStyle),
-                  ),
-                  DataCell(
-                    Text(p(sum((l) => l.grossPay)), style: boldNumStyle),
-                  ),
-                  if (showContributions) ...[
-                    DataCell(Text(p(sum((l) => l.sss)), style: boldNumStyle)),
-                    DataCell(
-                      Text(p(sum((l) => l.philhealth)), style: boldNumStyle),
-                    ),
-                    DataCell(
-                      Text(p(sum((l) => l.pagibig)), style: boldNumStyle),
-                    ),
-                  ],
-                  DataCell(
                     Text(p(sum((l) => l.cashAdvance)), style: boldNumStyle),
                   ),
                   DataCell(Text(p(sum((l) => l.netPay)), style: boldNumStyle)),
+                  if (onExportPayslip != null) const DataCell(SizedBox.shrink()),
                 ],
               ),
             ],

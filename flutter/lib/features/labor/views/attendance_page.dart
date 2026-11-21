@@ -124,7 +124,7 @@ class _AttendancePageState extends State<AttendancePage> {
                         ),
                       Text(
                         '${vm.marked} of ${vm.rows.length} marked · '
-                        '${InputParsers.amountText(vm.presentDays)} paid days',
+                        '${InputParsers.amountText(vm.totalHours)} total hrs',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const SizedBox(height: AppSpacing.sm),

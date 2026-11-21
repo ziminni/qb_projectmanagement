@@ -1,6 +1,7 @@
 import '../models/attendance.dart';
 import '../models/payroll_line.dart';
 import '../models/payroll_period.dart';
+import '../models/project_worker_request.dart';
 import '../models/worker.dart';
 
 /// One worker's attendance entry when saving a day's sheet.
@@ -20,6 +21,10 @@ abstract interface class LaborRepository {
 
   /// Creates the worker when its id is 0.
   Future<Worker> saveWorker(Worker worker);
+
+  /// Records a cash advance (vale) on a worker's running balance so it
+  /// auto-deducts across upcoming paydays until paid off.
+  Future<Worker> addWorkerCashAdvance(int workerId, double amount);
 
   Future<List<Attendance>> getAttendance({
     required int projectId,
@@ -65,4 +70,31 @@ abstract interface class LaborRepository {
 
   /// Gross pay of processed periods, posted to the project's actual cost.
   Future<double> laborCost(int projectId);
+
+  /// Foreman requests to add laborers to a project, reviewed by the PM.
+  Future<List<ProjectWorkerRequest>> getWorkerRequests({
+    int? projectId,
+    List<int>? projectIds,
+    ProjectWorkerRequestStatus? status,
+  });
+
+  Future<ProjectWorkerRequest> requestProjectWorker({
+    required int projectId,
+    int? workerId,
+    String fullName = '',
+    String address = '',
+    String phone = '',
+    required int userId,
+  });
+
+  Future<ProjectWorkerRequest> approveWorkerRequest(
+    int id, {
+    required int userId,
+  });
+
+  Future<ProjectWorkerRequest> rejectWorkerRequest(
+    int id, {
+    required int userId,
+    required String reason,
+  });
 }

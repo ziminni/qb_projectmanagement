@@ -11,13 +11,72 @@ import '../../../data/services/labor_rules.dart';
 import '../../../data/services/session_service.dart';
 
 class AttendanceRow {
-  AttendanceRow(this.worker, {this.status, this.overtimeHours = 0});
+  AttendanceRow(
+    this.worker, {
+    AttendanceStatus? status,
+    double overtimeHours = 0,
+  }) : _isPresent =
+           status == AttendanceStatus.present ||
+           status == AttendanceStatus.halfDay,
+       _isAbsent = status == AttendanceStatus.absent,
+       hoursWorked = switch (status) {
+         AttendanceStatus.present => 8 + overtimeHours,
+         AttendanceStatus.halfDay => 4,
+         AttendanceStatus.absent || null => 0,
+       };
 
   final Worker worker;
 
-  /// Null until the site engineer marks the worker.
-  AttendanceStatus? status;
-  double overtimeHours;
+  bool _isPresent;
+  bool _isAbsent;
+
+  /// Total hours worked when marked Present (e.g. 8 for a full shift, 4 for
+  /// half shift, 10 for 8h regular + 2h overtime).
+  double hoursWorked;
+
+  /// UI status: only Present, Absent, or unmarked (null).
+  AttendanceStatus? get uiStatus {
+    if (_isPresent) return AttendanceStatus.present;
+    if (_isAbsent) return AttendanceStatus.absent;
+    return null;
+  }
+
+  /// Storage status mapped for the backend & payroll calculator:
+  /// - Present with <= 4 hrs -> halfDay (0.5 day)
+  /// - Present with > 4 hrs  -> present (1.0 day, with overtime = max(0, hrs - 8))
+  /// - Absent                -> absent
+  AttendanceStatus? get status {
+    if (_isAbsent) return AttendanceStatus.absent;
+    if (_isPresent) {
+      return hoursWorked > 0 && hoursWorked <= 4
+          ? AttendanceStatus.halfDay
+          : AttendanceStatus.present;
+    }
+    return null;
+  }
+
+  double get overtimeHours {
+    if (!_isPresent) return 0;
+    return hoursWorked > 8 ? hoursWorked - 8 : 0;
+  }
+
+  void setStatus(AttendanceStatus? next) {
+    if (next == AttendanceStatus.present || next == AttendanceStatus.halfDay) {
+      _isPresent = true;
+      _isAbsent = false;
+      if (hoursWorked <= 0) {
+        hoursWorked = next == AttendanceStatus.halfDay ? 4 : 8;
+      }
+    } else if (next == AttendanceStatus.absent) {
+      _isPresent = false;
+      _isAbsent = true;
+      hoursWorked = 0;
+    } else {
+      _isPresent = false;
+      _isAbsent = false;
+      hoursWorked = 0;
+    }
+  }
 }
 
 /// The site engineer's daily attendance sheet for one site.
@@ -55,6 +114,7 @@ class AttendanceViewModel extends ChangeNotifier with ActionRunner {
   int get marked => rows.where((r) => r.status != null).length;
   double get presentDays =>
       rows.fold(0, (s, r) => s + (r.status?.dayFraction ?? 0));
+  double get totalHours => rows.fold(0, (s, r) => s + r.hoursWorked);
 
   Future<void> load() async {
     try {
@@ -124,7 +184,7 @@ class AttendanceViewModel extends ChangeNotifier with ActionRunner {
 
   void markAll(AttendanceStatus status) {
     for (final r in rows) {
-      r.status = status;
+      r.setStatus(status);
     }
     notifyListeners();
   }
@@ -132,8 +192,7 @@ class AttendanceViewModel extends ChangeNotifier with ActionRunner {
   /// Unmarks everyone, e.g. after a mistaken "Mark all present".
   void clearAll() {
     for (final r in rows) {
-      r.status = null;
-      r.overtimeHours = 0;
+      r.setStatus(null);
     }
     notifyListeners();
   }

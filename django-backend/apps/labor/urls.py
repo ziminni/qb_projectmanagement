@@ -16,10 +16,16 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .payroll_views import LaborCostView, PayrollPeriodViewSet
-from .views import AttendanceViewSet, WorkerViewSet
+from .views import (
+    AttendanceViewSet,
+    ProjectWorkerRequestViewSet,
+    WorkerViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'workers', WorkerViewSet, basename='worker')
+router.register(r'worker-requests', ProjectWorkerRequestViewSet,
+                basename='worker-request')
 router.register(r'attendance', AttendanceViewSet, basename='attendance')
 router.register(r'payroll-periods', PayrollPeriodViewSet,
                 basename='payroll-period')

@@ -60,10 +60,16 @@ class Worker(models.Model):
     """
 
     full_name = models.CharField(max_length=200)
+    address = models.CharField(max_length=255, null=True, blank=True)
+    phone = models.CharField(max_length=32, null=True, blank=True)
     trade = models.ForeignKey(Trade, on_delete=models.PROTECT, related_name='workers')
     daily_rate = models.DecimalField(
         max_digits=12, decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    cash_advance_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
     )
     sss_no = models.CharField(max_length=32, null=True, blank=True)
     philhealth_no = models.CharField(max_length=32, null=True, blank=True)
@@ -83,6 +89,62 @@ class Worker(models.Model):
     def save(self, *args, **kwargs):
         self.full_name = str(self.full_name).strip()
         super().save(*args, **kwargs)
+
+
+class WorkerRequestStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    APPROVED = 'approved', 'Approved'
+    REJECTED = 'rejected', 'Rejected'
+
+
+class ProjectWorkerRequest(models.Model):
+    """A foreman's request to add a laborer to a project, approved by the PM."""
+
+    project = models.ForeignKey(
+        'apps_projects.Project',
+        on_delete=models.PROTECT,
+        related_name='worker_requests',
+    )
+    full_name = models.CharField(max_length=200)
+    address = models.CharField(max_length=255)
+    phone = models.CharField(max_length=32)
+    status = models.CharField(
+        max_length=16,
+        choices=WorkerRequestStatus.choices,
+        default=WorkerRequestStatus.PENDING,
+        db_index=True,
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='+',
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    rejection_reason = models.CharField(max_length=255, null=True, blank=True)
+    worker = models.ForeignKey(
+        Worker,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='project_requests',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Project Worker Request'
+        verbose_name_plural = 'Project Worker Requests'
+        ordering = ('-created_at', '-id')
+        indexes = [models.Index(fields=['project', 'status'])]
+
+    def __str__(self):
+        return f'{self.full_name} ({self.project_id}) [{self.status}]'
 
 
 class Attendance(models.Model):

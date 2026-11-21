@@ -22,8 +22,7 @@ abstract final class ContributionRates {
 
 double _round(double v) => (v * 100).roundToDouble() / 100;
 
-/// Pay = daily rate × days, plus overtime, less SSS / PhilHealth / Pag-IBIG
-/// and cash advances.
+/// Pay = daily rate × days, less cash advances.
 PayrollLine computePayrollLine({
   required int payrollPeriodId,
   required Worker worker,
@@ -32,31 +31,18 @@ PayrollLine computePayrollLine({
   int id = 0,
 }) {
   final days = attendance.fold(0.0, (s, a) => s + a.status.dayFraction);
-  final otHours = attendance.fold(0.0, (s, a) => s + a.overtimeHours);
-  final hourly = worker.dailyRate / ContributionRates.hoursPerDay;
-  final overtimePay = _round(
-    otHours * hourly * ContributionRates.overtimePremium,
-  );
-  final gross = _round(worker.dailyRate * days + overtimePay);
-  final sss = _round(gross * ContributionRates.sss);
-  final philhealth = _round(gross * ContributionRates.philhealth);
-  final pagibig = _round(
-    (gross * ContributionRates.pagibig).clamp(
-      0,
-      ContributionRates.pagibigCapPerPeriod,
-    ),
-  );
+  final gross = _round(worker.dailyRate * days);
   return PayrollLine(
     id: id,
     payrollPeriodId: payrollPeriodId,
     workerId: worker.id,
     daysWorked: days,
-    overtimePay: overtimePay,
+    overtimePay: 0,
     grossPay: gross,
-    sss: sss,
-    philhealth: philhealth,
-    pagibig: pagibig,
+    sss: 0,
+    philhealth: 0,
+    pagibig: 0,
     cashAdvance: cashAdvance,
-    netPay: _round(gross - sss - philhealth - pagibig - cashAdvance),
+    netPay: _round(gross - cashAdvance),
   );
 }

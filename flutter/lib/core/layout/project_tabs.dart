@@ -8,8 +8,12 @@ enum ProjectTab {
   gantt('Gantt', 'gantt', _siteTeam),
   dailyReports('Daily reports', 'daily-reports', _siteTeam),
   materials('Materials', 'materials', _siteTeam),
-  labor('Labor', 'labor', [
+  laborers('Laborers', 'laborers', [
     AppRole.owner,
+    AppRole.siteEngineer,
+    AppRole.accountant,
+  ]),
+  labor('Labor', 'labor', [
     AppRole.siteEngineer,
     AppRole.accountant,
   ]),
