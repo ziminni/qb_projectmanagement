@@ -9,3 +9,6 @@ asgiref>=3.8.1
 
 # Cross-system integration: REST calls to the POS backend.
 requests>=2.32.3
+
+# Production WSGI server (used by docker-compose.prod.yml).
+gunicorn>=23.0.0

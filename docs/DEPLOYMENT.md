@@ -213,3 +213,50 @@ With `DJANGO_DEBUG=false`, a real secret, one allowed host and explicit CORS ori
 
 - `security.W008` (`SECURE_SSL_REDIRECT` off): the Cloudflare tunnel terminates TLS and the `/api/health/` heartbeat speaks plain http, so redirecting would break both. `SECURE_PROXY_SSL_HEADER` is set instead.
 - `security.W005` / `security.W021` (HSTS subdomains and preload): turn these on only once the firm owns a domain and every subdomain is served over HTTPS. A Quick Tunnel hostname changes on each start, so HSTS preload would be wrong for the demo.
+
+---
+
+## 5. Hardware Server Production Deployment (Gunicorn + Named Tunnel)
+
+Use [`docker-compose.prod.yml`](../docker-compose.prod.yml) on a dedicated hardware server so CPMS runs 24/7 online while POS stays local/offline-first at the store:
+
+1. **Create `django-backend/.env`** (never committed):
+   ```env
+   DJANGO_DEBUG=False
+   DJANGO_SECRET_KEY=<64-char-random-secret>
+   DJANGO_ALLOWED_HOSTS=cpms-api.posinventory.space,localhost,127.0.0.1
+   CORS_ALLOW_ALL_ORIGINS=False
+   CORS_ALLOWED_ORIGINS=https://cpms.posinventory.space,https://cpms-api.posinventory.space
+
+   POSTGRES_DB=buildpro_cpms
+   POSTGRES_USER=admin
+   POSTGRES_PASSWORD=<strong-db-password>
+   POSTGRES_HOST=db
+   POSTGRES_PORT=5432
+
+   POS_API_BASE_URL=https://pos-api.posinventory.space
+   POS_API_ALLOW_INSECURE_LOCAL=False
+   POS_API_SERVICE_USERNAME=cpms_service
+   POS_API_SERVICE_PASSWORD=<pos-service-password>
+   POS_API_GATEWAY_HEADER_NAME=X-QB-Gateway-Key
+   POS_API_GATEWAY_HEADER_VALUE=<48-char-key-from-pos-gateway.env>
+   ```
+2. **Create `tunnel/cloudflared.env`** with your Cloudflare Named Tunnel token (point Public Hostname `cpms-api.posinventory.space` → `http://backend:8001` in Cloudflare Zero Trust):
+   ```env
+   CLOUDFLARE_TUNNEL_TOKEN=<your-cpms-cloudflare-tunnel-token>
+   ```
+3. **Start the production stack (Gunicorn + Postgres + Outbox + Named Tunnel):**
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile tunnel up -d --build
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend python manage.py check_pos
+   ```
+   Expect **`READY: own-store orders can be sent.`**
+   *(For a brand-new demo/staging server, optionally seed once: `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend python manage.py seed_demo --auto-pos-payer`.)*
+4. **Build Flutter clients pointed at the server:**
+   ```bash
+   cd flutter
+   flutter build windows --release --dart-define=API_BASE_URL=https://cpms-api.posinventory.space/api/v1
+   flutter build macos   --release --dart-define=API_BASE_URL=https://cpms-api.posinventory.space/api/v1
+   flutter build web     --release --dart-define=API_BASE_URL=https://cpms-api.posinventory.space/api/v1
+   ```
+   *(All services use `restart: unless-stopped`, so the server comes back online automatically after a power outage or reboot.)*
