@@ -26,7 +26,9 @@ Get-Content $EnvFile | Where-Object { $_ -match '^[^#].*=' } | ForEach-Object {
 
 Set-Location $BackendDir
 
-Write-Host "=== 2/4 Flushing CPMS database & clearing private_media ===" -ForegroundColor Cyan
+Write-Host "=== 2/4 Applying migrations, flushing CPMS DB & clearing private_media ===" -ForegroundColor Cyan
+& $Python manage.py migrate --noinput
+& $Python manage.py collectstatic --noinput
 & $Python manage.py flush --noinput
 $MediaDir = Join-Path $BackendDir 'private_media'
 if (Test-Path $MediaDir) {
