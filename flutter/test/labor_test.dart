@@ -33,7 +33,7 @@ void main() {
     ),
   );
 
-  test('pay = rate × days + 25% overtime, less contributions', () {
+  test('pay = rate × days, less cash advances (no OT or statutory deductions)', () {
     const worker = Worker(id: 1, fullName: 'X', trade: 'Mason', dailyRate: 750);
     Attendance a(int day, AttendanceStatus s, [double ot = 0]) => Attendance(
       id: day,
@@ -55,15 +55,12 @@ void main() {
       cashAdvance: 500,
     );
     expect(line.daysWorked, 5.5);
-    expect(line.overtimePay, 468.75);
-    expect(line.grossPay, 4593.75);
-    expect(line.sss, 229.69);
-    expect(line.philhealth, 114.84);
-    expect(line.pagibig, 91.88);
-    expect(
-      line.netPay,
-      closeTo(4593.75 - 229.69 - 114.84 - 91.88 - 500, 0.001),
-    );
+    expect(line.overtimePay, 0);
+    expect(line.grossPay, 4125.0);
+    expect(line.sss, 0);
+    expect(line.philhealth, 0);
+    expect(line.pagibig, 0);
+    expect(line.netPay, closeTo(4125.0 - 500, 0.001));
   });
 
   group('attendance', () {
@@ -187,5 +184,108 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Payroll processed.'), findsOneWidget);
     expect(statusChip('Processed'), findsOneWidget);
+  });
+
+  testWidgets('attendance shows hours input on Present and hides Half day', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'ana@example.ph');
+    await goTo(tester, '/attendance?projectId=1');
+
+    expect(find.text('Half day'), findsNothing);
+    expect(find.text('Present'), findsWidgets);
+    expect(find.text('Absent'), findsWidgets);
+
+    await tester.tap(find.text('Present').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Hours'), findsWidgets);
+  });
+
+  testWidgets('workers and payroll pages show KPI dashboards and filters', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'liza@example.ph');
+
+    await goTo(tester, '/workers');
+    expect(find.text('Total workers'), findsOneWidget);
+    expect(find.text('Active crew'), findsOneWidget);
+    expect(find.text('Avg. daily rate'), findsOneWidget);
+
+    await goTo(tester, '/payroll');
+    expect(find.text('Payroll periods'), findsOneWidget);
+    expect(find.text('Open cut-offs'), findsOneWidget);
+    expect(find.text('Ready to process'), findsOneWidget);
+    expect(find.text('Processed net pay'), findsOneWidget);
+  });
+
+  testWidgets('foreman requests a laborer on a project and PM approves it', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'ana@example.ph');
+    await goTo(tester, '/projects/1/laborers');
+
+    await tester.tap(find.text('Add laborer'));
+    await tester.pumpAndSettle();
+    // Switch to "New laborer" tab when existing workers are listed.
+    if (find.text('New laborer').evaluate().isNotEmpty) {
+      await tester.tap(find.text('New laborer'));
+      await tester.pumpAndSettle();
+    }
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Full name'),
+      'Juanito Cruz',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'Brgy. Carmen, CDO',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Phone number'),
+      '09171234567',
+    );
+    await tester.tap(find.text('Send request'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('sent to the project manager'), findsOneWidget);
+    expect(find.text('Juanito Cruz'), findsOneWidget);
+    expect(find.text('Pending PM approval'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Log out'));
+    await tester.pumpAndSettle();
+    await signInAs(tester, 'ramon@example.ph');
+    await goTo(tester, '/approvals');
+    expect(find.textContaining('Laborer requests (1)'), findsWidgets);
+
+    await goTo(tester, '/projects/1/laborers');
+    await tester.tap(find.text('Approve'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('approved and added'), findsOneWidget);
+    expect(find.text('Juanito Cruz'), findsOneWidget);
+    expect(find.text('No pending laborer requests.'), findsOneWidget);
+  });
+
+  test('worker cash advance balance auto-deducts on payroll and carries over remainder', () async {
+    // Worker 8 is in period 3 (project 2). Give them a balance larger than
+    // one period's pay so the full period gross is deducted and the remainder
+    // stays on their balance for the next payday.
+    final initialLines = await repo.getLines(3);
+    final gross = initialLines.firstWhere((l) => l.workerId == 8).grossPay;
+    await repo.addWorkerCashAdvance(8, gross + 750);
+
+    // Preview automatically applies min(balance, gross).
+    final preview = await repo.getLines(3);
+    final line = preview.firstWhere((l) => l.workerId == 8);
+    expect(line.cashAdvance, gross);
+    expect(line.netPay, 0);
+
+    // Verify & process period 3 -> balance decreases by deducted amount.
+    await repo.verifyPeriod(3, userId: 3);
+    await repo.processPeriod(3, userId: 6);
+    final afterWorker = (await repo.getWorkers()).firstWhere((w) => w.id == 8);
+    expect(afterWorker.cashAdvanceBalance, closeTo(750, 0.001));
   });
 }

@@ -22,7 +22,12 @@ from rest_framework import serializers
 from ..master_data.models import Trade
 from ..users import capabilities
 from . import rules
-from .models import Attendance, AttendanceStatus, Worker
+from .models import (
+    Attendance,
+    AttendanceStatus,
+    ProjectWorkerRequest,
+    Worker,
+)
 
 ISO_DATE_RE = re.compile(r'\d{4}-\d{2}-\d{2}')
 
@@ -83,6 +88,12 @@ class WorkerSerializer(serializers.ModelSerializer):
         error_messages={'required': rules.WORKER_NAME,
                         'blank': rules.WORKER_NAME},
     )
+    address = serializers.CharField(
+        max_length=255, allow_null=True, allow_blank=True, required=False,
+    )
+    phone = serializers.CharField(
+        max_length=32, allow_null=True, allow_blank=True, required=False,
+    )
     trade = serializers.CharField(
         max_length=200,
         error_messages={'required': rules.WORKER_TRADE,
@@ -108,10 +119,10 @@ class WorkerSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Worker
-        fields = ('id', 'full_name', 'trade', 'daily_rate', 'sss_no',
-                  'philhealth_no', 'pagibig_no', 'is_active', 'created_at',
-                  'updated_at')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        fields = ('id', 'full_name', 'address', 'phone', 'trade', 'daily_rate',
+                  'cash_advance_balance', 'sss_no', 'philhealth_no',
+                  'pagibig_no', 'is_active', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'cash_advance_balance', 'created_at', 'updated_at')
 
     def validate_full_name(self, value):
         name = value.strip()
@@ -139,6 +150,12 @@ class WorkerSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'daily_rate': rules.RATE_POSITIVE})
         return attrs
 
+    def validate_address(self, value):
+        return (value or '').strip() or None
+
+    def validate_phone(self, value):
+        return (value or '').strip() or None
+
     def validate_sss_no(self, value):
         return (value or '').strip() or None
 
@@ -152,7 +169,10 @@ class WorkerSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         data['trade'] = instance.trade.name
         if not sees_finance(self.context):
-            for key in ('daily_rate', 'sss_no', 'philhealth_no', 'pagibig_no'):
+            for key in (
+                'daily_rate', 'cash_advance_balance',
+                'sss_no', 'philhealth_no', 'pagibig_no',
+            ):
                 data.pop(key, None)
         return data
 
@@ -206,3 +226,54 @@ class AttendanceSerializer(serializers.ModelSerializer):
         fields = ('id', 'project_id', 'worker_id', 'work_date', 'status',
                   'overtime_hours', 'recorded_by', 'created_at', 'updated_at')
         read_only_fields = fields
+
+
+class ProjectWorkerRequestSerializer(serializers.ModelSerializer):
+    """Read serializer for `ProjectWorkerRequest`."""
+
+    requested_by_name = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProjectWorkerRequest
+        fields = (
+            'id', 'project_id', 'full_name', 'address', 'phone', 'status',
+            'requested_by_id', 'requested_by_name', 'reviewed_by_id',
+            'reviewed_by_name', 'rejection_reason', 'worker_id',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = fields
+
+    def get_requested_by_name(self, obj):
+        return obj.requested_by.full_name if obj.requested_by_id else None
+
+    def get_reviewed_by_name(self, obj):
+        return obj.reviewed_by.full_name if obj.reviewed_by_id else None
+
+
+class ProjectWorkerRequestCreateSerializer(serializers.Serializer):
+    """`POST worker-requests/` payload (existing worker_id OR new laborer)."""
+
+    project_id = StrictIntegerField(min_value=1)
+    worker_id = StrictIntegerField(min_value=1, required=False, allow_null=True)
+    full_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs.get('worker_id'):
+            return attrs
+        name = (attrs.get('full_name') or '').strip()
+        address = (attrs.get('address') or '').strip()
+        phone = (attrs.get('phone') or '').strip()
+        if not name:
+            raise serializers.ValidationError({'full_name': 'Enter the laborer\'s full name.'})
+        if not address:
+            raise serializers.ValidationError({'address': 'Enter the laborer\'s address.'})
+        if not phone:
+            raise serializers.ValidationError({'phone': 'Enter the laborer\'s phone number.'})
+        attrs['full_name'] = name
+        attrs['address'] = address
+        attrs['phone'] = phone
+        return attrs

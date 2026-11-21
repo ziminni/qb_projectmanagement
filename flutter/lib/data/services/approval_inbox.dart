@@ -6,6 +6,7 @@ enum ApprovalKind {
   dailyReport('Daily reports'),
   materialRequest('Material requests'),
   payroll('Attendance verification'),
+  laborerRequest('Laborer requests'),
   variationOrder('Variation orders');
 
   const ApprovalKind(this.label);

@@ -45,6 +45,7 @@ import '../features/labor/views/attendance_page.dart';
 import '../features/labor/views/payroll_period_detail_page.dart';
 import '../features/labor/views/payroll_periods_page.dart';
 import '../features/labor/views/project_labor_page.dart';
+import '../features/labor/views/project_laborers_page.dart';
 import '../features/labor/views/workers_page.dart';
 import '../features/procurement/views/deliveries_page.dart';
 import '../features/procurement/views/delivery_confirm_page.dart';
@@ -191,6 +192,7 @@ final _projectTabPages = <ProjectTab, Widget Function(int projectId)>{
   ProjectTab.gantt: (id) => ScheduleGanttPage(projectId: id),
   ProjectTab.dailyReports: (id) => DailyReportsPage(projectId: id),
   ProjectTab.materials: (id) => ProjectMaterialsPage(projectId: id),
+  ProjectTab.laborers: (id) => ProjectLaborersPage(projectId: id),
   ProjectTab.labor: (id) => ProjectLaborPage(projectId: id),
   ProjectTab.financials: (id) => ProjectFinancialsPage(projectId: id),
   ProjectTab.documents: (id) => ProjectDocumentsPage(projectId: id),

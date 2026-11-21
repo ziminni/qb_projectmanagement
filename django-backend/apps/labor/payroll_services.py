@@ -44,6 +44,7 @@ from .models import (
     PayrollLine,
     PayrollPeriod,
     PayrollStatus,
+    Worker,
 )
 
 MAX_PERIOD_DAYS = 16
@@ -189,6 +190,24 @@ def process_period(user, period):
 
         period.status = PayrollStatus.PROCESSED
         period.save(update_fields=['status', 'updated_at'])
+
+        # Reduce each worker's running cash advance balance by the amount
+        # deducted in this processed payroll period.
+        for line in lines:
+            deducted = line['cash_advance']
+            if deducted > 0:
+                worker = Worker.objects.select_for_update().get(
+                    pk=line['worker_id'],
+                )
+                if worker.cash_advance_balance > 0:
+                    worker.cash_advance_balance = max(
+                        Decimal('0.00'),
+                        worker.cash_advance_balance - deducted,
+                    )
+                    worker.save(
+                        update_fields=['cash_advance_balance', 'updated_at'],
+                    )
+
         user_services.record(
             user, 'payroll_processed', 'payroll_period', period.pk,
             _details(period, lines=len(stored)),
@@ -272,9 +291,15 @@ def _computed_lines(period):
     )
     lines = []
     for worker_id, rows in _attendance_by_worker(period).items():
-        line = payroll_math.compute_line(
-            rows[0].worker, rows, advances.get(worker_id, Decimal('0.00')),
-        )
+        worker = rows[0].worker
+        if worker_id in advances:
+            advance = advances[worker_id]
+        elif worker.cash_advance_balance > 0:
+            base = payroll_math.compute_line(worker, rows, Decimal('0.00'))
+            advance = min(worker.cash_advance_balance, base['gross_pay'])
+        else:
+            advance = Decimal('0.00')
+        line = payroll_math.compute_line(worker, rows, advance)
         line['payroll_period_id'] = period.pk
         lines.append(line)
     lines.sort(key=lambda line: line['worker_id'])

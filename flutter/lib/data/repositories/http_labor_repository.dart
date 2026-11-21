@@ -3,6 +3,7 @@ import '../models/attendance.dart';
 import '../models/json_utils.dart';
 import '../models/payroll_line.dart';
 import '../models/payroll_period.dart';
+import '../models/project_worker_request.dart';
 import '../models/worker.dart';
 import 'labor_repository.dart';
 
@@ -45,6 +46,8 @@ class HttpLaborRepository implements LaborRepository {
     final hidesMoney = worker.dailyRateHidden;
     final body = {
       'full_name': worker.fullName.trim(),
+      'address': worker.address,
+      'phone': worker.phone,
       'trade': worker.trade.trim(),
       'is_active': worker.isActive,
       // A redacted role never received a rate: sending 0 would invent a wage.
@@ -56,6 +59,15 @@ class HttpLaborRepository implements LaborRepository {
     final data = worker.id == 0
         ? await _client.post('workers/', body: body)
         : await _client.patch('workers/${worker.id}/', body: body);
+    return _worker(jsonObject(data));
+  }
+
+  @override
+  Future<Worker> addWorkerCashAdvance(int workerId, double amount) async {
+    final data = await _client.post(
+      'workers/$workerId/cash-advance/',
+      body: {'amount': amount},
+    );
     return _worker(jsonObject(data));
   }
 
@@ -194,6 +206,79 @@ class HttpLaborRepository implements LaborRepository {
       omitted: !_client.seesFinance,
     );
   }
+
+  @override
+  Future<List<ProjectWorkerRequest>> getWorkerRequests({
+    int? projectId,
+    List<int>? projectIds,
+    ProjectWorkerRequestStatus? status,
+  }) async {
+    final rows = await _client.getRows(
+      'worker-requests/',
+      query: {
+        if (projectId != null)
+          'project': '$projectId'
+        else if (projectIds != null && projectIds.length == 1)
+          'project': '${projectIds.single}',
+        if (status != null) 'status': status.apiValue,
+      },
+    );
+    return [
+      for (final row in rows)
+        if (ProjectWorkerRequest.fromJson(row) case final req
+            when (projectId == null || req.projectId == projectId) &&
+                (projectIds == null || projectIds.contains(req.projectId)) &&
+                (status == null || req.status == status))
+          req,
+    ];
+  }
+
+  @override
+  Future<ProjectWorkerRequest> requestProjectWorker({
+    required int projectId,
+    int? workerId,
+    String fullName = '',
+    String address = '',
+    String phone = '',
+    required int userId,
+  }) async {
+    final data = await _client.post(
+      'worker-requests/',
+      body: {
+        'project_id': projectId,
+        if (workerId != null)
+          'worker_id': workerId
+        else ...{
+          'full_name': fullName.trim(),
+          'address': address.trim(),
+          'phone': phone.trim(),
+        },
+      },
+    );
+    return ProjectWorkerRequest.fromJson(jsonObject(data));
+  }
+
+  @override
+  Future<ProjectWorkerRequest> approveWorkerRequest(
+    int id, {
+    required int userId,
+  }) async => ProjectWorkerRequest.fromJson(
+    jsonObject(await _client.post('worker-requests/$id/approve/')),
+  );
+
+  @override
+  Future<ProjectWorkerRequest> rejectWorkerRequest(
+    int id, {
+    required int userId,
+    required String reason,
+  }) async => ProjectWorkerRequest.fromJson(
+    jsonObject(
+      await _client.post(
+        'worker-requests/$id/reject/',
+        body: {'reason': reason.trim()},
+      ),
+    ),
+  );
 
   /// A period move: each transition is its own audited server transaction.
   Future<PayrollPeriod> _move(int id, String move) async =>

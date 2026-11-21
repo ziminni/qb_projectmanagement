@@ -52,17 +52,13 @@ def compute_line(worker, attendance_rows, cash_advance=Decimal('0.00')):
     days = sum(
         (DAY_FRACTION[row.status] for row in attendance_rows), Decimal('0.00'),
     )
-    overtime_hours = sum(
-        (row.overtime_hours for row in attendance_rows), Decimal('0.00'),
-    )
-    hourly = Decimal(worker.daily_rate) / HOURS_PER_DAY
-    overtime_pay = money(overtime_hours * hourly * OVERTIME_PREMIUM)
-    gross_pay = money(Decimal(worker.daily_rate) * days + overtime_pay)
-    sss = money(gross_pay * SSS_RATE)
-    philhealth = money(gross_pay * PHILHEALTH_RATE)
-    pagibig = min(money(gross_pay * PAGIBIG_RATE), PAGIBIG_CAP_PER_PERIOD)
-    deductions = money(sss + philhealth + pagibig)
-    net_pay = money(gross_pay - cash_advance - deductions)
+    overtime_pay = Decimal('0.00')
+    gross_pay = money(Decimal(worker.daily_rate) * days)
+    sss = Decimal('0.00')
+    philhealth = Decimal('0.00')
+    pagibig = Decimal('0.00')
+    deductions = Decimal('0.00')
+    net_pay = money(gross_pay - cash_advance)
     return {
         'id': 0,
         'worker_id': worker.pk,
@@ -74,7 +70,7 @@ def compute_line(worker, attendance_rows, cash_advance=Decimal('0.00')):
         'pagibig': pagibig,
         'cash_advance': money(cash_advance),
         'statutory_deductions': deductions,
-        'deductions_policy': PayrollLine.DEDUCTIONS_CONFIGURED,
+        'deductions_policy': PayrollLine.DEDUCTIONS_UNCONFIGURED,
         'net_pay': net_pay,
     }
 

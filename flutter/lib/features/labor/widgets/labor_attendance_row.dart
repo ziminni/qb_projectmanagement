@@ -4,10 +4,9 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/attendance.dart';
-import '../../../data/services/labor_rules.dart';
 import '../viewmodels/attendance_viewmodel.dart';
 
-/// One worker on the attendance sheet: who, status and overtime hours.
+/// One worker on the attendance sheet: Present (with hours input) or Absent.
 class LaborAttendanceRow extends StatelessWidget {
   const LaborAttendanceRow({
     super.key,
@@ -23,17 +22,16 @@ class LaborAttendanceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final (fg, bg) = switch (row.status) {
+    final scheme = Theme.of(context).colorScheme;
+    final uiStatus = row.uiStatus;
+    final isPresent = uiStatus == AttendanceStatus.present;
+    final (fg, bg) = switch (uiStatus) {
       AttendanceStatus.present => (
         AppColors.success,
         AppColors.successContainer,
       ),
-      AttendanceStatus.halfDay => (
-        AppColors.warning,
-        AppColors.warningContainer,
-      ),
       AttendanceStatus.absent => (AppColors.error, AppColors.errorContainer),
-      null => (AppColors.textSecondary, AppColors.surfaceMuted),
+      _ => (AppColors.textSecondary, AppColors.surfaceMuted),
     };
     final initials = row.worker.fullName
         .split(' ')
@@ -41,6 +39,14 @@ class LaborAttendanceRow extends StatelessWidget {
         .take(2)
         .map((p) => p[0])
         .join();
+
+    final subtitleText = switch (uiStatus) {
+      null => '${row.worker.trade} · not marked yet',
+      AttendanceStatus.absent => '${row.worker.trade} · Absent',
+      _ =>
+        '${row.worker.trade} · Present (${InputParsers.amountText(row.hoursWorked)}h)',
+    };
+
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.lg,
@@ -66,48 +72,67 @@ class LaborAttendanceRow extends StatelessWidget {
                   children: [
                     Text(row.worker.fullName, style: textTheme.titleSmall),
                     Text(
-                      row.status == null
-                          ? '${row.worker.trade} · not marked yet'
-                          : '${row.worker.trade} · ${row.status!.label}',
-                      style: textTheme.bodySmall,
+                      subtitleText,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(
-                width: 96,
-                child: TextFormField(
-                  key: ValueKey('ot-${row.worker.id}-${row.status}'),
-                  initialValue: InputParsers.amountText(row.overtimeHours),
-                  enabled: enabled && row.status != AttendanceStatus.absent,
-                  textAlign: TextAlign.end,
-                  decoration: const InputDecoration(
-                    labelText: 'OT hrs',
-                    isDense: true,
+              if (isPresent) ...[
+                const SizedBox(width: AppSpacing.sm),
+                SizedBox(
+                  width: 112,
+                  child: TextFormField(
+                    key: ValueKey('hours-${row.worker.id}-$isPresent'),
+                    initialValue: InputParsers.amountText(row.hoursWorked),
+                    enabled: enabled,
+                    textAlign: TextAlign.end,
+                    decoration: const InputDecoration(
+                      labelText: 'Hours',
+                      suffixText: 'h',
+                      isDense: true,
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (v) {
+                      final hrs = InputParsers.amount(v);
+                      if (hrs == null || hrs <= 0 || hrs > 24) {
+                        return '1–24 hrs';
+                      }
+                      return null;
+                    },
+                    onChanged: (v) {
+                      row.hoursWorked = InputParsers.amount(v) ?? 0;
+                      onChanged();
+                    },
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  validator: (v) =>
-                      LaborRules.validateOvertime(InputParsers.amount(v) ?? 0),
-                  onChanged: (v) =>
-                      row.overtimeHours = InputParsers.amount(v) ?? 0,
                 ),
-              ),
+              ],
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
           SegmentedButton<AttendanceStatus>(
             emptySelectionAllowed: true,
             showSelectedIcon: false,
-            segments: [
-              for (final s in AttendanceStatus.values)
-                ButtonSegment(value: s, label: Text(s.label)),
+            segments: const [
+              ButtonSegment(
+                value: AttendanceStatus.present,
+                icon: Icon(Icons.check_circle_outline, size: 16),
+                label: Text('Present'),
+              ),
+              ButtonSegment(
+                value: AttendanceStatus.absent,
+                icon: Icon(Icons.cancel_outlined, size: 16),
+                label: Text('Absent'),
+              ),
             ],
-            selected: {?row.status},
+            selected: {?uiStatus},
             onSelectionChanged: enabled
                 ? (s) {
-                    row.status = s.isEmpty ? null : s.first;
+                    row.setStatus(s.isEmpty ? null : s.first);
                     onChanged();
                   }
                 : null,

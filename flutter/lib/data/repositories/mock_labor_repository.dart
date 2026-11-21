@@ -1,8 +1,10 @@
+import '../../core/layout/project_tabs.dart';
 import '../../routes/routes.dart';
 import '../models/app_role.dart';
 import '../models/attendance.dart';
 import '../models/payroll_line.dart';
 import '../models/payroll_period.dart';
+import '../models/project_worker_request.dart';
 import '../models/worker.dart';
 import '../services/business_rule_exception.dart';
 import '../services/labor_rules.dart';
@@ -43,6 +45,7 @@ class MockLaborRepository implements LaborRepository {
   final _attendance = MockLaborData.attendance();
   final _periods = [...MockLaborData.periods];
   final _lines = <PayrollLine>[];
+  final _workerRequests = <ProjectWorkerRequest>[];
 
   /// Cash advances entered before processing: (period, worker) → amount.
   final _cashAdvances = <(int, int), double>{};
@@ -234,6 +237,24 @@ class MockLaborRepository implements LaborRepository {
     return updated;
   }
 
+  @override
+  Future<Worker> addWorkerCashAdvance(int workerId, double amount) async {
+    if (amount <= 0) {
+      throw const BusinessRuleException(
+        'Cash advance amount must be greater than zero.',
+      );
+    }
+    final i = _workers.indexWhere((w) => w.id == workerId);
+    if (i < 0) {
+      throw const BusinessRuleException('Worker not found.');
+    }
+    final updated = _workers[i].copyWith(
+      cashAdvanceBalance: _workers[i].cashAdvanceBalance + amount,
+    );
+    _workers[i] = updated;
+    return updated;
+  }
+
   List<PayrollLine> _compute(PayrollPeriod p) {
     final rows = _attendance.where(
       (a) => a.projectId == p.projectId && p.contains(a.workDate),
@@ -243,16 +264,37 @@ class MockLaborRepository implements LaborRepository {
       byWorker.putIfAbsent(a.workerId, () => []).add(a);
     }
     var next = _next(_lines.map((l) => l.id));
-    return [
-      for (final e in byWorker.entries)
+    final result = <PayrollLine>[];
+    for (final e in byWorker.entries) {
+      final worker = _workers.firstWhere((w) => w.id == e.key);
+      final key = (p.id, e.key);
+      double advance;
+      if (_cashAdvances.containsKey(key)) {
+        advance = _cashAdvances[key]!;
+      } else if (worker.cashAdvanceBalance > 0) {
+        final base = computePayrollLine(
+          payrollPeriodId: p.id,
+          worker: worker,
+          attendance: e.value,
+          cashAdvance: 0,
+        );
+        advance = worker.cashAdvanceBalance < base.grossPay
+            ? worker.cashAdvanceBalance
+            : base.grossPay;
+      } else {
+        advance = 0;
+      }
+      result.add(
         computePayrollLine(
           id: next++,
           payrollPeriodId: p.id,
-          worker: _workers.firstWhere((w) => w.id == e.key),
+          worker: worker,
           attendance: e.value,
-          cashAdvance: _cashAdvances[(p.id, e.key)] ?? 0,
+          cashAdvance: advance,
         ),
-    ]..sort((a, b) => a.workerId.compareTo(b.workerId));
+      );
+    }
+    return result..sort((a, b) => a.workerId.compareTo(b.workerId));
   }
 
   @override
@@ -290,9 +332,21 @@ class MockLaborRepository implements LaborRepository {
     final i = _indexOf(id);
     final p = _periods[i];
     LaborRules.enforce(LaborRules.canProcess(p));
+    final computed = _compute(p);
     _lines
       ..removeWhere((l) => l.payrollPeriodId == id)
-      ..addAll(_compute(p));
+      ..addAll(computed);
+    for (final line in computed) {
+      if (line.cashAdvance > 0) {
+        final wi = _workers.indexWhere((w) => w.id == line.workerId);
+        if (wi >= 0 && _workers[wi].cashAdvanceBalance > 0) {
+          final remaining = _workers[wi].cashAdvanceBalance - line.cashAdvance;
+          _workers[wi] = _workers[wi].copyWith(
+            cashAdvanceBalance: remaining > 0 ? remaining : 0,
+          );
+        }
+      }
+    }
     final updated = p.copyWith(status: PayrollStatus.processed);
     _periods[i] = updated;
     await _auditLog.record(
@@ -314,6 +368,151 @@ class MockLaborRepository implements LaborRepository {
     return _lines
         .where((l) => processed.contains(l.payrollPeriodId))
         .fold<double>(0, (s, l) => s + l.grossPay);
+  }
+
+  @override
+  Future<List<ProjectWorkerRequest>> getWorkerRequests({
+    int? projectId,
+    List<int>? projectIds,
+    ProjectWorkerRequestStatus? status,
+  }) async => _workerRequests
+      .where(
+        (r) =>
+            (projectId == null || r.projectId == projectId) &&
+            (projectIds == null || projectIds.contains(r.projectId)) &&
+            (status == null || r.status == status),
+      )
+      .toList();
+
+  @override
+  Future<ProjectWorkerRequest> requestProjectWorker({
+    required int projectId,
+    int? workerId,
+    String fullName = '',
+    String address = '',
+    String phone = '',
+    required int userId,
+  }) async {
+    Worker? existing;
+    if (workerId != null) {
+      existing = _workers.where((w) => w.id == workerId).firstOrNull;
+      if (existing == null) {
+        throw const BusinessRuleException('Selected worker was not found.');
+      }
+    }
+    final name = existing?.fullName ?? fullName.trim();
+    if (name.isEmpty) {
+      throw const BusinessRuleException('Enter the laborer\'s full name.');
+    }
+    final requester = await _users.getUser(userId);
+    final req = ProjectWorkerRequest(
+      id: _next(_workerRequests.map((r) => r.id)),
+      projectId: projectId,
+      fullName: name,
+      address: existing?.address ?? address.trim(),
+      phone: existing?.phone ?? phone.trim(),
+      status: ProjectWorkerRequestStatus.pending,
+      requestedById: userId,
+      requestedByName: requester?.fullName,
+      workerId: existing?.id,
+      createdAt: _clock(),
+      updatedAt: _clock(),
+    );
+    _workerRequests.insert(0, req);
+    await _notifications?.notifyProjectRole(
+      projectId,
+      AppRole.owner,
+      type: 'laborer_request',
+      message: 'New laborer request: ${req.fullName}.',
+      link: AppRoutes.projectTab(projectId, ProjectTab.laborers),
+    );
+    return req;
+  }
+
+  @override
+  Future<ProjectWorkerRequest> approveWorkerRequest(
+    int id, {
+    required int userId,
+  }) async {
+    final idx = _workerRequests.indexWhere((r) => r.id == id);
+    if (idx < 0) {
+      throw const BusinessRuleException('Laborer request not found.');
+    }
+    final req = _workerRequests[idx];
+    if (req.status != ProjectWorkerRequestStatus.pending) {
+      throw const BusinessRuleException(
+        'This laborer request has already been reviewed.',
+      );
+    }
+    final reviewer = await _users.getUser(userId);
+    final workerId =
+        req.workerId ??
+        (await saveWorker(
+          Worker(
+            id: 0,
+            fullName: req.fullName,
+            address: req.address,
+            phone: req.phone,
+            trade: 'Laborer',
+            dailyRate: 500,
+            isActive: true,
+          ),
+        )).id;
+    final updated = req.copyWith(
+      status: ProjectWorkerRequestStatus.approved,
+      reviewedById: () => userId,
+      reviewedByName: () => reviewer?.fullName,
+      workerId: () => workerId,
+    );
+    _workerRequests[idx] = updated;
+    await _notifications?.notifyProjectRole(
+      req.projectId,
+      AppRole.siteEngineer,
+      type: 'laborer_request',
+      message: '${req.fullName} was approved for the project.',
+      link: AppRoutes.projectTab(req.projectId, ProjectTab.laborers),
+    );
+    return updated;
+  }
+
+  @override
+  Future<ProjectWorkerRequest> rejectWorkerRequest(
+    int id, {
+    required int userId,
+    required String reason,
+  }) async {
+    final idx = _workerRequests.indexWhere((r) => r.id == id);
+    if (idx < 0) {
+      throw const BusinessRuleException('Laborer request not found.');
+    }
+    final req = _workerRequests[idx];
+    if (req.status != ProjectWorkerRequestStatus.pending) {
+      throw const BusinessRuleException(
+        'This laborer request has already been reviewed.',
+      );
+    }
+    final cleanReason = reason.trim();
+    if (cleanReason.isEmpty) {
+      throw const BusinessRuleException(
+        'Enter a reason for rejecting this request.',
+      );
+    }
+    final reviewer = await _users.getUser(userId);
+    final updated = req.copyWith(
+      status: ProjectWorkerRequestStatus.rejected,
+      reviewedById: () => userId,
+      reviewedByName: () => reviewer?.fullName,
+      rejectionReason: () => cleanReason,
+    );
+    _workerRequests[idx] = updated;
+    await _notifications?.notifyProjectRole(
+      req.projectId,
+      AppRole.siteEngineer,
+      type: 'laborer_request',
+      message: 'Laborer request for ${req.fullName} was rejected: $cleanReason',
+      link: AppRoutes.projectTab(req.projectId, ProjectTab.laborers),
+    );
+    return updated;
   }
 
   int _indexOf(int id) {

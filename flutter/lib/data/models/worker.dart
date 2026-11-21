@@ -7,6 +7,9 @@ class Worker {
     required this.fullName,
     required this.trade,
     required this.dailyRate,
+    this.cashAdvanceBalance = 0,
+    this.address,
+    this.phone,
     this.sssNo,
     this.philhealthNo,
     this.pagibigNo,
@@ -20,6 +23,11 @@ class Worker {
   final String fullName;
   final String trade;
   final double dailyRate;
+
+  /// Running cash advance (vale) balance that auto-deducts across paydays.
+  final double cashAdvanceBalance;
+  final String? address;
+  final String? phone;
 
   /// True when the server withheld the wage because this role may not see
   /// money: [dailyRate] is then 0 because there was nothing to decode, not a
@@ -38,6 +46,9 @@ class Worker {
     String? fullName,
     String? trade,
     double? dailyRate,
+    double? cashAdvanceBalance,
+    String? Function()? address,
+    String? Function()? phone,
     String? Function()? sssNo,
     String? Function()? philhealthNo,
     String? Function()? pagibigNo,
@@ -48,6 +59,9 @@ class Worker {
     fullName: fullName ?? this.fullName,
     trade: trade ?? this.trade,
     dailyRate: dailyRate ?? this.dailyRate,
+    cashAdvanceBalance: cashAdvanceBalance ?? this.cashAdvanceBalance,
+    address: address != null ? address() : this.address,
+    phone: phone != null ? phone() : this.phone,
     sssNo: sssNo != null ? sssNo() : this.sssNo,
     philhealthNo: philhealthNo != null ? philhealthNo() : this.philhealthNo,
     pagibigNo: pagibigNo != null ? pagibigNo() : this.pagibigNo,
@@ -71,6 +85,13 @@ class Worker {
       json['daily_rate'],
       omitted: rateHidden,
     ),
+    cashAdvanceBalance: rateHidden
+        ? 0
+        : (json['cash_advance_balance'] == null
+              ? 0
+              : JsonUtils.toDouble(json['cash_advance_balance'])),
+    address: json['address'] as String?,
+    phone: json['phone'] as String?,
     sssNo: json['sss_no'] as String?,
     philhealthNo: json['philhealth_no'] as String?,
     pagibigNo: json['pagibig_no'] as String?,
@@ -84,6 +105,8 @@ class Worker {
     'id': id,
     'full_name': fullName,
     'trade': trade,
+    if (address != null) 'address': address,
+    if (phone != null) 'phone': phone,
     // Never send a rate the server withheld: an omitted key is honest, 0 is a
     // wage nobody quoted.
     if (!dailyRateHidden) 'daily_rate': dailyRate,
