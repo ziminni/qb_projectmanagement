@@ -2,7 +2,7 @@ import 'json_utils.dart';
 
 enum VariationOrderType implements JsonEnum {
   additive('additive', 'Added work'),
-  deductive('deductive', 'Deleted work'),
+  deductive('deductive', 'Removed work'),
   change('change', 'Design change');
 
   const VariationOrderType(this.apiValue, this.label);
@@ -45,6 +45,8 @@ class VariationOrder {
     required this.amount,
     required this.daysImpact,
     required this.status,
+    this.primaryAttachments = const [],
+    this.secondaryAttachments = const [],
     this.approvedByOwner,
     this.approvedByClient,
     this.createdAt,
@@ -59,10 +61,24 @@ class VariationOrder {
   final double amount;
   final int daysImpact;
   final VariationOrderStatus status;
+
+  /// Files or photos attached to the variation order (images, PDFs, CAD, etc.):
+  /// - [VariationOrderType.additive]: evidence of what is to be added.
+  /// - [VariationOrderType.deductive]: what is to be removed.
+  /// - [VariationOrderType.change]: current / existing condition.
+  final List<String> primaryAttachments;
+
+  /// Second group of files/photos for [VariationOrderType.change]: the new /
+  /// proposed design.
+  final List<String> secondaryAttachments;
+
   final int? approvedByOwner;
   final int? approvedByClient;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  bool get hasAttachments =>
+      primaryAttachments.isNotEmpty || secondaryAttachments.isNotEmpty;
 
   VariationOrder copyWith({
     int? id,
@@ -72,6 +88,8 @@ class VariationOrder {
     double? amount,
     int? daysImpact,
     VariationOrderStatus? status,
+    List<String>? primaryAttachments,
+    List<String>? secondaryAttachments,
     int? Function()? approvedByOwner,
     int? Function()? approvedByClient,
   }) => VariationOrder(
@@ -83,6 +101,8 @@ class VariationOrder {
     amount: amount ?? this.amount,
     daysImpact: daysImpact ?? this.daysImpact,
     status: status ?? this.status,
+    primaryAttachments: primaryAttachments ?? this.primaryAttachments,
+    secondaryAttachments: secondaryAttachments ?? this.secondaryAttachments,
     approvedByOwner: approvedByOwner != null
         ? approvedByOwner()
         : this.approvedByOwner,
@@ -93,6 +113,19 @@ class VariationOrder {
     updatedAt: DateTime.now(),
   );
 
+  static List<String> _parseAttachments(Object? listRaw, Object? singleRaw) {
+    if (listRaw is List) {
+      return listRaw
+          .whereType<String>()
+          .where((s) => s.trim().isNotEmpty)
+          .toList();
+    }
+    if (singleRaw is String && singleRaw.trim().isNotEmpty) {
+      return [singleRaw];
+    }
+    return const [];
+  }
+
   factory VariationOrder.fromJson(Map<String, dynamic> json) => VariationOrder(
     id: json['id'] as int,
     projectId: json['project_id'] as int,
@@ -102,6 +135,14 @@ class VariationOrder {
     amount: JsonUtils.toDouble(json['amount']),
     daysImpact: json['days_impact'] as int,
     status: VariationOrderStatus.fromJson(json['status']),
+    primaryAttachments: _parseAttachments(
+      json['primary_attachments'],
+      json['primary_photo_url'],
+    ),
+    secondaryAttachments: _parseAttachments(
+      json['secondary_attachments'],
+      json['secondary_photo_url'],
+    ),
     approvedByOwner: json['approved_by_owner'] as int?,
     approvedByClient: json['approved_by_client'] as int?,
     createdAt: JsonUtils.toDateOrNull(json['created_at']),
@@ -117,6 +158,10 @@ class VariationOrder {
     'amount': amount,
     'days_impact': daysImpact,
     'status': status.toJson(),
+    if (primaryAttachments.isNotEmpty)
+      'primary_attachments': primaryAttachments,
+    if (secondaryAttachments.isNotEmpty)
+      'secondary_attachments': secondaryAttachments,
     'approved_by_owner': approvedByOwner,
     'approved_by_client': approvedByClient,
     'created_at': JsonUtils.fromDateTimeOrNull(createdAt),

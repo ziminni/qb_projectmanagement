@@ -61,4 +61,8 @@ class NotificationService extends ChangeNotifier {
     await _repo.markAllRead(userId);
     notifyListeners();
   }
+
+  /// Tells badge/notification listeners to re-fetch their counts (e.g. after a
+  /// workflow transition in API mode).
+  void refresh() => notifyListeners();
 }

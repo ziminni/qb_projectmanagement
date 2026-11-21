@@ -12,6 +12,7 @@ import '../../../shared/widgets/app_reason_dialog.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_vo_status_chip.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
+import '../../billing/widgets/vo_photo_attachments.dart';
 import '../viewmodels/client_variation_order_detail_viewmodel.dart';
 
 /// A variation order in the client portal, with Approve and Reject.
@@ -67,8 +68,7 @@ class ClientVariationOrderDetailPage extends StatelessWidget {
                         : () => reportAction(
                             context,
                             vm.approve(),
-                            success:
-                                'Approved. The contract and schedule are updated.',
+                            success: 'Variation order approved.',
                           ),
                     icon: const Icon(Icons.check),
                     label: const Text('Approve change'),
@@ -119,6 +119,10 @@ class ClientVariationOrderDetailPage extends StatelessWidget {
                 ],
               ),
             ),
+            if (v.hasAttachments) ...[
+              gap,
+              VoPhotoAttachmentsCard(vo: v),
+            ],
           ],
         );
       },

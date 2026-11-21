@@ -19,6 +19,9 @@ class PrivateFileLoader {
         'Files are stored on the server; the demo has none.',
       );
     }
-    return client.getBytes(fileUrl);
+    final normalized = fileUrl.startsWith('/api/v1/')
+        ? fileUrl.substring('/api/v1/'.length)
+        : fileUrl;
+    return client.getBytes(normalized);
   }
 }

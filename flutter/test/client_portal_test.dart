@@ -38,7 +38,7 @@ void main() {
     expect(find.text('Formworks for second-floor columns'), findsNothing);
   });
 
-  testWidgets('client approves a VO; the contract amount updates', (
+  testWidgets('client approves a VO; project contract amount stays unchanged', (
     tester,
   ) async {
     await pumpApp(tester);
@@ -51,7 +51,7 @@ void main() {
     expect(find.text('₱2,000,000.00'), findsOneWidget);
     await tester.tap(find.text('Approve change'));
     await tester.pumpAndSettle();
-    expect(find.text('₱2,085,000.00'), findsOneWidget);
+    expect(find.text('₱2,000,000.00'), findsOneWidget);
     expect(statusChip('Approved'), findsOneWidget);
   });
 

@@ -901,7 +901,7 @@ class VariationOrderTests(BillingFixtures, APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['status'], 'rejected')
 
-    def test_client_approval_moves_the_contract_and_the_target_end_once(self):
+    def test_client_approval_logs_vo_without_mutating_project_details(self):
         vo = self.propose(days_impact=10).data
         self.owner_http.post(f'{VOS_URL}{vo["id"]}/submit/', {}, format='json')
 
@@ -913,10 +913,10 @@ class VariationOrderTests(BillingFixtures, APITestCase):
         self.assertEqual(response.data['approved_by_client'], self.client_user.pk)
 
         self.project.refresh_from_db()
-        self.assertEqual(self.project.contract_amount, Decimal('1150000.00'))
+        self.assertEqual(self.project.contract_amount, Decimal('1000000.00'))
         self.assertEqual(
             self.project.target_end_date,
-            (timezone.localdate() + timedelta(days=60 + 10)),
+            (timezone.localdate() + timedelta(days=60)),
         )
         self.assertEqual(
             AuditLog.objects.filter(action='vo_client_approved').count(), 1,
@@ -928,7 +928,7 @@ class VariationOrderTests(BillingFixtures, APITestCase):
         self.assertEqual(again.status_code, 400)
         self.assertEqual(again.data['detail'], rules.VO_NOT_WAITING)
         self.project.refresh_from_db()
-        self.assertEqual(self.project.contract_amount, Decimal('1150000.00'))
+        self.assertEqual(self.project.contract_amount, Decimal('1000000.00'))
 
     def test_client_approval_locks_the_project_before_the_variation_order(self):
         """Contract lock order on every write: project row first, then the VO.
@@ -1226,7 +1226,7 @@ class BillingNotificationTests(BillingFixtures, APITestCase):
             f'{VOS_URL}{vo["id"]}/client-approve/', {}, format='json',
         )
         [approved] = self.inbox(self.owner)
-        self.assertIn('is approved', approved.message)
+        self.assertIn('was approved', approved.message)
         self.assertEqual(approved.link, f'/variation-orders/{vo["id"]}')
 
 

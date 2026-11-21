@@ -8,6 +8,7 @@ class PdfReport {
     this.info = const [],
     this.tables = const [],
     this.notes = const [],
+    this.photoSections = const [],
     this.signatures = const [],
   });
 
@@ -24,8 +25,18 @@ class PdfReport {
   /// Titled paragraphs, e.g. remarks.
   final List<(String, String)> notes;
 
+  /// Optional titled groups of attached photos to embed in the PDF.
+  final List<PdfPhotoSection> photoSections;
+
   /// Signature lines at the bottom, e.g. "Prepared by".
   final List<String> signatures;
+}
+
+class PdfPhotoSection {
+  const PdfPhotoSection({required this.title, required this.paths});
+
+  final String title;
+  final List<String> paths;
 }
 
 class PdfTable {

@@ -3,7 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../data/models/app_role.dart';
+import '../../data/models/progress_billing.dart';
 import '../../data/models/user.dart';
+import '../../data/models/variation_order.dart';
+import '../../data/repositories/billing_repository.dart';
+import '../../data/repositories/project_repository.dart';
 import '../../data/services/approval_inbox.dart';
 import '../../data/services/local_settings_service.dart';
 import '../../data/services/notification_preferences_service.dart';
@@ -91,28 +95,68 @@ class _AppSidebarState extends State<AppSidebar> {
   void _onChanged() => _refreshBadges();
 
   Future<void> _refreshBadges() async {
-    if (widget.role != AppRole.owner || !_prefs.showSidebarRequestBadges) {
+    if (!_prefs.showSidebarRequestBadges) {
       if (_badges.isNotEmpty && mounted) setState(() => _badges = const {});
       return;
     }
-    try {
-      final items = await getIt<ApprovalInbox>().pendingFor(
-        widget.user.id,
-        widget.role,
-      );
-      final materialRequests = items
-          .where((i) => i.kind == ApprovalKind.materialRequest)
-          .length;
-      if (!mounted) return;
-      setState(() {
-        _badges = {
-          AppRoutes.approvals: items.length,
-          AppRoutes.requestQueue: materialRequests,
-        };
-      });
-    } catch (_) {
-      // Keep existing counts on transient load errors.
+    if (widget.role == AppRole.owner) {
+      try {
+        final items = await getIt<ApprovalInbox>().pendingFor(
+          widget.user.id,
+          widget.role,
+        );
+        final materialRequests = items
+            .where((i) => i.kind == ApprovalKind.materialRequest)
+            .length;
+        if (!mounted) return;
+        setState(() {
+          _badges = {
+            AppRoutes.approvals: items.length,
+            AppRoutes.requestQueue: materialRequests,
+          };
+        });
+      } catch (_) {
+        // Keep existing counts on transient load errors.
+      }
+      return;
     }
+    if (widget.role == AppRole.client) {
+      try {
+        final projects = await getIt<ProjectRepository>().getProjectsFor(
+          widget.user.id,
+          AppRole.client,
+        );
+        final projectIds = projects.map((p) => p.id).toList();
+        if (projectIds.isEmpty) {
+          if (_badges.isNotEmpty && mounted) setState(() => _badges = const {});
+          return;
+        }
+        final billing = getIt<BillingRepository>();
+        final results = await Future.wait([
+          billing.getVariationOrders(
+            projectIds: projectIds,
+            statuses: const [VariationOrderStatus.pendingClient],
+          ),
+          billing.getBillings(
+            projectIds: projectIds,
+            statuses: const [BillingStatus.pendingClient],
+          ),
+        ]);
+        final pendingVos = (results[0] as List<VariationOrder>).length;
+        final pendingBillings = (results[1] as List<ProgressBilling>).length;
+        if (!mounted) return;
+        setState(() {
+          _badges = {
+            AppRoutes.clientVariationOrders: pendingVos,
+            AppRoutes.clientBillings: pendingBillings,
+          };
+        });
+      } catch (_) {
+        // Keep existing counts on transient load errors.
+      }
+      return;
+    }
+    if (_badges.isNotEmpty && mounted) setState(() => _badges = const {});
   }
 
   @override

@@ -100,6 +100,11 @@ class _AppShellState extends State<AppShell> {
     setState(() {});
   }
 
+  static bool _isFormRoute(String location) {
+    final path = Uri.tryParse(location)?.path ?? location;
+    return path.endsWith('/new') || path.endsWith('/edit');
+  }
+
   @override
   void didUpdateWidget(AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -109,6 +114,11 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     _poppingTo = null;
+    if (_history.isNotEmpty &&
+        _isFormRoute(_history.last) &&
+        !_isFormRoute(widget.location)) {
+      _history.removeLast();
+    }
     if (_history.isEmpty || _history.last != widget.location) {
       _history.add(widget.location);
     }

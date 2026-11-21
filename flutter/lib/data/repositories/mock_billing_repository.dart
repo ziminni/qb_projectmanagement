@@ -415,6 +415,8 @@ class MockBillingRepository implements BillingRepository {
       description: vo.description.trim(),
       amount: isPm ? amount : _vos[i].amount,
       daysImpact: vo.daysImpact,
+      primaryAttachments: List<String>.unmodifiable(vo.primaryAttachments),
+      secondaryAttachments: List<String>.unmodifiable(vo.secondaryAttachments),
     );
     _vos[i] = updated;
     return updated;
@@ -487,20 +489,6 @@ class MockBillingRepository implements BillingRepository {
         totalBilled: _totalBilled(vo.projectId),
       ),
     );
-    try {
-      await _projects.applyVariation(
-        vo.projectId,
-        amountDelta: vo.amount,
-        daysImpact: vo.daysImpact,
-      );
-    } on UnsupportedError {
-      // Phase 4 owns the server-side VO application; until then this flow is
-      // unavailable in API mode and says so instead of crashing.
-      throw const BusinessRuleException(
-        'Approving a variation order is not available yet. It arrives with '
-        'billing in Phase 4.',
-      );
-    }
     _vos[i] = vo.copyWith(
       status: VariationOrderStatus.approved,
       approvedByClient: () => userId,
@@ -510,9 +498,7 @@ class MockBillingRepository implements BillingRepository {
       vo.projectId,
       AppRole.owner,
       type: 'variation_order',
-      message:
-          '${vo.voNo} is approved. The contract amount and target end date '
-          'are updated; adjust categories and to-dos.',
+      message: '${vo.voNo} was approved by the client.',
       link: AppRoutes.variationOrder(id),
     );
     return _vos[i];

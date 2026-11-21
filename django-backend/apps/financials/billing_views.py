@@ -18,9 +18,16 @@ it may not learn that an unissued bill exists.
 # Pyright runs without django-stubs/DRF stubs (untyped managers, actions).
 # pyright: reportAttributeAccessIssue=false, reportArgumentType=false, reportGeneralTypeIssues=false
 
+import mimetypes
+import uuid
+from pathlib import Path
+
+from django.conf import settings
+from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -392,6 +399,10 @@ class VariationOrderViewSet(viewsets.GenericViewSet,
         }
         if 'amount' in request.data:
             data['amount'] = request.data['amount']
+        if 'primary_attachments' in request.data:
+            data['primary_attachments'] = request.data['primary_attachments']
+        if 'secondary_attachments' in request.data:
+            data['secondary_attachments'] = request.data['secondary_attachments']
         serializer = wire.VariationOrderWriteSerializer(data=data, partial=True)
         if not serializer.is_valid():
             return refused(serializer)
@@ -400,6 +411,57 @@ class VariationOrderViewSet(viewsets.GenericViewSet,
             priced_by_owner=self.priced_by_owner(project), vo=order,
         )
         return Response(wire.VariationOrderSerializer(order).data)
+
+    # -- photo uploads (stored in private MEDIA_ROOT/vo_photos) ---------------
+
+    _ALLOWED_PHOTO_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.heic'}
+    _MAX_PHOTO_BYTES = 10 * 1024 * 1024
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='upload-photo',
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def upload_photo(self, request):
+        role = self.role()
+        if role not in (Role.OWNER, Role.SITE_ENGINEER):
+            raise NotAllowed(rules.SE_OR_OWNER_PROPOSES)
+        upload = request.FILES.get('file')
+        if upload is None:
+            raise RuleRefused('Attach a photo file.')
+        if upload.size > self._MAX_PHOTO_BYTES:
+            raise RuleRefused('Photo must be 10 MB or smaller.')
+        ext = Path(upload.name or '').suffix.lower()
+        if ext not in self._ALLOWED_PHOTO_EXTS:
+            raise RuleRefused('Only photo files (JPG, PNG, WEBP, GIF, HEIC) are allowed.')
+        folder = Path(settings.MEDIA_ROOT) / 'vo_photos'
+        folder.mkdir(parents=True, exist_ok=True)
+        filename = f'{uuid.uuid4().hex}{ext}'
+        target = folder / filename
+        with target.open('wb') as dest:
+            for chunk in upload.chunks():
+                dest.write(chunk)
+        return Response(
+            {'url': f'/api/v1/variation-orders/photos/{filename}/'},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'photos/(?P<filename>[A-Za-z0-9._-]+)',
+    )
+    def serve_photo(self, request, filename):
+        folder = (Path(settings.MEDIA_ROOT) / 'vo_photos').resolve()
+        target = (folder / filename).resolve()
+        if folder not in target.parents or not target.is_file():
+            raise Http404('Photo not found.')
+        content_type, _ = mimetypes.guess_type(str(target))
+        return FileResponse(
+            target.open('rb'),
+            content_type=content_type or 'application/octet-stream',
+        )
 
     # -- owner moves ----------------------------------------------------------
 

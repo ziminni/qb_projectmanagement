@@ -34,6 +34,7 @@ from .models import (
     RetentionRelease,
     VariationOrder,
     VariationOrderStatus,
+    VariationOrderType,
 )
 
 
@@ -306,6 +307,12 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
             project.contract_amount, amount, total_billed,
         ))
 
+        primary_attachments = list(payload.get('primary_attachments', []))
+        secondary_attachments = (
+            list(payload.get('secondary_attachments', []))
+            if vo_type == VariationOrderType.CHANGE else []
+        )
+
         if vo is None:
             count = VariationOrder.objects.filter(project=project).count()
             vo = VariationOrder.objects.create(
@@ -315,6 +322,8 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
                 description=description,
                 amount=amount,
                 days_impact=days_impact,
+                primary_attachments=primary_attachments,
+                secondary_attachments=secondary_attachments,
                 status=VariationOrderStatus.PROPOSED,
             )
             user_services.record(user, 'vo_proposed', 'variation_order', vo.pk)
@@ -329,8 +338,14 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
             vo.description = description
             vo.amount = amount
             vo.days_impact = days_impact
-            vo.save(update_fields=['type', 'description', 'amount',
-                                   'days_impact', 'updated_at'])
+            if 'primary_attachments' in payload:
+                vo.primary_attachments = primary_attachments
+            if 'secondary_attachments' in payload or vo_type != VariationOrderType.CHANGE:
+                vo.secondary_attachments = secondary_attachments
+            vo.save(update_fields=[
+                'type', 'description', 'amount', 'days_impact',
+                'primary_attachments', 'secondary_attachments', 'updated_at',
+            ])
             user_services.record(user, 'vo_updated', 'variation_order', vo.pk)
     return vo
 
@@ -372,13 +387,12 @@ def owner_reject_vo(user, vo, reason):
 
 
 def client_approve_vo(user, vo):
-    """Apply an approved VO to the contract amount and target end date, once.
+    """Record client approval on a variation order without mutating the project.
 
     The **project** row is locked first, then the VO row — the same order as
     `save_vo`, so a concurrent owner edit cannot deadlock against this approval.
-    The status check, the contract-after-VO check, the project update and the
-    audit row are one transaction, so a double approval cannot apply the money
-    twice.
+    Variation orders are kept self-contained as scope-change logs, so the
+    project's contract amount and target end date remain unchanged.
     """
     with transaction.atomic():
         project = Project.objects.select_for_update().get(pk=vo.project_id)
@@ -394,17 +408,10 @@ def client_approve_vo(user, vo):
         vo.approved_by_client = user
         vo.save(update_fields=['status', 'approved_by_client', 'updated_at'])
 
-        project.contract_amount = project.contract_amount + vo.amount
-        if project.target_end_date is not None:
-            project.target_end_date = (
-                project.target_end_date + timezone.timedelta(days=vo.days_impact)
-            )
-        project.save(update_fields=['contract_amount', 'target_end_date', 'updated_at'])
         user_services.record(user, 'vo_client_approved', 'variation_order', vo.pk)
         _tell(
             project, RoleOnProject.OWNER, 'variation_order',
-            f'{vo.vo_no} is approved. The contract amount and target end date '
-            'are updated; adjust categories and to-dos.',
+            f'{vo.vo_no} was approved by the client.',
             f'/variation-orders/{vo.pk}',
         )
     return vo

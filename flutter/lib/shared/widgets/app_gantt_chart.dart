@@ -153,7 +153,28 @@ class _AppGanttChartState extends State<AppGanttChart> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: _headerHeight),
+                    Container(
+                      height: _headerHeight,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                      ),
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Item of work',
+                              style: Theme.of(context).textTheme.labelSmall,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            'Weight',
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ],
+                      ),
+                    ),
                     const Divider(height: 1),
                     ...labels,
                   ],
@@ -258,7 +279,15 @@ class _AppGanttChartState extends State<AppGanttChart> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(Formatters.percent(c.progress), style: textTheme.labelMedium),
+          Tooltip(
+            message:
+                'Percent weight: ${Formatters.percent(c.weight)} · '
+                '${Formatters.percent(c.progress)} complete',
+            child: Text(
+              Formatters.percent(c.weight),
+              style: textTheme.labelMedium,
+            ),
+          ),
         ],
       ),
     );
@@ -294,7 +323,8 @@ class _AppGanttChartState extends State<AppGanttChart> {
                   height: 16,
                   child: Tooltip(
                     message:
-                        '${c.category.name}: ${Formatters.percent(c.progress)}\n'
+                        '${c.category.name}: ${Formatters.percent(c.progress)} complete '
+                        '(${Formatters.percent(c.weight)} weight)\n'
                         '${Formatters.dateRange(start, end)}',
                     child: ClipRRect(
                       borderRadius: AppRadii.smAll,

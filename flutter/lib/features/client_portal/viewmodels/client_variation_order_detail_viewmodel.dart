@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/di/service_locator.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/project.dart';
 import '../../../data/models/variation_order.dart';
 import '../../../data/repositories/billing_repository.dart';
 import '../../../data/repositories/project_repository.dart';
+import '../../../data/services/notification_service.dart';
 import '../../../data/services/session_service.dart';
 
 class ClientVariationOrderDetailViewModel extends ChangeNotifier
@@ -52,6 +54,9 @@ class ClientVariationOrderDetailViewModel extends ChangeNotifier
   Future<void> _refresh() async {
     _vo = (await _billing.getVariationOrder(voId))?.order;
     _project = await _projects.getProject(_project!.id);
+    if (getIt.isRegistered<NotificationService>()) {
+      getIt<NotificationService>().refresh();
+    }
   }
 
   Future<String?> approve() => runAction(() async {

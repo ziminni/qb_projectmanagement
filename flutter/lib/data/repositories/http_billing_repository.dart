@@ -1,3 +1,8 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../../core/network/api_client.dart';
 import '../models/audit_log.dart';
 import '../models/json_utils.dart';
@@ -29,6 +34,22 @@ class HttpBillingRepository implements BillingRepository {
   HttpBillingRepository(this._client);
 
   final ApiClient _client;
+
+  /// Local fallback cache of VO attachments by VO id so files attached in this
+  /// session still show on detail pages even if the backend hasn't migrated
+  /// attachment columns yet.
+  final Map<int, ({List<String> primary, List<String> secondary})>
+  _voAttachments = {};
+
+  VariationOrder _mergeAttachments(VariationOrder order) {
+    if (order.hasAttachments) return order;
+    final cached = _voAttachments[order.id];
+    if (cached == null) return order;
+    return order.copyWith(
+      primaryAttachments: cached.primary,
+      secondaryAttachments: cached.secondary,
+    );
+  }
 
   // ---- Billings
 
@@ -231,7 +252,7 @@ class HttpBillingRepository implements BillingRepository {
     );
     return [
       for (final row in rows)
-        if (VariationOrder.fromJson(row) case final order
+        if (_mergeAttachments(VariationOrder.fromJson(row)) case final order
             when _inProjects(order.projectId, projectIds) &&
                 (statuses == null || statuses.contains(order.status)))
           order,
@@ -247,9 +268,49 @@ class HttpBillingRepository implements BillingRepository {
     if (data == null) return null;
     final row = jsonObject(data);
     return VariationOrderDetail(
-      VariationOrder.fromJson(row),
+      _mergeAttachments(VariationOrder.fromJson(row)),
       _history(row['history']),
     );
+  }
+
+  Future<List<String>> _ensureUploaded(List<String> paths) async {
+    final result = <String>[];
+    for (final path in paths) {
+      if (path.isEmpty) continue;
+      if (path.startsWith('/api/') ||
+          path.startsWith('http://') ||
+          path.startsWith('https://') ||
+          path.startsWith('mock://')) {
+        result.add(path);
+        continue;
+      }
+      if (kIsWeb) {
+        result.add(path);
+        continue;
+      }
+      final file = File(path);
+      if (!await file.exists()) {
+        result.add(path);
+        continue;
+      }
+      final bytes = await file.readAsBytes();
+      final normalized = path.replaceAll('\\', '/');
+      final idx = normalized.lastIndexOf('/');
+      final name = idx >= 0 && idx < normalized.length - 1
+          ? normalized.substring(idx + 1)
+          : 'photo.jpg';
+      final form = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: name),
+      });
+      final res = jsonObject(
+        await _client.post('variation-orders/upload-photo/', body: form),
+      );
+      final url = res['url'] as String?;
+      if (url != null && url.isNotEmpty) {
+        result.add(url);
+      }
+    }
+    return result;
   }
 
   /// Creates the VO when its id is 0, edits a **proposed** one by `PATCH`
@@ -261,17 +322,26 @@ class HttpBillingRepository implements BillingRepository {
     VariationOrder vo, {
     required int userId,
   }) async {
+    final primary = await _ensureUploaded(vo.primaryAttachments);
+    final secondary = await _ensureUploaded(vo.secondaryAttachments);
     final body = {
       'project_id': vo.projectId,
       'type': vo.type.apiValue,
       'description': vo.description.trim(),
       'days_impact': vo.daysImpact,
       if (_client.seesFinance) 'amount': vo.amount,
+      'primary_attachments': primary,
+      'secondary_attachments': secondary,
     };
     final data = vo.id == 0
         ? await _client.post('variation-orders/', body: body)
         : await _client.patch('variation-orders/${vo.id}/', body: body);
-    return VariationOrder.fromJson(jsonObject(data));
+    final saved = VariationOrder.fromJson(jsonObject(data));
+    _voAttachments[saved.id] = (
+      primary: List<String>.unmodifiable(primary),
+      secondary: List<String>.unmodifiable(secondary),
+    );
+    return _mergeAttachments(saved);
   }
 
   @override
@@ -356,9 +426,11 @@ class HttpBillingRepository implements BillingRepository {
       _billing(await _client.post('progress-billings/$id/$move/', body: body));
 
   Future<VariationOrder> _voMove(int id, String move, {Object? body}) async =>
-      VariationOrder.fromJson(
-        jsonObject(
-          await _client.post('variation-orders/$id/$move/', body: body),
+      _mergeAttachments(
+        VariationOrder.fromJson(
+          jsonObject(
+            await _client.post('variation-orders/$id/$move/', body: body),
+          ),
         ),
       );
 

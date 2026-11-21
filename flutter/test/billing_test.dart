@@ -3,6 +3,7 @@ import 'package:buildpro_frontend/core/utils/app_messages.dart';
 import 'package:buildpro_frontend/data/models/payment_method.dart';
 import 'package:buildpro_frontend/data/models/progress_billing.dart';
 import 'package:buildpro_frontend/data/models/variation_order.dart';
+import 'package:buildpro_frontend/data/repositories/billing_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_audit_log_repository.dart';
 import 'package:buildpro_frontend/data/repositories/mock_billing_repository.dart';
 import 'package:buildpro_frontend/data/repositories/procurement_repository.dart';
@@ -174,7 +175,7 @@ void main() {
     });
 
     test(
-      'deductive amounts are stored negative; client approval updates the contract',
+      'deductive amounts are stored negative; client approval logs VO without modifying project details',
       () async {
         final vo = await repo.saveVariationOrder(
           VariationOrder(
@@ -192,15 +193,15 @@ void main() {
         expect(vo.amount, -12000);
         expect(vo.voNo, 'VO-03');
 
-        // VO-01 waits for the client: +₱85,000 and 5 days.
+        // VO-01 waits for the client: approving it records approval on the VO
+        // without altering the project's contract amount or target end date.
         final before = (await getIt<ProjectRepository>().getProject(1))!;
-        await repo.clientApproveVo(1, userId: 7);
+        final approved = await repo.clientApproveVo(1, userId: 7);
+        expect(approved.status, VariationOrderStatus.approved);
+        expect(approved.approvedByClient, 7);
         final after = (await getIt<ProjectRepository>().getProject(1))!;
-        expect(after.contractAmount, before.contractAmount + 85000);
-        expect(
-          after.targetEndDate,
-          before.targetEndDate.add(const Duration(days: 5)),
-        );
+        expect(after.contractAmount, before.contractAmount);
+        expect(after.targetEndDate, before.targetEndDate);
       },
     );
 
@@ -325,4 +326,136 @@ void main() {
       findsWidgets,
     );
   });
+
+  testWidgets('variation orders page shows dashboard KPIs and breakdowns', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'ramon@example.ph');
+    await goTo(tester, '/variation-orders');
+
+    expect(find.text('Total variation orders'), findsOneWidget);
+    expect(find.text('Awaiting approval'), findsOneWidget);
+    expect(find.text('Approved cost impact'), findsOneWidget);
+    expect(find.text('Approved schedule impact'), findsOneWidget);
+    expect(find.text('Approval pipeline'), findsOneWidget);
+    expect(find.text('By change type'), findsOneWidget);
+
+    // Filter via the Approved chip; dashboard stays visible and empty state
+    // appears when no approved VOs exist in seed data.
+    await tester.tap(find.text('Approved (0)'));
+    await tester.pumpAndSettle();
+    expect(find.text('No variation orders match.'), findsOneWidget);
+    expect(find.text('Total variation orders'), findsOneWidget);
+  });
+
+  testWidgets('VO form adapts photo attachment slots per change type', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'ramon@example.ph');
+    await goTo(tester, '/variation-orders/new');
+
+    // Default type: Added work -> 1 photo slot for what is to be added.
+    expect(find.text('Photo evidence of work to add'), findsOneWidget);
+    expect(find.byKey(const ValueKey('vo-photo-primary')), findsOneWidget);
+    expect(find.byKey(const ValueKey('vo-photo-secondary')), findsNothing);
+
+    // Switch to Removed work -> 1 photo slot for what is to be removed.
+    await tester.tap(find.text('Removed work'));
+    await tester.pumpAndSettle();
+    expect(find.text('Photos of work to be removed'), findsOneWidget);
+    expect(find.byKey(const ValueKey('vo-photo-primary')), findsOneWidget);
+    expect(find.byKey(const ValueKey('vo-photo-secondary')), findsNothing);
+
+    // Switch to Design change -> 2 photo slots (current vs. new).
+    await tester.tap(find.text('Design change'));
+    await tester.pumpAndSettle();
+    expect(find.text('Current / existing condition'), findsOneWidget);
+    expect(find.text('New / proposed design'), findsOneWidget);
+    expect(find.byKey(const ValueKey('vo-photo-primary')), findsOneWidget);
+    expect(find.byKey(const ValueKey('vo-photo-secondary')), findsOneWidget);
+  });
+
+  testWidgets('VO detail page displays attached photos and opens preview popup', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    final billing = getIt<BillingRepository>();
+    final created = await billing.saveVariationOrder(
+      const VariationOrder(
+        id: 0,
+        projectId: 1,
+        voNo: '',
+        type: VariationOrderType.change,
+        description: 'Revised balcony railing design',
+        amount: 25000,
+        daysImpact: 2,
+        status: VariationOrderStatus.proposed,
+        primaryAttachments: [
+          'mock://existing-balcony.jpg',
+          'mock://existing-angle2.jpg',
+        ],
+        secondaryAttachments: ['mock://new-railing.png'],
+      ),
+      userId: 3,
+    );
+
+    await signInAs(tester, 'ramon@example.ph');
+    await goTo(tester, '/variation-orders/${created.id}');
+
+    expect(find.text('Photo evidence'), findsOneWidget);
+    expect(find.text('Current / existing condition'), findsOneWidget);
+    expect(find.text('New / proposed design'), findsOneWidget);
+    expect(find.text('existing-balcony.jpg'), findsOneWidget);
+    expect(find.text('existing-angle2.jpg'), findsOneWidget);
+    expect(find.text('new-railing.png'), findsOneWidget);
+
+    // Tapping a photo opens the preview dialog.
+    await tester.tap(find.text('existing-balcony.jpg'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+  });
+
+  testWidgets(
+    'after creating and sending a VO, Back returns to Variation orders list instead of the Add VO form',
+    (tester) async {
+      await pumpApp(tester);
+      await signInAs(tester, 'ramon@example.ph');
+      await goTo(tester, '/variation-orders');
+
+      await tester.tap(find.text('Raise a VO'));
+      await tester.pumpAndSettle();
+      expect(find.text('Raise a variation order'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Description of the change'),
+        'Add extra garden faucet',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Amount added'),
+        '8000',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Additional days (schedule change)'),
+        '1',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Draft'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('added as draft'), findsOneWidget);
+      expect(find.text('Send to client'), findsOneWidget);
+      expect(find.text('Export VO'), findsNothing);
+      await tester.tap(find.text('Send to client'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Export VO'), findsOneWidget);
+      await tester.tap(find.text('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total variation orders'), findsOneWidget);
+      expect(find.text('Raise a variation order'), findsNothing);
+    },
+  );
 }
