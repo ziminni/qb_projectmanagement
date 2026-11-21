@@ -101,30 +101,78 @@ docker compose exec backend python manage.py check_pos
 
 **Rehearse on one computer:** do Setup B with both systems on the same machine. The tunnel on the POS side, and the four lines in CPMS's `.env`. The traffic then goes out to Cloudflare and back, exactly as between two laptops.
 
-### Setup C: CPMS Online + POS Local/Offline (Quick Test via Cloudflare Tunnel)
+### Setup C: Step-by-Step Fresh Pull / Reset & Online Test (CPMS Online + POS Local/Offline)
 
-To expose the CPMS backend (`:8001`) online for a few hours so teammates can connect from any internet connection while POS stays local/offline-first:
+Use this exact checklist whenever you want to test **everything from a completely fresh database** (demo/testing only — `-v` wipes the local PostgreSQL volume; never run `-v` on a live store database).
 
-1. **One-time secret setup:** Put the 4 POS tunnel lines (`POS_API_BASE_URL`, `POS_API_ALLOW_INSECURE_LOCAL`, `POS_API_GATEWAY_HEADER_NAME`, `POS_API_GATEWAY_HEADER_VALUE`) in `django-backend/.env` (gitignored — survives `git pull`).
-2. **Start CPMS + Quick Tunnel** from `qb_project_management_system`:
-   ```powershell
-   .\scripts\start-tunnel.ps1     # Windows PowerShell
-   ```
-   ```sh
-   ./scripts/start-tunnel.sh      # macOS / Linux
-   ```
-   *(Want a permanent Cloudflare Named Tunnel hostname later? Pass `-Token "<cf-token>" -Hostname "cpms-api.yourdomain.com"` / `--token ... --hostname ...`.)*
-3. The script starts `db`, `backend`, `pos_outbox`, and `cloudflared`, checks `check_pos`, and prints the public `https://<random>.trycloudflare.com` URL.
-4. **Teammates connect from anywhere** without running Docker:
-   ```powershell
-   cd flutter
-   flutter run -d windows --dart-define=API_BASE_URL=https://<printed-url>/api/v1
-   # or: -d macos / -d chrome
-   ```
-5. **Stop when done:**
-   ```powershell
-   docker compose --profile tunnel stop cloudflared
-   ```
+#### 1. POS Machine (Fresh Pull + Clean Reseed + Named Tunnel)
+```powershell
+# A) Brand-new clone:
+git clone https://github.com/ziminni/qb_hardwarestore.git qb_pos_inventory_system
+cd qb_pos_inventory_system
+
+# B) Already cloned (behind master):
+cd qb_pos_inventory_system
+git checkout master
+git pull --ff-only origin master
+
+# Wipe demo DB & containers cleanly, then start + reseed + start tunnel:
+docker compose --profile tunnel down -v
+.\scripts\start-tunnel.ps1
+# (First time on a new PC? Pass -Token "<cf-token>" -Hostname "pos-api.yourdomain.com")
+```
+Wait for `start-tunnel` to print the 4 `POS_API_*` lines (with your `X-QB-Gateway-Key`). On fresh start, POS automatically runs `migrate` and `seed_demo` (all seeded supplier bills and customer utang start with **no due date** by default).
+
+#### 2. CPMS Host Machine (Fresh Pull + Clean Reseed + Online Tunnel)
+```powershell
+# A) Brand-new clone:
+git clone <your-cpms-repo-url> qb_project_management_system
+cd qb_project_management_system
+
+# B) Already cloned (behind main):
+cd qb_project_management_system
+git checkout main
+git pull --ff-only origin main
+```
+Make sure `django-backend/.env` contains the 4 POS lines from Step 1 (gitignored — you only need to paste this once per machine):
+```env
+POS_API_BASE_URL=https://pos-api.yourdomain.com
+POS_API_ALLOW_INSECURE_LOCAL=False
+POS_API_GATEWAY_HEADER_NAME=X-QB-Gateway-Key
+POS_API_GATEWAY_HEADER_VALUE=<48-char-key-from-pos-start-tunnel>
+```
+Then wipe the CPMS demo DB, rebuild, reseed, link the POS payer, and open the online CPMS tunnel in one go:
+```powershell
+docker compose --profile tunnel down -v
+.\scripts\start-tunnel.ps1     # Windows PowerShell (or ./scripts/start-tunnel.sh on Mac/Linux)
+```
+*(Want a permanent Cloudflare Named Tunnel hostname later? Pass `-Token "<cf-token>" -Hostname "cpms-api.yourdomain.com"` / `--token ... --hostname ...`.)*
+
+The script automatically:
+1. Starts `db`, `backend` (runs `migrate` + `seed_demo --auto-pos-payer`), `pos_outbox`, and `cloudflared`.
+2. Prints the public `https://<random>.trycloudflare.com` URL.
+3. Runs `manage.py check_pos` — verify the last line says **`READY: own-store orders can be sent.`**
+
+#### 3. Run the Apps (POS Local + CPMS from Anywhere)
+- **POS Desktop (on the POS PC):**
+  ```powershell
+  cd qb_pos_inventory_system\flutter
+  flutter pub get
+  flutter run -d windows   # or: -d macos
+  ```
+- **CPMS App (on your PC or your teammate's PC — no Docker needed on their side):**
+  ```powershell
+  cd qb_project_management_system\flutter
+  flutter pub get
+  flutter run -d windows --dart-define=API_BASE_URL=https://<printed-cpms-url>/api/v1
+  # or: -d macos / -d chrome
+  ```
+
+#### 4. Stop Online Testing When Done
+```powershell
+# Stop only the public CPMS tunnel (keeps DB data):
+docker compose --profile tunnel stop cloudflared
+```
 
 ### Run the apps
 
