@@ -34,7 +34,7 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.text('Approvals').first);
+    await tester.tap(find.byTooltip('Approvals'));
     await tester.pumpAndSettle();
     expect(find.text('Daily reports (1)'), findsWidgets);
   });

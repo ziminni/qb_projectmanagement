@@ -15,6 +15,7 @@ import '../utils/formatters.dart';
 import '../utils/page_padding.dart';
 import '../constants/app_spacing.dart';
 import '../di/service_locator.dart';
+import 'app_shell.dart';
 import 'project_tabs.dart';
 
 /// Loads the project shown in the detail shell and checks the user may see
@@ -126,72 +127,82 @@ class _ProjectDetailShellState extends State<ProjectDetailShell> {
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         side,
-                        AppSpacing.xl,
+                        AppSpacing.md,
                         side,
-                        AppSpacing.sm,
+                        AppSpacing.lg,
                       ),
-                      child: Row(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 52,
-                            height: 52,
-                            decoration: const BoxDecoration(
-                              gradient: AppColors.brandGradient,
-                              borderRadius: AppRadii.lgAll,
-                            ),
-                            child: const Icon(
-                              Icons.apartment_rounded,
-                              color: Colors.white,
-                              size: 28,
-                            ),
+                          AppBackButton(
+                            onPressed: () => AppShellBack.goBack(context),
                           ),
-                          const SizedBox(width: AppSpacing.lg),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Wrap(
-                                  spacing: AppSpacing.sm,
-                                  runSpacing: AppSpacing.xs,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
+                          const SizedBox(height: AppSpacing.sm),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 52,
+                                height: 52,
+                                decoration: const BoxDecoration(
+                                  gradient: AppColors.brandGradient,
+                                  borderRadius: AppRadii.lgAll,
+                                ),
+                                child: const Icon(
+                                  Icons.apartment_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.lg),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    Wrap(
+                                      spacing: AppSpacing.sm,
+                                      runSpacing: AppSpacing.xs,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        Text(
+                                          project.code,
+                                          style: textTheme.labelMedium,
+                                        ),
+                                        AppProjectStatusChip(
+                                          status: project.status,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: AppSpacing.xs),
                                     Text(
-                                      project.code,
-                                      style: textTheme.labelMedium,
+                                      project.name,
+                                      style: textTheme.headlineSmall,
                                     ),
-                                    AppProjectStatusChip(
-                                      status: project.status,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: AppSpacing.xs),
-                                Text(
-                                  project.name,
-                                  style: textTheme.headlineSmall,
-                                ),
-                                const SizedBox(height: AppSpacing.xs),
-                                Wrap(
-                                  spacing: AppSpacing.lg,
-                                  runSpacing: AppSpacing.xs,
-                                  children: [
-                                    _meta(
-                                      context,
-                                      Icons.place_outlined,
-                                      project.location,
-                                    ),
-                                    _meta(
-                                      context,
-                                      Icons.event_outlined,
-                                      Formatters.dateRange(
-                                        project.startDate,
-                                        project.targetEndDate,
-                                      ),
+                                    const SizedBox(height: AppSpacing.xs),
+                                    Wrap(
+                                      spacing: AppSpacing.lg,
+                                      runSpacing: AppSpacing.xs,
+                                      children: [
+                                        _meta(
+                                          context,
+                                          Icons.place_outlined,
+                                          project.location,
+                                        ),
+                                        _meta(
+                                          context,
+                                          Icons.event_outlined,
+                                          Formatters.dateRange(
+                                            project.startDate,
+                                            project.targetEndDate,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

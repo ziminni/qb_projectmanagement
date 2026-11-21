@@ -12,13 +12,13 @@ import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_avatar.dart';
 import '../../../shared/widgets/app_confirm_dialog.dart';
-import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_info_row.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_status_chip.dart';
 import '../viewmodels/admin_audit.dart';
 import '../viewmodels/user_detail_viewmodel.dart';
 import '../widgets/user_management_audit_tile.dart';
+import '../widgets/admin_dashboard/admin_dashboard_kit.dart';
 
 /// Read-only view of one user, with the admin's account actions.
 class UserDetailPage extends StatelessWidget {
@@ -42,9 +42,11 @@ class UserDetailPage extends StatelessWidget {
       builder: (context, _) {
         final vm = context.watch<UserDetailViewModel>();
         if (vm.isLoading && vm.user == null) {
-          return const Center(child: CircularProgressIndicator());
+          return const AdminTabSkeleton();
         }
-        if (vm.error != null) return AppEmptyState(message: vm.error!);
+        if (vm.error != null) {
+          return AdminErrorState(message: vm.error!, onRetry: vm.load);
+        }
         final user = vm.user!;
         final wide =
             MediaQuery.sizeOf(context).width >= AppSpacing.wideBreakpoint;

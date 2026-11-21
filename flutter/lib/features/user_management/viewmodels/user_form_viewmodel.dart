@@ -21,6 +21,7 @@ typedef AssignmentDraft = ({int projectId, AppRole role});
 class UserFormViewModel extends ChangeNotifier with ActionRunner {
   UserFormViewModel({
     required this.userId,
+    this.prefillClientId,
     required UserRepository users,
     required ProjectRepository projects,
     required ClientRepository clients,
@@ -36,6 +37,10 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
 
   /// Null when creating a user.
   final int? userId;
+
+  /// Creating a portal login for this client: starts with the client role
+  /// and the client chosen. Ignored when editing.
+  final int? prefillClientId;
   final UserRepository _users;
   final ProjectRepository _projects;
   final ClientRepository _clients;
@@ -52,6 +57,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
   // Editable state.
   Set<AppRole> roles = {};
   List<AssignmentDraft> assignments = [];
+  AssignmentDraft? _pendingAssignment;
   int? clientId;
   bool isActive = true;
 
@@ -82,6 +88,20 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
       if (roles.contains(r)) r,
   ];
 
+  Client? clientById(int id) {
+    for (final c in _allClients) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// The client this new login was opened for, when it still has none.
+  Client? get prefillClient {
+    if (!isNew || prefillClientId == null) return null;
+    final c = clientById(prefillClientId!);
+    return c != null && c.userId == null ? c : null;
+  }
+
   Project? projectById(int id) {
     for (final p in _allProjects) {
       if (p.id == id) return p;
@@ -108,6 +128,12 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
             (projectId: a.projectId, role: a.roleOnProject),
         ];
         clientId = (await _clients.getClientForUser(userId!))?.id;
+      } else if (prefillClientId != null) {
+        final client = clientById(prefillClientId!);
+        if (client != null && client.userId == null) {
+          roles = {AppRole.client};
+          clientId = client.id;
+        }
       }
     } catch (e) {
       _error = 'Could not load the user. $e';
@@ -123,6 +149,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     } else {
       roles.remove(role);
       assignments.removeWhere((a) => a.role == role);
+      if (_pendingAssignment?.role == role) _pendingAssignment = null;
       if (role == AppRole.client) clientId = null;
     }
     notifyListeners();
@@ -139,7 +166,18 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
       (a) =>
           a.role == AppRole.client && projectById(a.projectId)?.clientId != id,
     );
+    if (_pendingAssignment?.role == AppRole.client &&
+        projectById(_pendingAssignment!.projectId)?.clientId != id) {
+      _pendingAssignment = null;
+    }
     notifyListeners();
+  }
+
+  /// Tracks the dropdown selection in [UserManagementAssignmentEditor] so
+  /// clicking "Create user" / "Save changes" without clicking "Assign" first
+  /// still saves the selected project.
+  void setPendingAssignment(AssignmentDraft? draft) {
+    _pendingAssignment = draft;
   }
 
   /// Projects a new assignment in [role] may use. Client users only see
@@ -153,6 +191,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
 
   void addAssignment(int projectId, AppRole role) {
     assignments.add((projectId: projectId, role: role));
+    _pendingAssignment = null;
     notifyListeners();
   }
 
@@ -182,6 +221,13 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     }
     if (isSelf && !isActive) {
       throw const BusinessRuleException('You cannot deactivate yourself.');
+    }
+    final pending = _pendingAssignment;
+    if (pending != null &&
+        roles.contains(pending.role) &&
+        projectsFor(pending.role).any((p) => p.id == pending.projectId)) {
+      assignments.add(pending);
+      _pendingAssignment = null;
     }
     final saved = await _users.saveUser(
       User(

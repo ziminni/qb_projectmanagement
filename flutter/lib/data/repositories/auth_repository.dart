@@ -13,6 +13,10 @@ abstract interface class AuthRepository {
   /// deactivated account.
   Future<AuthResult> signIn(String email, String password);
 
+  /// Verifies [password] for [email] without modifying or clearing the active
+  /// session on failure. Returns true if valid, false otherwise.
+  Future<bool> verifyPassword(String email, String password);
+
   /// Always succeeds so the response does not reveal which emails exist.
   Future<void> requestPasswordReset(String email);
 

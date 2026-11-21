@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/app_role.dart';
 import '../../data/services/session_service.dart';
+import '../../features/auth/widgets/profile_dialog.dart';
 import '../../routes/routes.dart';
 import '../../shared/widgets/app_avatar.dart';
 import 'role_navigation.dart';
@@ -45,7 +46,7 @@ class AppAccountMenu extends StatelessWidget {
           session.switchRole(value);
           context.go(RoleNavigation.homeFor(value));
         } else if (value == #profile) {
-          context.go(AppRoutes.profile);
+          showProfileDialog(context);
         } else if (value == #signOut) {
           session.signOut();
           context.go(AppRoutes.landing);

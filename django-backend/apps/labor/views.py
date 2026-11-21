@@ -120,7 +120,7 @@ class WorkerViewSet(viewsets.GenericViewSet,
 
     def require_maintenance(self):
         """Only the finance roles maintain workers company-wide."""
-        if not capabilities.sees_finance(self.role()):
+        if not capabilities.manages_finance(self.role()):
             raise NotAllowed(rules.WORKER_MAINTENANCE)
 
     def refused(self, serializer):

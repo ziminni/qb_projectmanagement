@@ -39,6 +39,15 @@ class MockAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<bool> verifyPassword(String email, String password) async {
+    final normalized = email.trim().toLowerCase();
+    final users = await _users.getUsers();
+    final matches = users.where((u) => u.email.toLowerCase() == normalized);
+    final user = matches.isEmpty ? null : matches.first;
+    return user != null && user.isActive && _passwordFor(user.id) == password;
+  }
+
+  @override
   Future<void> requestPasswordReset(String email) async {}
 
   @override

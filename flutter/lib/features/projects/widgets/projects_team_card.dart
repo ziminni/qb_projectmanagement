@@ -11,11 +11,13 @@ class ProjectsTeamCard extends StatelessWidget {
     required this.team,
     this.onAdd,
     this.onRemove,
+    this.canRemove,
   });
 
   final List<TeamMember> team;
   final VoidCallback? onAdd;
   final ValueChanged<TeamMember>? onRemove;
+  final bool Function(TeamMember member)? canRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +48,7 @@ class ProjectsTeamCard extends StatelessWidget {
                   ?m.assignment.note,
                 ].join(' · '),
               ),
-              trailing: onRemove == null
+              trailing: (onRemove == null || !(canRemove?.call(m) ?? true))
                   ? null
                   : IconButton(
                       tooltip: 'Remove from team',

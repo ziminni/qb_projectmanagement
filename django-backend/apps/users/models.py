@@ -220,3 +220,45 @@ class Notification(models.Model):
 
     def __str__(self):
         return f'{self.type} → {self.user_id}'
+
+
+class SystemSecurityPolicy(models.Model):
+    """Persisted admin security policy (singleton row)."""
+
+    min_password_length = models.PositiveSmallIntegerField(default=8)
+    idle_timeout_minutes = models.PositiveSmallIntegerField(default=30)
+    max_failed_logins = models.PositiveSmallIntegerField(default=5)
+    require_manager_override = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'System security policy'
+        verbose_name_plural = 'System security policies'
+
+    def __str__(self):
+        return f'Security policy (min_pw={self.min_password_length})'
+
+
+class SystemBackupSchedule(models.Model):
+    """Persisted automated database backup schedule (singleton row)."""
+
+    class Frequency(models.TextChoices):
+        DAILY = 'daily', 'Daily'
+        WEEKLY = 'weekly', 'Weekly'
+        MANUAL = 'manual', 'Manual only'
+
+    frequency = models.CharField(
+        max_length=16,
+        choices=Frequency.choices,
+        default=Frequency.DAILY,
+    )
+    retention_count = models.PositiveSmallIntegerField(default=7)
+    last_backup_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'System backup schedule'
+        verbose_name_plural = 'System backup schedules'
+
+    def __str__(self):
+        return f'Backup schedule ({self.frequency}, keep {self.retention_count})'

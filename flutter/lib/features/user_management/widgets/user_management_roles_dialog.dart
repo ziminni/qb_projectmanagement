@@ -35,7 +35,8 @@ class RolesPermissionsDialog extends StatefulWidget {
   static const descriptions = {
     AppRole.admin:
         'Manages user accounts, company details, master lists and system '
-        'settings, and reviews the audit log. Sees no company finances.',
+        'settings, and reviews the audit log. Sees company finances on '
+        'the dashboard but cannot record or change money.',
     AppRole.owner:
         'Creates and runs projects, approves reports, to-dos, payroll and '
         'purchases, and manages billings and variation orders.',
@@ -196,8 +197,10 @@ class _RoleCard extends StatelessWidget {
             runSpacing: AppSpacing.xs,
             children: [
               role.seesFinance
-                  ? const AppStatusChip(
-                      label: 'Sees company finances',
+                  ? AppStatusChip(
+                      label: role.managesFinance
+                          ? 'Sees company finances'
+                          : 'Sees company finances (read-only)',
                       icon: Icons.visibility_outlined,
                       foreground: AppColors.warning,
                       background: AppColors.warningContainer,

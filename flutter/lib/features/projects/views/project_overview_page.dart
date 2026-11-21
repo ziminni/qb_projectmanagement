@@ -159,6 +159,7 @@ class ProjectOverviewPage extends StatelessWidget {
         final team = ProjectsTeamCard(
           team: vm.team,
           onAdd: vm.canManageTeam ? () => _addMember(context, vm) : null,
+          canRemove: vm.canRemoveMember,
           onRemove: vm.canManageTeam
               ? (m) => _removeMember(context, vm, m)
               : null,

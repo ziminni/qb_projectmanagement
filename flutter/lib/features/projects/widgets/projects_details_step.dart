@@ -106,7 +106,7 @@ class ProjectsDetailsStep extends StatelessWidget {
                   initialValue: siteEngineerId,
                   isExpanded: true,
                   decoration: const InputDecoration(
-                    labelText: 'Site engineer / foreman',
+                    labelText: 'Foreman',
                     prefixIcon: Icon(Icons.engineering_outlined),
                   ),
                   items: [

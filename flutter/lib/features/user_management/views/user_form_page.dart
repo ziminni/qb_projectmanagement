@@ -11,18 +11,21 @@ import '../../../core/utils/page_padding.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/services/auth_rules.dart';
 import '../../../routes/routes.dart';
-import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/admin_audit.dart';
 import '../viewmodels/user_form_viewmodel.dart';
 import '../widgets/user_management_assignment_editor.dart';
 import '../widgets/user_management_role_selector.dart';
+import '../widgets/admin_dashboard/admin_dashboard_kit.dart';
 
 class UserFormPage extends StatefulWidget {
-  const UserFormPage({super.key, this.userId});
+  const UserFormPage({super.key, this.userId, this.clientId});
 
   /// Null to create a user.
   final int? userId;
+
+  /// New user only: a portal login for this client (from `?client=`).
+  final int? clientId;
 
   @override
   State<UserFormPage> createState() => _UserFormPageState();
@@ -35,6 +38,7 @@ class _UserFormPageState extends State<UserFormPage> {
   final _phone = TextEditingController();
   late final _vm = UserFormViewModel(
     userId: widget.userId,
+    prefillClientId: widget.clientId,
     users: getIt(),
     projects: getIt(),
     clients: getIt(),
@@ -46,6 +50,12 @@ class _UserFormPageState extends State<UserFormPage> {
   void initState() {
     super.initState();
     _vm.load().then((_) {
+      final client = _vm.prefillClient;
+      if (client != null) {
+        _name.text = client.contactPerson ?? client.name;
+        _email.text = client.email ?? '';
+        _phone.text = client.phone ?? '';
+      }
       final user = _vm.user;
       if (user == null) return;
       _name.text = user.fullName;
@@ -85,9 +95,11 @@ class _UserFormPageState extends State<UserFormPage> {
       child: Consumer<UserFormViewModel>(
         builder: (context, vm, _) {
           if (vm.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return const AdminTabSkeleton();
           }
-          if (vm.error != null) return AppEmptyState(message: vm.error!);
+          if (vm.error != null) {
+            return AdminErrorState(message: vm.error!, onRetry: vm.load);
+          }
           return Form(
             key: _formKey,
             child: Column(
@@ -135,15 +147,16 @@ class _UserFormPageState extends State<UserFormPage> {
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ],
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text('Active'),
-                              subtitle: const Text(
-                                'Inactive users cannot sign in.',
+                            if (!vm.isNew)
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text('Active'),
+                                subtitle: const Text(
+                                  'Inactive users cannot sign in.',
+                                ),
+                                value: vm.isActive,
+                                onChanged: vm.isSelf ? null : vm.setActive,
                               ),
-                              value: vm.isActive,
-                              onChanged: vm.isSelf ? null : vm.setActive,
-                            ),
                           ],
                         ),
                       ),
@@ -178,18 +191,21 @@ class _UserFormPageState extends State<UserFormPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: AppSpacing.lg),
-                      AppSectionCard(
-                        title: 'Project assignments',
-                        child: UserManagementAssignmentEditor(
-                          assignments: vm.assignments,
-                          roles: vm.assignableRoles,
-                          projectById: vm.projectById,
-                          projectsFor: vm.projectsFor,
-                          onAdd: vm.addAssignment,
-                          onRemove: vm.removeAssignment,
+                      if (!vm.isNew) ...[
+                        const SizedBox(height: AppSpacing.lg),
+                        AppSectionCard(
+                          title: 'Project assignments',
+                          child: UserManagementAssignmentEditor(
+                            assignments: vm.assignments,
+                            roles: vm.assignableRoles,
+                            projectById: vm.projectById,
+                            projectsFor: vm.projectsFor,
+                            onAdd: vm.addAssignment,
+                            onRemove: vm.removeAssignment,
+                            onPendingChanged: vm.setPendingAssignment,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

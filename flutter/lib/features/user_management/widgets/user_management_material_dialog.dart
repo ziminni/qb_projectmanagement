@@ -52,7 +52,7 @@ class _UserManagementMaterialDialogState
       base.copyWith(
         name: _name.text.trim(),
         unit: _unit.text.trim(),
-        defaultUnitCost: canSeeFinance()
+        defaultUnitCost: canManageFinance()
             ? InputParsers.amount(_cost.text)
             : base.defaultUnitCost,
         storeSku: () => InputParsers.optional(_sku.text),
@@ -90,7 +90,7 @@ class _UserManagementMaterialDialogState
                       validator: (v) => MasterDataRules.required(v, 'unit'),
                     ),
                   ),
-                  if (canSeeFinance()) ...[
+                  if (canManageFinance()) ...[
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: TextFormField(

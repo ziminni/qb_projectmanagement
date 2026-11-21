@@ -28,28 +28,40 @@ abstract final class RoleNavigation {
         group: 'Overview',
       ),
       RoleDestination(
-        'Users',
+        'User Management',
         Icons.people_outline,
         AppRoutes.adminUsers,
         group: 'People',
       ),
       RoleDestination(
-        'Master lists',
-        Icons.list_alt_outlined,
-        AppRoutes.adminMasterLists,
-        group: 'Configuration',
+        'Audit log',
+        Icons.history,
+        AppRoutes.adminAuditLog,
+        group: 'System & monitoring',
+      ),
+      RoleDestination(
+        'System health',
+        Icons.monitor_heart_outlined,
+        AppRoutes.adminHealth,
+        group: 'System & monitoring',
+      ),
+      RoleDestination(
+        'Backups',
+        Icons.backup_outlined,
+        AppRoutes.adminBackups,
+        group: 'System & monitoring',
+      ),
+      RoleDestination(
+        'Security',
+        Icons.security_outlined,
+        AppRoutes.adminSecurity,
+        group: 'System & monitoring',
       ),
       RoleDestination(
         'Settings',
         Icons.settings_outlined,
         AppRoutes.adminSettings,
         group: 'Configuration',
-      ),
-      RoleDestination(
-        'Audit log',
-        Icons.history,
-        AppRoutes.adminAuditLog,
-        group: 'Monitoring',
       ),
     ],
     AppRole.owner: [
@@ -78,12 +90,6 @@ abstract final class RoleNavigation {
         group: 'Procurement',
       ),
       RoleDestination(
-        'Price lists',
-        Icons.list_alt_outlined,
-        AppRoutes.adminMasterLists,
-        group: 'Procurement',
-      ),
-      RoleDestination(
         'Billing',
         Icons.receipt_long_outlined,
         AppRoutes.billings,
@@ -94,6 +100,12 @@ abstract final class RoleNavigation {
         Icons.difference_outlined,
         AppRoutes.variationOrders,
         group: 'Finance',
+      ),
+      RoleDestination(
+        'Settings',
+        Icons.settings_outlined,
+        AppRoutes.settings,
+        group: 'Account',
       ),
     ],
     AppRole.siteEngineer: [
@@ -133,8 +145,20 @@ abstract final class RoleNavigation {
         AppRoutes.deliveries,
         group: 'Materials',
       ),
+      RoleDestination(
+        'Settings',
+        Icons.settings_outlined,
+        AppRoutes.settings,
+        group: 'Account',
+      ),
     ],
     AppRole.accountant: [
+      RoleDestination(
+        'Dashboard',
+        Icons.space_dashboard_outlined,
+        AppRoutes.accountantDashboard,
+        group: 'Overview',
+      ),
       RoleDestination(
         'Payroll',
         Icons.payments_outlined,
@@ -171,6 +195,12 @@ abstract final class RoleNavigation {
         AppRoutes.expenseReports,
         group: 'Reports',
       ),
+      RoleDestination(
+        'Settings',
+        Icons.settings_outlined,
+        AppRoutes.settings,
+        group: 'Account',
+      ),
     ],
     AppRole.client: [
       RoleDestination(
@@ -202,6 +232,12 @@ abstract final class RoleNavigation {
         Icons.difference_outlined,
         AppRoutes.clientVariationOrders,
         group: 'Approvals',
+      ),
+      RoleDestination(
+        'Settings',
+        Icons.settings_outlined,
+        AppRoutes.settings,
+        group: 'Account',
       ),
     ],
   };

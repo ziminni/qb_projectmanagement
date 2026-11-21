@@ -524,7 +524,7 @@ def upload_document(actor, active_role, project, upload, payload):
     doc_type = rules.document_type(payload.get('doc_type'))
     if doc_type is None:
         _refuse(rules.CHOOSE_SECTION)
-    if doc_type == DocumentType.CONTRACT and not capabilities.sees_finance(active_role):
+    if doc_type == DocumentType.CONTRACT and not capabilities.manages_finance(active_role):
         raise NotAllowed(rules.NOT_A_CONTRACT_FILER)
 
     # Mock order: name, then the file (extension/content/size), then the

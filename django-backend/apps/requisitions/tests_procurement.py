@@ -792,7 +792,7 @@ class RedactionAndScopeTests(ProcurementCase):
         _, response = self.place_order()
         order_id = response.data['id']
 
-        for user, role in ((self.engineer, Role.SITE_ENGINEER), (self.admin, Role.ADMIN)):
+        for user, role in ((self.engineer, Role.SITE_ENGINEER),):
             self.act_as(user, role)
             listing = self.client.get('/api/v1/purchase-orders/')
             detail = self.client.get(f'/api/v1/purchase-orders/{order_id}/')
@@ -804,13 +804,14 @@ class RedactionAndScopeTests(ProcurementCase):
             self.assertNotIn('unit_price', detail.data['items'][0])
             self.assertNotIn('total_amount', detail.data['order'])
 
-        self.act_as(self.owner, Role.OWNER)
-        visible = self.client.get(f'/api/v1/purchase-orders/{order_id}/')
-        self.assertEqual(visible.data['order']['total_amount'], '2500.00')
+        for user, role in ((self.owner, Role.OWNER), (self.admin, Role.ADMIN)):
+            self.act_as(user, role)
+            visible = self.client.get(f'/api/v1/purchase-orders/{order_id}/')
+            self.assertEqual(visible.data['order']['total_amount'], '2500.00', role)
         self.assertEqual(visible.data['items'][0]['unit_price'], '250.00')
 
     def test_admin_audit_trail_carries_no_money(self):
-        """`admin` is not a finance role but can read the audit log."""
+        """The audit trail itself never carries money, whoever reads it."""
         _, response = self.place_order()
         order_id = response.data['id']
 
@@ -860,7 +861,7 @@ class RedactionAndScopeTests(ProcurementCase):
         self.assertEqual(created.data['or_number'], 'OR-7781')
         order_id = created.data['id']
 
-        for user, role in ((self.admin, Role.ADMIN), (self.engineer, Role.SITE_ENGINEER)):
+        for user, role in ((self.engineer, Role.SITE_ENGINEER),):
             self.act_as(user, role)
             row = self.client.get(f'/api/v1/purchase-orders/{order_id}/')
             listing = self.client.get('/api/v1/purchase-orders/')
@@ -1310,7 +1311,6 @@ class BudgetCheckTests(ProcurementCase):
     def test_budget_check_is_finance_only_and_scoped(self):
         for user, role in (
             (self.engineer, Role.SITE_ENGINEER),
-            (self.admin, Role.ADMIN),
             (self.client_user, Role.CLIENT),
         ):
             self.act_as(user, role)

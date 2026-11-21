@@ -310,6 +310,9 @@ class AuditLogListView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = AuditLog.objects.order_by('-created_at', '-id')
+        user_id = self.request.query_params.get('user')
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
         entity = self.request.query_params.get('entity')
         if entity:
             queryset = queryset.filter(entity=entity)

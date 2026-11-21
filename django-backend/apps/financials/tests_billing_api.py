@@ -229,7 +229,8 @@ class BillingScopeTests(BillingFixtures, APITestCase):
             self.engineer_http.get(f'{BILLINGS_URL}{billing["id"]}/').status_code,
             403,
         )
-        self.assertEqual(self.admin_http.get(BILLINGS_URL).status_code, 403)
+        # The admin reads billings (read-only).
+        self.assertEqual(self.admin_http.get(BILLINGS_URL).status_code, 200)
         self.assertEqual(
             self.accountant_http.get(f'{BILLINGS_URL}{billing["id"]}/').status_code,
             200,
@@ -326,8 +327,9 @@ class BillingScopeTests(BillingFixtures, APITestCase):
             ).status_code,
             403,
         )
+        # Acting as admin it may read the billing, never prepare one.
         self.assertEqual(
-            self.dual_http.get(f'{BILLINGS_URL}{billing["id"]}/').status_code, 403,
+            self.dual_http.get(f'{BILLINGS_URL}{billing["id"]}/').status_code, 200,
         )
 
     def test_client_of_another_project_cannot_answer_this_billing(self):
@@ -1053,8 +1055,11 @@ class VariationOrderTests(BillingFixtures, APITestCase):
             'Extra floor slab',
         )
 
-    def test_admin_still_has_no_variation_order_surface(self):
-        self.assertEqual(self.admin_http.get(VOS_URL).status_code, 403)
+    def test_admin_reads_variation_orders_but_cannot_propose(self):
+        self.assertEqual(self.admin_http.get(VOS_URL).status_code, 200)
+        self.assertEqual(
+            self.admin_http.post(VOS_URL, {}, format='json').status_code, 403,
+        )
 
     def test_a_sent_vo_is_no_longer_editable(self):
         vo = self.propose().data

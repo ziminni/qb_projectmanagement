@@ -49,9 +49,9 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.light,
           builder: (context, w) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.linear(textScale),
-            ),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
             child: w!,
           ),
           home: Scaffold(body: child),
@@ -82,12 +82,12 @@ void main() {
       expect(find.text('Foundation'), findsOneWidget);
       expect(find.text('₱250,000 of ₱500,000 (50%)'), findsOneWidget);
 
-      final fill = tester
-          .widgetList<Container>(find.byType(Container))
-          .where((c) {
-            final d = c.decoration;
-            return d is BoxDecoration && d.color == AppColors.progressFill;
-          });
+      final fill = tester.widgetList<Container>(find.byType(Container)).where((
+        c,
+      ) {
+        final d = c.decoration;
+        return d is BoxDecoration && d.color == AppColors.progressFill;
+      });
       expect(fill, isNotEmpty);
     });
 
@@ -107,9 +107,7 @@ void main() {
       );
 
       expect(find.text('Over by ₱25,000 · 125%'), findsOneWidget);
-      final overText = tester.widget<Text>(
-        find.text('Over by ₱25,000 · 125%'),
-      );
+      final overText = tester.widget<Text>(find.text('Over by ₱25,000 · 125%'));
       expect(overText.style?.color, AppColors.error);
 
       final errorBars = tester
@@ -205,7 +203,10 @@ void main() {
           labor: 50000,
           equipment: 10000,
         ),
-        categories: const [CategoryCost(cat1, 120000), CategoryCost(cat2, 20000)],
+        categories: const [
+          CategoryCost(cat1, 120000),
+          CategoryCost(cat2, 20000),
+        ],
         progress: ProjectProgress(
           categories: const [],
           progress: 0.4,
@@ -297,10 +298,7 @@ void main() {
   });
 
   group('Finance gating across changed screens', () {
-    for (final (userId, role) in [
-      (4, AppRole.siteEngineer),
-      (1, AppRole.admin),
-    ]) {
+    for (final (userId, role) in [(4, AppRole.siteEngineer)]) {
       testWidgets('${role.name} sees no peso amounts on changed report pages', (
         tester,
       ) async {
@@ -324,6 +322,16 @@ void main() {
         expect(find.textContaining('₱'), findsNothing);
       });
     }
+
+    testWidgets('admin sees project finances but cannot record money', (
+      tester,
+    ) async {
+      await signInDirect(1, AppRole.admin);
+      await pumpWidgetHost(tester, const ProjectFinancialsPage(projectId: 1));
+      expect(find.textContaining('₱'), findsWidgets);
+      expect(find.text('Submit payment receipt'), findsNothing);
+      expect(find.text('Record payment'), findsNothing);
+    });
 
     testWidgets('client sees no internal budgets or actual costs', (
       tester,

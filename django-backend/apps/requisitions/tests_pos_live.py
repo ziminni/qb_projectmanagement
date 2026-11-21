@@ -159,11 +159,15 @@ class PosPayablesTests(ProcurementFixtures, APITestCase):
 
         self.assertEqual(self.get(pos, self.accountant, Role.ACCOUNTANT).status_code, 200)
 
+    def test_the_admin_reads_it_too(self):
+        pos = FakePos(payables={'total': '1.00', 'paid': '0.00', 'balance': '1.00'})
+
+        self.assertEqual(self.get(pos, self.admin, Role.ADMIN).status_code, 200)
+
     def test_the_site_engineer_and_client_never_see_the_debt(self):
         for user, role in (
             (self.engineer, Role.SITE_ENGINEER),
             (self.client_user, Role.CLIENT),
-            (self.admin, Role.ADMIN),
         ):
             with self.subTest(role=role):
                 pos = FakePos(payables={'total': '1.00', 'paid': '0.00', 'balance': '1.00'})
