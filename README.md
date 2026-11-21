@@ -174,6 +174,10 @@ The script automatically:
 docker compose --profile tunnel stop cloudflared
 ```
 
+### Setup D: Permanent Hardware Server Production Deployment (Gunicorn + Named Tunnel)
+
+For hosting CPMS 24/7 online on a dedicated hardware server (with `DJANGO_DEBUG=False`, Gunicorn 3 workers, persistent volumes, and Cloudflare Named Tunnel on `cpms-api.posinventory.space` → `http://backend:8001`), see **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#5-hardware-server-production-deployment-gunicorn--named-tunnel)** and [`docker-compose.prod.yml`](docker-compose.prod.yml).
+
 ### Run the apps
 
 Each app connects to the backend on its own computer; no settings are needed. From the repository's `flutter` folder:

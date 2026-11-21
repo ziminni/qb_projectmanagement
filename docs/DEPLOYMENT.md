@@ -241,7 +241,7 @@ Use [`docker-compose.prod.yml`](../docker-compose.prod.yml) on a dedicated hardw
    POS_API_GATEWAY_HEADER_NAME=X-QB-Gateway-Key
    POS_API_GATEWAY_HEADER_VALUE=<48-char-key-from-pos-gateway.env>
    ```
-2. **Create `tunnel/cloudflared.env`** with your Cloudflare Named Tunnel token (point Public Hostname `cpms-api.posinventory.space` → `http://backend:8001` in Cloudflare Zero Trust):
+2. **Create `tunnel/cloudflared.env`** with your Cloudflare Named Tunnel token (in Cloudflare Zero Trust → **Tunnels → Configure → Public Hostname**, add `cpms-api.posinventory.space` with Service URL **`http://backend:8001`**):
    ```env
    CLOUDFLARE_TUNNEL_TOKEN=<your-cpms-cloudflare-tunnel-token>
    ```
