@@ -21,6 +21,7 @@ private_media/
 .env
 .env.*
 !.env.example
+tunnel/*.env
 
 # =====================
 # IDE

@@ -101,6 +101,31 @@ docker compose exec backend python manage.py check_pos
 
 **Rehearse on one computer:** do Setup B with both systems on the same machine. The tunnel on the POS side, and the four lines in CPMS's `.env`. The traffic then goes out to Cloudflare and back, exactly as between two laptops.
 
+### Setup C: CPMS Online + POS Local/Offline (Quick Test via Cloudflare Tunnel)
+
+To expose the CPMS backend (`:8001`) online for a few hours so teammates can connect from any internet connection while POS stays local/offline-first:
+
+1. **One-time secret setup:** Put the 4 POS tunnel lines (`POS_API_BASE_URL`, `POS_API_ALLOW_INSECURE_LOCAL`, `POS_API_GATEWAY_HEADER_NAME`, `POS_API_GATEWAY_HEADER_VALUE`) in `django-backend/.env` (gitignored — survives `git pull`).
+2. **Start CPMS + Quick Tunnel** from `qb_project_management_system`:
+   ```powershell
+   .\scripts\start-tunnel.ps1     # Windows PowerShell
+   ```
+   ```sh
+   ./scripts/start-tunnel.sh      # macOS / Linux
+   ```
+   *(Want a permanent Cloudflare Named Tunnel hostname later? Pass `-Token "<cf-token>" -Hostname "cpms-api.yourdomain.com"` / `--token ... --hostname ...`.)*
+3. The script starts `db`, `backend`, `pos_outbox`, and `cloudflared`, checks `check_pos`, and prints the public `https://<random>.trycloudflare.com` URL.
+4. **Teammates connect from anywhere** without running Docker:
+   ```powershell
+   cd flutter
+   flutter run -d windows --dart-define=API_BASE_URL=https://<printed-url>/api/v1
+   # or: -d macos / -d chrome
+   ```
+5. **Stop when done:**
+   ```powershell
+   docker compose --profile tunnel stop cloudflared
+   ```
+
 ### Run the apps
 
 Each app connects to the backend on its own computer; no settings are needed. From the repository's `flutter` folder:

@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:15-alpine
     container_name: cpms_db
+    restart: unless-stopped
     environment:
       # Read from the environment / repo-root .env; the dev defaults keep the
       # local stack working with no setup.
@@ -25,6 +26,7 @@ services:
   backend:
     build: ./django-backend
     container_name: cpms_backend
+    restart: unless-stopped
     command: >
       sh -c "python manage.py migrate &&
              python manage.py seed_demo --auto-pos-payer &&
@@ -70,6 +72,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # Optional Cloudflare Tunnel (`docker compose --profile tunnel up -d`) so the
+  # CPMS backend (:8001) can be reached online by teammates while POS stays
+  # local/offline-first.
+  # - Default (no token): free Quick Tunnel (temporary https://*.trycloudflare.com)
+  # - Named Tunnel (CLOUDFLARE_TUNNEL_TOKEN + CLOUDFLARED_TUNNEL_ARGS=run): permanent URL
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cpms_cloudflared
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    command: tunnel --no-autoupdate --edge-ip-version 4 --protocol http2 ${CLOUDFLARED_TUNNEL_ARGS:---url http://backend:8001}
+    depends_on:
+      - backend
 
 volumes:
   cpms_postgres_data:
