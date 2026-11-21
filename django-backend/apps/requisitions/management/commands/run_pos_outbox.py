@@ -43,7 +43,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--sleep', type=int,
-            default=getattr(settings, 'POS_OUTBOX_POLL_SECONDS', 30),
+            default=getattr(settings, 'POS_OUTBOX_POLL_SECONDS', 5),
             help='Seconds to wait between passes when looping.',
         )
 
@@ -59,7 +59,7 @@ class Command(BaseCommand):
         last_auto_refresh = None
         while True:
             refresh_every = max(
-                1, int(getattr(settings, 'POS_AUTO_REFRESH_SECONDS', 60)),
+                1, int(getattr(settings, 'POS_AUTO_REFRESH_SECONDS', 15)),
             )
             now_mono = time.monotonic()
             if last_auto_refresh is None or (now_mono - last_auto_refresh) >= refresh_every:
