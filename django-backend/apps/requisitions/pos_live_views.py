@@ -238,6 +238,9 @@ def pos_payment_receipts_view(request, pk):
             return _store_down(problem)
         return Response(rows if isinstance(rows, list) else [])
 
+    if not capabilities.manages_finance(role):
+        raise NotAllowed(FINANCE_ONLY)
+
     data = request.data if isinstance(request.data, dict) else {}
     amount = _decimal(data.get('amount'))
     if amount is None or amount <= Decimal('0.00'):

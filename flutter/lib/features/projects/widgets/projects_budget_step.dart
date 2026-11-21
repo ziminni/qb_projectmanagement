@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_radii.dart';
 import '../../../core/constants/app_spacing.dart';
+import '../../../core/di/service_locator.dart';
 import '../../../core/utils/input_parsers.dart';
+import '../../../data/services/category_catalog_service.dart';
 import '../../../data/services/project_rules.dart';
 import 'projects_budget_summary.dart';
 
@@ -201,7 +203,10 @@ class ProjectsBudgetStep extends StatelessWidget {
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text('Add category'),
               ),
-              for (final s in suggestions)
+              for (final s
+                  in (getIt.isRegistered<CategoryCatalogService>()
+                      ? getIt<CategoryCatalogService>().suggestions
+                      : suggestions))
                 if (!used.contains(s))
                   ActionChip(
                     avatar: const Icon(Icons.add_rounded, size: 16),

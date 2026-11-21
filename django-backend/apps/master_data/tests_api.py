@@ -290,14 +290,14 @@ class DuplicateNameRaceTests(MasterDataTestCase):
 
 
 class PriceRedactionTests(MasterDataTestCase):
-    def test_the_unit_cost_is_zero_for_admin_and_field_staff_and_real_for_finance(self):
+    def test_the_unit_cost_is_zero_for_field_staff_and_real_for_finance(self):
         self.sign_in_role(Role.OWNER)
         created = self.create(MATERIALS_URL, material(default_unit_cost=260))
 
         expectations = {
             Role.OWNER: 260.0,
             Role.ACCOUNTANT: 260.0,
-            Role.ADMIN: 0.0,
+            Role.ADMIN: 260.0,
             Role.SITE_ENGINEER: 0.0,
         }
         for role, expected in expectations.items():
@@ -308,11 +308,11 @@ class PriceRedactionTests(MasterDataTestCase):
             self.assertEqual(float(response.data['default_unit_cost']), expected,
                              role)
 
-    def test_the_equipment_rate_is_zero_for_admin_and_real_for_finance(self):
+    def test_the_equipment_rate_is_zero_for_field_staff_and_real_for_finance(self):
         self.sign_in_role(Role.OWNER)
         created = self.create(EQUIPMENT_URL, equipment(rate=800))
 
-        for role, expected in {Role.OWNER: 800.0, Role.ADMIN: 0.0,
+        for role, expected in {Role.OWNER: 800.0, Role.ADMIN: 800.0,
                                Role.SITE_ENGINEER: 0.0}.items():
             self.sign_in_role(role)
 

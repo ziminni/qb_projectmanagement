@@ -177,9 +177,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Attendance verified.'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Account'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Sign out'));
+    await tester.tap(find.byTooltip('Log out'));
     await tester.pumpAndSettle();
     await signInAs(tester, 'liza@example.ph');
     await goTo(tester, '/payroll/3');

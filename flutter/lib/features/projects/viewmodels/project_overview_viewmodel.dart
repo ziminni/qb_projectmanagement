@@ -11,6 +11,7 @@ import '../../../data/repositories/company_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
 import '../../../data/repositories/user_repository.dart';
+import '../../../data/services/business_rule_exception.dart';
 import '../../../data/services/progress_calculator.dart';
 import '../../../data/services/project_rules.dart';
 import '../../../data/services/session_service.dart';
@@ -73,6 +74,9 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
 
   bool get canEdit => _isAssignedPm;
   bool get canManageTeam => canEdit;
+
+  bool canRemoveMember(TeamMember member) =>
+      canManageTeam && member.assignment.userId != _session.user?.id;
 
   bool get canResend =>
       canEdit && _project?.status == ProjectStatus.changesRequested;
@@ -195,6 +199,11 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
   });
 
   Future<String?> removeMember(TeamMember member) => runAction(() async {
+    if (member.assignment.userId == _session.user?.id) {
+      throw const BusinessRuleException(
+        'You cannot remove yourself from the team.',
+      );
+    }
     await _projects.unassign(member.assignment.id);
     await _refresh();
   });

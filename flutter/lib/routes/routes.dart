@@ -10,12 +10,14 @@ import '../core/layout/role_navigation.dart';
 import '../data/services/approval_inbox.dart';
 import '../data/services/session_service.dart';
 import '../features/auth/views/choose_role_page.dart';
+import '../features/auth/views/module_settings_page.dart';
 import '../features/landing/views/landing_page.dart';
 import '../features/auth/views/profile_page.dart';
 import '../features/schedule/views/schedule_categories_page.dart';
 import '../features/schedule/views/schedule_gantt_page.dart';
 import '../features/schedule/views/schedule_projects_page.dart';
 import '../features/schedule/views/schedule_verification_page.dart';
+import '../features/billing/views/accountant_dashboard_page.dart';
 import '../features/billing/views/billing_detail_page.dart';
 import '../features/billing/views/billing_form_page.dart';
 import '../features/billing/views/billings_page.dart';
@@ -62,8 +64,10 @@ import '../features/projects/views/project_overview_page.dart';
 import '../features/projects/views/projects_page.dart';
 import '../features/user_management/views/admin_overview_page.dart';
 import '../features/user_management/views/audit_log_page.dart';
-import '../features/user_management/views/master_lists_page.dart';
 import '../features/user_management/views/settings_page.dart';
+import '../features/user_management/views/system_backups_page.dart';
+import '../features/user_management/views/system_health_page.dart';
+import '../features/user_management/views/system_security_page.dart';
 import '../features/user_management/views/user_detail_page.dart';
 import '../features/user_management/views/user_form_page.dart';
 import '../features/user_management/views/users_page.dart';
@@ -77,16 +81,26 @@ abstract final class AppRoutes {
   static const adminOverview = '/admin/overview';
   static const adminUsers = '/admin/users';
   static const adminUserNew = '/admin/users/new';
+  static String adminUsersWithRole(String role) => '$adminUsers?role=$role';
+  static String adminOverviewTab(String tab) => '$adminOverview?tab=$tab';
   static String adminUser(int userId) => '$adminUsers/$userId';
   static String adminUserEdit(int userId) => '$adminUsers/$userId/edit';
-  static const adminMasterLists = '/admin/master-lists';
+
+  /// Add user, opened as a portal login for client [clientId].
+  static String adminUserNewForClient(int clientId) =>
+      '$adminUserNew?client=$clientId';
   static const adminSettings = '/admin/settings';
   static String adminSettingsSection(String section) =>
       '$adminSettings?section=$section';
+  static const settings = '/settings';
+  static String settingsSection(String section) => '$settings?section=$section';
 
   /// Company details live in Settings.
   static const adminCompany = '$adminSettings?section=profile';
   static const adminLicenses = '$adminSettings?section=licenses';
+  static const adminSecurity = '/admin/security';
+  static const adminBackups = '/admin/backups';
+  static const adminHealth = '/admin/health';
 
   /// Old links (e.g. in saved notifications) and where they now live.
   static const legacy = {
@@ -132,6 +146,7 @@ abstract final class AppRoutes {
   static const payroll = '/payroll';
   static String payrollPeriod(int id) => '$payroll/$id';
 
+  static const accountantDashboard = '/accountant/dashboard';
   static const billings = '/billings';
   static const billingNew = '/billings/new';
   static String billing(int id) => '$billings/$id';
@@ -207,8 +222,18 @@ final _projectDetailRoutes = ShellRoute(
 final _featureRoutes = <GoRoute>[
   // auth
   _route(AppRoutes.profile, (_) => const ProfilePage()),
+  _route(
+    AppRoutes.settings,
+    (state) => ModuleSettingsPage(section: state.uri.queryParameters['section']),
+  ),
   // user_management
-  _route(AppRoutes.adminOverview, (_) => const AdminOverviewPage()),
+  _route(
+    AppRoutes.adminOverview,
+    (state) => AdminOverviewPage(
+      key: ValueKey(state.uri.query),
+      tab: state.uri.queryParameters['tab'],
+    ),
+  ),
   _route(
     AppRoutes.adminUsers,
     (state) => UsersPage(
@@ -216,7 +241,13 @@ final _featureRoutes = <GoRoute>[
       initialRole: state.uri.queryParameters['role'],
     ),
   ),
-  _route(AppRoutes.adminUserNew, (_) => const UserFormPage()),
+  _route(
+    AppRoutes.adminUserNew,
+    (state) => UserFormPage(
+      key: ValueKey(state.uri.query),
+      clientId: int.tryParse(state.uri.queryParameters['client'] ?? ''),
+    ),
+  ),
   _route(
     '${AppRoutes.adminUsers}/:userId',
     (state) => UserDetailPage(
@@ -231,12 +262,14 @@ final _featureRoutes = <GoRoute>[
       userId: _id(state, 'userId'),
     ),
   ),
-  _route(AppRoutes.adminMasterLists, (_) => const MasterListsPage()),
   _route(
     AppRoutes.adminSettings,
     (state) => SettingsPage(section: state.uri.queryParameters['section']),
   ),
   _route(AppRoutes.adminAuditLog, (_) => const AuditLogPage()),
+  _route(AppRoutes.adminSecurity, (_) => const SystemSecurityPage()),
+  _route(AppRoutes.adminBackups, (_) => const SystemBackupsPage()),
+  _route(AppRoutes.adminHealth, (_) => const SystemHealthPage()),
   // client_portal
   _route(AppRoutes.clientProjects, (_) => const ClientProjectsPage()),
   _route(AppRoutes.clientProgress, (_) => const ClientProgressPage()),
@@ -337,6 +370,10 @@ final _featureRoutes = <GoRoute>[
   _route(AppRoutes.siteInventory, (_) => const SiteInventoryPage()),
   _route(AppRoutes.payables, (_) => const PayablesPage()),
   // billing
+  _route(
+    AppRoutes.accountantDashboard,
+    (_) => const AccountantDashboardPage(),
+  ),
   _route(AppRoutes.billings, (_) => const BillingsPage()),
   _route(
     AppRoutes.billingNew,

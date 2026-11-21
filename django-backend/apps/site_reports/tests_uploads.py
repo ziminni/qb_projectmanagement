@@ -265,7 +265,7 @@ class DocumentUploadTests(UploadCase):
 
 
 class DocumentReadScopeTests(UploadCase):
-    def test_contracts_are_hidden_from_admin_and_site_engineer(self):
+    def test_contracts_are_hidden_from_the_site_engineer(self):
         contract = self.upload_document(
             name='Contract', doc_type='contract', file_name='contract.pdf',
         )
@@ -274,7 +274,7 @@ class DocumentReadScopeTests(UploadCase):
         )
         self.assertEqual(contract.status_code, 201, contract.data)
 
-        for user, role in ((self.admin, Role.ADMIN), (self.engineer, Role.SITE_ENGINEER)):
+        for user, role in ((self.engineer, Role.SITE_ENGINEER),):
             with self.subTest(role=role):
                 self.act_as(user, role)
                 listing = self.client.get(
@@ -295,7 +295,11 @@ class DocumentReadScopeTests(UploadCase):
             name='Contract', doc_type='contract', file_name='contract.pdf',
         )
 
-        for user, role in ((self.owner, Role.OWNER), (self.accountant, Role.ACCOUNTANT)):
+        for user, role in (
+            (self.owner, Role.OWNER),
+            (self.accountant, Role.ACCOUNTANT),
+            (self.admin, Role.ADMIN),
+        ):
             with self.subTest(role=role):
                 self.act_as(user, role)
                 listing = self.client.get(

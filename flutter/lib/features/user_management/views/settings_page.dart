@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_radii.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_page_header.dart';
+import '../widgets/settings_admin_system_section.dart';
+import '../widgets/settings_categories_section.dart';
 import '../widgets/settings_company_section.dart';
 import '../widgets/settings_defaults_section.dart';
+import '../widgets/settings_notifications_section.dart';
+import '../widgets/settings_system_appearance_section.dart';
 
 /// The sections of Settings, grouped under headings in the side tabs.
 enum SettingsSection {
@@ -20,12 +23,42 @@ enum SettingsSection {
     Icons.verified_outlined,
     'Company',
   ),
+  branding(
+    'branding',
+    'PDF & branding',
+    Icons.picture_as_pdf_outlined,
+    'Company',
+  ),
   billing('billing', 'Billing defaults', Icons.percent_rounded, 'Projects'),
   schedule(
     'schedule',
     'Schedule monitoring',
     Icons.view_timeline_outlined,
     'Projects',
+  ),
+  categories(
+    'categories',
+    'Work categories',
+    Icons.category_outlined,
+    'Projects',
+  ),
+  system(
+    'system',
+    'System settings',
+    Icons.palette_outlined,
+    'System',
+  ),
+  notifications(
+    'notifications',
+    'Notifications',
+    Icons.notifications_outlined,
+    'System',
+  ),
+  documents(
+    'documents',
+    'Documents, audit & POS',
+    Icons.upload_file_outlined,
+    'System',
   );
 
   const SettingsSection(this.slug, this.label, this.icon, this.group);
@@ -84,12 +117,17 @@ class SettingsPage extends StatelessWidget {
           SettingsSection.licenses => const SettingsCompanySection(
             part: CompanySectionPart.licenses,
           ),
+          SettingsSection.branding => const SettingsPdfBrandingSection(),
           SettingsSection.billing => const SettingsDefaultsSection(
             part: DefaultsSectionPart.billing,
           ),
           SettingsSection.schedule => const SettingsDefaultsSection(
             part: DefaultsSectionPart.schedule,
           ),
+          SettingsSection.categories => const SettingsCategoriesSection(),
+          SettingsSection.system => const SettingsSystemAppearanceSection(),
+          SettingsSection.notifications => const SettingsNotificationsSection(),
+          SettingsSection.documents => const SettingsDocumentsAuditSection(),
         },
       ),
     );
@@ -148,7 +186,7 @@ class _SideTabs extends StatelessWidget {
             child: Text(
               s.group.toUpperCase(),
               style: textTheme.labelSmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 letterSpacing: 0.8,
                 fontWeight: FontWeight.w700,
               ),
@@ -179,6 +217,11 @@ class _SideTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final selectedBg = cs.primary.withValues(alpha: isDark ? 0.18 : 0.14);
+    final selectedIconColor = isDark ? cs.secondary : cs.onPrimaryContainer;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
@@ -187,7 +230,7 @@ class _SideTab extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: AppRadii.mdAll,
-          hoverColor: AppColors.surfaceMuted,
+          hoverColor: cs.surfaceContainerHighest,
           child: AnimatedContainer(
             duration: AppMotion.medium,
             curve: AppMotion.enter,
@@ -196,15 +239,13 @@ class _SideTab extends StatelessWidget {
               vertical: AppSpacing.sm + 2,
             ),
             decoration: BoxDecoration(
-              color: selected
-                  ? AppColors.selected
-                  : AppColors.selected.withValues(alpha: 0),
+              color: selected ? selectedBg : selectedBg.withValues(alpha: 0),
               borderRadius: AppRadii.mdAll,
               border: Border(
                 left: BorderSide(
                   color: selected
-                      ? AppColors.brandGold
-                      : AppColors.brandGold.withValues(alpha: 0),
+                      ? cs.primary
+                      : cs.primary.withValues(alpha: 0),
                   width: 3,
                 ),
               ),
@@ -214,9 +255,7 @@ class _SideTab extends StatelessWidget {
                 Icon(
                   section.icon,
                   size: 18,
-                  color: selected
-                      ? AppColors.brandGoldText
-                      : AppColors.textSecondary,
+                  color: selected ? selectedIconColor : cs.onSurfaceVariant,
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
@@ -225,9 +264,7 @@ class _SideTab extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected
-                          ? AppColors.textPrimary
-                          : AppColors.textSecondary,
+                      color: selected ? cs.onSurface : cs.onSurfaceVariant,
                     ),
                   ),
                 ),

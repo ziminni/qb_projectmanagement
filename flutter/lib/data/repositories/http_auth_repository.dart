@@ -33,6 +33,20 @@ class HttpAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<bool> verifyPassword(String email, String password) async {
+    try {
+      await _client.post(
+        'auth/login/',
+        body: {'email': email.trim().toLowerCase(), 'password': password},
+      );
+      return true;
+    } catch (_) {
+      // Never clear tokens or sign out on a wrong lock-screen password.
+      return false;
+    }
+  }
+
+  @override
   Future<void> requestPasswordReset(String email) async {
     // The server answers 204 whether or not the address exists.
     await _client.post(

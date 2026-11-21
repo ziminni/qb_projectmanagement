@@ -24,11 +24,18 @@ class FinanceRedactionMixin:
 
     redacted_fields = ()
 
-    def sees_finance(self):
+    def _role(self):
         request = self.context.get('request')
         if request is None or not request.user.is_authenticated:
-            return False
-        return capabilities.sees_finance(capabilities.active_role(request))
+            return None
+        return capabilities.active_role(request)
+
+    def sees_finance(self):
+        return capabilities.sees_finance(self._role())
+
+    def manages_finance(self):
+        """The admin reads prices but only the finance roles set them."""
+        return capabilities.manages_finance(self._role())
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -39,8 +46,8 @@ class FinanceRedactionMixin:
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if not self.sees_finance():
-            # A role that cannot see a price cannot change it either: the
+        if not self.manages_finance():
+            # A role that cannot manage a price cannot change it: the
             # desktop re-sends the value it loaded, so keeping the stored one
             # is exactly what the dialogs expect.
             for field in self.redacted_fields:
@@ -106,7 +113,7 @@ class MaterialItemSerializer(FinanceRedactionMixin, serializers.ModelSerializer)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if (self.instance is None and self.sees_finance()
+        if (self.instance is None and self.manages_finance()
                 and 'default_unit_cost' not in attrs):
             raise serializers.ValidationError(
                 {'default_unit_cost': 'Enter the unit cost.'})
@@ -224,7 +231,7 @@ class EquipmentItemSerializer(FinanceRedactionMixin, serializers.ModelSerializer
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if (self.instance is None and self.sees_finance()
+        if (self.instance is None and self.manages_finance()
                 and 'rate' not in attrs):
             raise serializers.ValidationError({'rate': 'Enter the rate.'})
         return attrs

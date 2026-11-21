@@ -178,7 +178,6 @@ class WorkerReadTests(LaborCase):
     def test_non_finance_roles_omit_wages_and_identifiers(self):
         for user, role in (
             (self.engineer, Role.SITE_ENGINEER),
-            (self.admin, Role.ADMIN),
         ):
             with self.subTest(role=role):
                 self.act_as(user, role)
@@ -200,6 +199,8 @@ class WorkerReadTests(LaborCase):
         for user, role in (
             (self.owner, Role.OWNER),
             (self.accountant, Role.ACCOUNTANT),
+            # The admin reads every figure (read-only).
+            (self.admin, Role.ADMIN),
         ):
             with self.subTest(role=role):
                 self.act_as(user, role)
@@ -212,14 +213,14 @@ class WorkerReadTests(LaborCase):
                 self.assertEqual(response.data['philhealth_no'], '12-345678901-1')
                 self.assertEqual(response.data['pagibig_no'], '1211-0000-0001')
 
-    def test_active_admin_role_is_not_a_finance_role(self):
-        """A user holding admin+owner gets the admin answer while acting as admin."""
+    def test_active_admin_role_reads_rates_but_cannot_maintain_workers(self):
+        """Acting as admin, a user sees the rate but may not change workers."""
         self.act_as(self.dual, Role.ADMIN)
         as_admin = self.client.get(f'{WORKERS_URL}{self.worker.pk}/')
         self.act_as(self.dual, Role.OWNER)
         as_owner = self.client.get(f'{WORKERS_URL}{self.worker.pk}/')
 
-        self.assertNotIn('daily_rate', as_admin.data)
+        self.assertIn('daily_rate', as_admin.data)
         self.assertIn('daily_rate', as_owner.data)
 
     def test_client_is_denied_every_worker_route(self):

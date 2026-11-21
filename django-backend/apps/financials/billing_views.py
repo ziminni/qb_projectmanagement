@@ -68,8 +68,14 @@ def project_id_from(data, key='project_id'):
 
 
 def require_finance(role):
-    """Owner or accountant only: the admin role has no billing surface."""
+    """Finance reads: owner, accountant, or the admin (read-only)."""
     if not capabilities.sees_finance(role):
+        raise NotAllowed(rules.FINANCE_ONLY)
+
+
+def require_manage_finance(role):
+    """Money writes: owner or accountant only. The admin only reads."""
+    if not capabilities.manages_finance(role):
         raise NotAllowed(rules.FINANCE_ONLY)
 
 
@@ -119,7 +125,7 @@ class ProgressBillingViewSet(viewsets.GenericViewSet,
     def owner_project(self):
         """`project_or_404` plus the accepted owner assignment the mock requires."""
         role = self.role()
-        require_finance(role)
+        require_manage_finance(role)
         project = scoping.project_or_404(
             self.request.user, role, project_id_from(self.request.data),
         )
@@ -130,7 +136,8 @@ class ProgressBillingViewSet(viewsets.GenericViewSet,
         return project
 
     def finance_billing(self):
-        require_finance(self.role())
+        """A billing the caller may change money on (owner/accountant)."""
+        require_manage_finance(self.role())
         return self.get_object()
 
     def create(self, request, *args, **kwargs):
@@ -303,8 +310,8 @@ class VariationOrderViewSet(viewsets.GenericViewSet,
             return queryset.filter(approved_by_owner__isnull=False)
         # The accountant reads (the project Financials tab lists VOs and their
         # approved total); every write action below re-checks its own role, so
-        # this widens reads only.
-        if role in (Role.OWNER, Role.SITE_ENGINEER, Role.ACCOUNTANT):
+        # this widens reads only. The admin reads them for its finance dashboard.
+        if role in (Role.OWNER, Role.SITE_ENGINEER, Role.ACCOUNTANT, Role.ADMIN):
             return billing_services.vo_for(
                 scoping.projects_for(self.request.user, role),
             )
@@ -480,7 +487,7 @@ class RetentionReleaseViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
     def create(self, request, *args, **kwargs):
         role = capabilities.active_role(request)
-        require_finance(role)
+        require_manage_finance(role)
         project = scoping.project_or_404(
             request.user, role, project_id_from(request.data),
         )

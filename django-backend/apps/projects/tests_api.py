@@ -162,9 +162,14 @@ class ProjectReadScopeTests(ProjectApiCase):
         self.assertEqual(set(response.data), PROJECT_KEYS)
         self.assertEqual(Decimal(response.data['contract_amount']), Decimal('1000000.00'))
 
-    def test_finance_keys_are_omitted_for_admin_and_site_engineer(self):
+    def test_admin_reads_the_finance_keys(self):
+        self.act_as(self.admin, Role.ADMIN)
+        detail = self.client.get(f'/api/v1/projects/{self.project.pk}/')
+        self.assertEqual(detail.status_code, 200, detail.data)
+        self.assertEqual(FINANCE_KEYS & set(detail.data), FINANCE_KEYS)
+
+    def test_finance_keys_are_omitted_for_the_site_engineer(self):
         for user, role in (
-            (self.admin, Role.ADMIN),
             (self.engineer, Role.SITE_ENGINEER),
         ):
             self.act_as(user, role)
@@ -1093,7 +1098,6 @@ class CategoryWeightTests(ProjectApiCase):
 
     def test_budget_is_finance_only_but_weight_always_ships(self):
         for user, role in (
-            (self.admin, Role.ADMIN),
             (self.engineer, Role.SITE_ENGINEER),
             (self.client_user, Role.CLIENT),
         ):

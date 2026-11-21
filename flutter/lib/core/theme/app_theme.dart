@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/services/local_settings_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_fonts.dart';
 import '../constants/app_radii.dart';
@@ -12,6 +13,193 @@ import 'app_motion.dart';
 import 'app_text_theme.dart';
 
 abstract final class AppTheme {
+  static ThemeData forSettings(LocalSettingsService settings) {
+    final palette = settings.accent;
+    final accent = palette.primary;
+    final onAccent = palette.onPrimary;
+    final density = settings.displayComfort.density;
+
+    if (settings.appearance == AppAppearanceMode.dark) {
+      const darkBg = Color(0xFF121110);
+      const darkSurface = Color(0xFF1A1917);
+      const darkSurfaceRaised = Color(0xFF24221F);
+      const darkBorder = Color(0xFF33302B);
+      const darkText = Color(0xFFF5F3EE);
+      const darkMuted = Color(0xFFB5AFA3);
+
+      final darkScheme = ColorScheme.dark(
+        primary: accent,
+        onPrimary: onAccent,
+        primaryContainer: accent.withValues(alpha: 0.24),
+        onPrimaryContainer: palette.light,
+        secondary: palette.light,
+        onSecondary: AppColors.brandBlack,
+        surface: darkSurface,
+        onSurface: darkText,
+        onSurfaceVariant: darkMuted,
+        outline: const Color(0xFF45413A),
+        outlineVariant: darkBorder,
+        surfaceContainerLowest: darkBg,
+        surfaceContainerLow: darkSurface,
+        surfaceContainer: darkSurfaceRaised,
+        surfaceContainerHighest: const Color(0xFF2E2B26),
+      );
+
+      return ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        fontFamily: AppFonts.body,
+        fontFamilyFallback: AppFonts.fallback,
+        colorScheme: darkScheme,
+        scaffoldBackgroundColor: darkBg,
+        dividerColor: darkBorder,
+        dividerTheme: const DividerThemeData(
+          color: darkBorder,
+          thickness: 1,
+          space: 1,
+        ),
+        visualDensity: density,
+        pageTransitionsTheme: light.pageTransitionsTheme,
+        cardTheme: CardThemeData(
+          color: darkSurface,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadii.lgAll,
+            side: const BorderSide(color: darkBorder),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: darkSurfaceRaised,
+          border: OutlineInputBorder(
+            borderRadius: AppRadii.mdAll,
+            borderSide: const BorderSide(color: darkBorder),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: AppRadii.mdAll,
+            borderSide: const BorderSide(color: darkBorder),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: AppRadii.mdAll,
+            borderSide: BorderSide(color: accent, width: 1.5),
+          ),
+          labelStyle: const TextStyle(color: darkMuted),
+          hintStyle: const TextStyle(color: darkMuted),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: accent,
+            foregroundColor: onAccent,
+            shape: const RoundedRectangleBorder(borderRadius: AppRadii.mdAll),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: darkText,
+            side: const BorderSide(color: darkBorder),
+            shape: const RoundedRectangleBorder(borderRadius: AppRadii.mdAll),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: palette.light),
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: darkSurfaceRaised,
+          selectedColor: accent.withValues(alpha: 0.24),
+          side: const BorderSide(color: darkBorder),
+          shape: const RoundedRectangleBorder(borderRadius: AppRadii.pillAll),
+          labelStyle: const TextStyle(
+            fontFamily: AppFonts.body,
+            color: darkText,
+            fontWeight: FontWeight.w600,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        ),
+        dialogTheme: const DialogThemeData(
+          backgroundColor: darkSurface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadii.xlAll,
+            side: BorderSide(color: darkBorder),
+          ),
+          titleTextStyle: TextStyle(
+            fontFamily: AppFonts.body,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: darkText,
+          ),
+        ),
+        popupMenuTheme: const PopupMenuThemeData(
+          color: darkSurfaceRaised,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadii.mdAll,
+            side: BorderSide(color: darkBorder),
+          ),
+        ),
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? onAccent : darkMuted,
+          ),
+          trackColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? accent : darkSurfaceRaised,
+          ),
+          trackOutlineColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? accent : darkBorder,
+          ),
+        ),
+        snackBarTheme: light.snackBarTheme,
+      );
+    }
+
+    final base = switch (settings.appearance) {
+      AppAppearanceMode.warm => light,
+      AppAppearanceMode.light => light.copyWith(
+        scaffoldBackgroundColor: const Color(0xFFF6F7F9),
+      ),
+      AppAppearanceMode.dark => light,
+    };
+    return base.copyWith(
+      visualDensity: density,
+      colorScheme: base.colorScheme.copyWith(
+        primary: accent,
+        onPrimary: onAccent,
+        primaryContainer: accent.withValues(alpha: 0.16),
+        onPrimaryContainer: palette.onLightSurface,
+        secondary: palette.light,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: onAccent,
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected)
+              ? onAccent
+              : AppColors.textSecondary,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected)
+              ? accent
+              : AppColors.surfaceMuted,
+        ),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected)
+              ? accent
+              : AppColors.borderStrong,
+        ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: accent,
+        linearTrackColor: AppColors.progressTrack,
+      ),
+    );
+  }
+
   static final light = ThemeData(
     useMaterial3: true,
     fontFamily: AppFonts.body,

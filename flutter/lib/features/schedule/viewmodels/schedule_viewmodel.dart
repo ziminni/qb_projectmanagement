@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
+import '../../../core/di/service_locator.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
@@ -9,6 +10,7 @@ import '../../../data/repositories/company_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
 import '../../../data/repositories/user_repository.dart';
+import '../../../data/services/category_catalog_service.dart';
 import '../../../data/services/progress_calculator.dart';
 import '../../../data/services/schedule_rules.dart';
 import '../../../data/services/session_service.dart';
@@ -148,8 +150,8 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   Future<String?> addCategory({required String name, double? budget}) {
     final nextOrder =
         _categories.fold(0, (m, c) => c.sortOrder > m ? c.sortOrder : m) + 1;
-    return _run(
-      () => _schedule.saveCategory(
+    return _run(() async {
+      final saved = await _schedule.saveCategory(
         Category(
           id: 0,
           projectId: projectId,
@@ -157,19 +159,27 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
           budget: budget,
           sortOrder: nextOrder,
         ),
-      ),
-    );
+      );
+      if (getIt.isRegistered<CategoryCatalogService>()) {
+        getIt<CategoryCatalogService>().register(name);
+      }
+      return saved;
+    });
   }
 
   Future<String?> updateCategory(
     Category category, {
     required String name,
     double? budget,
-  }) => _run(
-    () => _schedule.saveCategory(
+  }) => _run(() async {
+    final saved = await _schedule.saveCategory(
       category.copyWith(name: name, budget: () => budget),
-    ),
-  );
+    );
+    if (getIt.isRegistered<CategoryCatalogService>()) {
+      getIt<CategoryCatalogService>().register(name);
+    }
+    return saved;
+  });
 
   Future<String?> deleteCategory(Category category) =>
       _run(() => _schedule.deleteCategory(category.id));

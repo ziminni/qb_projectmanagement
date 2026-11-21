@@ -47,7 +47,7 @@ class _UserManagementEquipmentDialogState
         id: widget.initial?.id ?? 0,
         name: _name.text.trim(),
         ownership: _ownership,
-        rate: canSeeFinance()
+        rate: canManageFinance()
             ? InputParsers.amount(_rate.text)!
             : widget.initial?.rate ?? 0,
         rateUnit: _unit,
@@ -86,7 +86,7 @@ class _UserManagementEquipmentDialogState
               const SizedBox(height: AppSpacing.md),
               Row(
                 children: [
-                  if (canSeeFinance()) ...[
+                  if (canManageFinance()) ...[
                     Expanded(
                       child: TextFormField(
                         controller: _rate,

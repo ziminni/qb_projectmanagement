@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import '../../data/models/app_role.dart';
+import '../../data/services/local_settings_service.dart';
 import '../../data/services/session_service.dart';
-import '../../routes/routes.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_fonts.dart';
 import '../constants/app_radii.dart';
 import '../constants/app_spacing.dart';
-import '../theme/app_motion.dart';
-import 'app_account_menu.dart';
 import 'app_notification_button.dart';
 import 'role_navigation.dart';
 
@@ -27,9 +24,9 @@ class AppShellTitle extends InheritedWidget {
   bool updateShouldNotify(AppShellTitle old) => old.title != title;
 }
 
-/// The shell's header: a gold accent bar beside the section name and page
-/// title, a page search in the middle, and bordered notification, settings
-/// and account buttons on the right.
+/// The shell's header, matching the Queen Builders hardware shell:
+/// 2px top accent gradient, vertical accent bar + Cinzel title & subtitle,
+/// date pill, vertical divider, Notifications pill, and 6px bottom MeasureRuler.
 class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   const AppTopBar({
     super.key,
@@ -43,138 +40,160 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   final SessionService session;
   final RoleDestination current;
 
-  /// Small label above the title: the page's sidebar group, or the role.
+  /// Small context line under the title.
   final String eyebrow;
   final bool isNested;
   final bool wide;
 
-  static const height = 76.0;
+  static const height = 72.0;
 
   @override
   Size get preferredSize => const Size.fromHeight(height);
 
   @override
   Widget build(BuildContext context) {
-    final role = session.activeRole!;
-    final textTheme = Theme.of(context).textTheme;
-    final title = AnimatedSwitcher(
-      duration: AppMotion.medium,
-      switchInCurve: AppMotion.switchIn,
-      switchOutCurve: AppMotion.switchOut,
-      layoutBuilder: (current, previous) => Stack(
-        alignment: Alignment.centerLeft,
-        children: [...previous, ?current],
-      ),
-      child: Column(
-        key: ValueKey('${current.label}|$eyebrow'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            eyebrow.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: textTheme.labelSmall?.copyWith(
-              color: AppColors.brandGoldText,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            current.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: AppFonts.display,
-              fontSize: wide ? 24 : 20,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-              height: 1.15,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = context.watch<LocalSettingsService>().accent;
+    final subtitle = _subtitleFor(current.label, eyebrow);
+    final hasSubtitle = subtitle.isNotEmpty;
 
     return Material(
-      color: AppColors.surface,
+      color: cs.surface,
       child: SafeArea(
         bottom: false,
-        child: Container(
+        child: SizedBox(
           height: height,
-          padding: EdgeInsets.symmetric(
-            horizontal: wide ? AppSpacing.xl : AppSpacing.sm,
-          ),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: AppColors.border)),
-          ),
-          child: Row(
+          child: Column(
             children: [
-              if (!wide)
-                Builder(
-                  builder: (context) => IconButton(
-                    tooltip: 'Open navigation menu',
-                    icon: const Icon(Icons.menu_rounded),
-                    onPressed: () => Scaffold.of(context).openDrawer(),
+              // Thin signature accent edge.
+              Container(
+                height: 2,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      accent.primary,
+                      accent.light,
+                      accent.primary.withValues(alpha: 0.25),
+                    ],
                   ),
                 ),
-              if (isNested)
-                IconButton(
-                  tooltip: 'Back',
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: () => context.go(current.path),
-                ),
-              Container(
-                width: 4,
-                height: 44,
-                margin: EdgeInsets.only(
-                  left: isNested || !wide ? AppSpacing.xs : 0,
-                  right: AppSpacing.md,
-                ),
-                decoration: const BoxDecoration(
-                  color: AppColors.brandGold,
-                  borderRadius: AppRadii.pillAll,
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: wide ? AppSpacing.xl : AppSpacing.md,
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final showDatePill = wide && constraints.maxWidth >= 640;
+                      return Row(
+                        children: [
+                          if (!wide) ...[
+                            SizedBox(
+                              width: 38,
+                              height: 38,
+                              child: IconButton(
+                                tooltip: 'Open navigation menu',
+                                onPressed: () =>
+                                    Scaffold.of(context).openDrawer(),
+                                padding: EdgeInsets.zero,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: isDark
+                                      ? cs.surfaceContainer
+                                      : AppColors.surfaceSunken,
+                                  foregroundColor: cs.onSurface,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: AppRadii.smAll,
+                                    side: BorderSide(color: cs.outlineVariant),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.menu_rounded, size: 20),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                          ],
+                          Container(
+                            width: 3.5,
+                            height: hasSubtitle ? 32 : 22,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(2),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [accent.primary, accent.light],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  current.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontFamily: AppFonts.display,
+                                    fontSize: wide ? 19 : 16.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: cs.onSurface,
+                                    letterSpacing: 0.35,
+                                    height: 1.15,
+                                  ),
+                                ),
+                                if (hasSubtitle) ...[
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    subtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontFamily: AppFonts.body,
+                                      fontSize: 12,
+                                      color: cs.onSurfaceVariant,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (showDatePill) ...[
+                            const SizedBox(width: AppSpacing.md),
+                            _HeaderDatePill(accent: accent, isDark: isDark),
+                            const SizedBox(width: AppSpacing.md),
+                            Container(
+                              width: 1,
+                              height: 22,
+                              color: cs.outlineVariant,
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                          ] else
+                            const SizedBox(width: AppSpacing.sm),
+                          AppNotificationButton(
+                            userId: session.user!.id,
+                            compact: !wide,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
-              Expanded(flex: 3, child: title),
-              if (wide) ...[
-                const SizedBox(width: AppSpacing.lg),
-                Expanded(
-                  flex: 4,
-                  child: Align(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 480),
-                      child: _PageSearch(role: role),
+              // Tape-measure signature edge.
+              Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.7),
                     ),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.lg),
-              ] else
-                _SquareButton(
-                  tooltip: 'Search pages',
-                  icon: Icons.search_rounded,
-                  onPressed: () => _showSearchSheet(context, role),
-                ),
-              const SizedBox(width: AppSpacing.sm),
-              _Bordered(child: AppNotificationButton(userId: session.user!.id)),
-              if (wide) ...[
-                const SizedBox(width: AppSpacing.sm),
-                _SquareButton(
-                  tooltip: role == AppRole.admin ? 'Settings' : 'My profile',
-                  icon: Icons.settings_outlined,
-                  onPressed: () => context.go(
-                    role == AppRole.admin
-                        ? AppRoutes.adminSettings
-                        : AppRoutes.profile,
-                  ),
-                ),
-              ],
-              const SizedBox(width: AppSpacing.sm),
-              _Bordered(
-                padding: EdgeInsets.only(left: 2, right: wide ? 6 : 2),
-                child: AppAccountMenu(session: session, compact: !wide),
+                child: _MeasureRuler(height: 6, color: accent.primary),
               ),
             ],
           ),
@@ -183,162 +202,146 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Future<void> _showSearchSheet(BuildContext context, AppRole role) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          0,
-          AppSpacing.lg,
-          AppSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: _PageSearch(role: role, autofocus: true, inSheet: true),
-      ),
-    );
+  static String _subtitleFor(String label, String eyebrow) {
+    switch (label.toLowerCase()) {
+      case 'dashboard':
+        return 'Track active projects, schedules, and approvals.';
+      case 'approvals':
+        return 'Review and act on pending project items.';
+      case 'my projects':
+      case 'my sites':
+        return 'Monitor project progress, schedules, and site status.';
+      case 'purchasing':
+        return 'Manage material requests, purchase orders, and deliveries.';
+      case 'billing':
+      case 'billings and payments':
+      case 'billings':
+        return 'Track progress billings, collections, and statements.';
+      case 'variation orders':
+        return 'Review scope changes and revised contract amounts.';
+      case 'user management':
+        return 'Manage staff directory, roles, and access permissions.';
+      case 'audit log':
+        return 'Track approvals, orders, deliveries, payments, and admin changes.';
+      case 'system health':
+        return 'Monitor database status, storage usage, and POS sync outbox.';
+      case 'backups':
+        return 'Create verified snapshots, download archives, and manage retention.';
+      case 'security':
+        return 'Monitor active sessions, login attempts, and security policies.';
+      case 'settings':
+        return 'Configure workspace and device preferences.';
+      default:
+        return eyebrow;
+    }
   }
 }
 
-/// Every page [role] can open, for the header search.
-List<RoleDestination> _searchablePages(AppRole role) {
-  final seen = <String>{};
-  return [
-    for (final d in [
-      ...RoleNavigation.forRole(role),
-      ...RoleNavigation.linkedFor(role),
-      ...RoleNavigation.common,
-    ])
-      if (seen.add(d.path)) d,
+class _HeaderDatePill extends StatelessWidget {
+  const _HeaderDatePill({required this.accent, required this.isDark});
+
+  final AppAccentPalette accent;
+  final bool isDark;
+
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
-}
-
-class _PageSearch extends StatelessWidget {
-  const _PageSearch({
-    required this.role,
-    this.autofocus = false,
-    this.inSheet = false,
-  });
-
-  final AppRole role;
-  final bool autofocus;
-  final bool inSheet;
 
   @override
   Widget build(BuildContext context) {
-    final pages = _searchablePages(role);
-    void open(RoleDestination d) {
-      if (inSheet) Navigator.of(context).pop();
-      context.go(d.path);
-    }
-
-    return Autocomplete<RoleDestination>(
-      displayStringForOption: (d) => d.label,
-      optionsBuilder: (value) {
-        final q = value.text.trim().toLowerCase();
-        if (q.isEmpty) return inSheet ? pages : const [];
-        return pages.where(
-          (d) =>
-              d.label.toLowerCase().contains(q) ||
-              (d.group?.toLowerCase().contains(q) ?? false),
-        );
-      },
-      onSelected: open,
-      fieldViewBuilder: (context, controller, focus, onSubmit) => TextField(
-        controller: controller,
-        focusNode: focus,
-        autofocus: autofocus,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (_) => onSubmit(),
-        decoration: InputDecoration(
-          hintText: 'Search pages…',
-          prefixIcon: const Icon(Icons.search_rounded),
-          isDense: true,
-          filled: true,
-          fillColor: AppColors.background,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          border: const OutlineInputBorder(
-            borderRadius: AppRadii.mdAll,
-            borderSide: BorderSide(color: AppColors.border),
-          ),
-          enabledBorder: const OutlineInputBorder(
-            borderRadius: AppRadii.mdAll,
-            borderSide: BorderSide(color: AppColors.border),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: AppRadii.mdAll,
-            borderSide: BorderSide(color: AppColors.brandGold, width: 1.5),
-          ),
-        ),
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final formatted =
+        '${_weekdays[now.weekday - 1]}, ${_months[now.month - 1]} ${now.day}, ${now.year}';
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: isDark ? cs.surfaceContainer : AppColors.surfaceSunken,
+        borderRadius: AppRadii.pillAll,
+        border: Border.all(color: cs.outlineVariant),
       ),
-      optionsViewBuilder: (context, onSelected, options) => Align(
-        alignment: Alignment.topLeft,
-        child: Material(
-          elevation: 6,
-          borderRadius: AppRadii.mdAll,
-          clipBehavior: Clip.antiAlias,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 320, maxWidth: 480),
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-              shrinkWrap: true,
-              children: [
-                for (final d in options)
-                  ListTile(
-                    dense: true,
-                    leading: Icon(d.icon, size: 20),
-                    title: Text(d.label),
-                    subtitle: d.group == null ? null : Text(d.group!),
-                    onTap: () => onSelected(d),
-                  ),
-              ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.calendar_today_outlined,
+            size: 13.5,
+            color: isDark ? accent.light : accent.onLightSurface,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            formatted,
+            maxLines: 1,
+            style: TextStyle(
+              fontFamily: AppFonts.body,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
+              height: 1.2,
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
-/// A rounded, bordered frame for header buttons.
-class _Bordered extends StatelessWidget {
-  const _Bordered({required this.child, this.padding = EdgeInsets.zero});
-  final Widget child;
-  final EdgeInsets padding;
+/// Tape-measure style tick marks along the bottom edge of the header.
+class _MeasureRuler extends StatelessWidget {
+  const _MeasureRuler({required this.height, required this.color});
+
+  final double height;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: AppRadii.mdAll,
-        border: Border.all(color: AppColors.border),
-      ),
-      child: child,
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: CustomPaint(painter: _RulerPainter(color)),
     );
   }
 }
 
-class _SquareButton extends StatelessWidget {
-  const _SquareButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-  });
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
+class _RulerPainter extends CustomPainter {
+  const _RulerPainter(this.color);
+
+  final Color color;
+  static const double _step = 8;
 
   @override
-  Widget build(BuildContext context) {
-    return _Bordered(
-      child: IconButton(
-        tooltip: tooltip,
-        icon: Icon(icon),
-        onPressed: onPressed,
-      ),
-    );
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.55)
+      ..strokeWidth = 1;
+
+    canvas.drawLine(Offset.zero, Offset(size.width, 0), paint);
+
+    var index = 0;
+    for (double x = 0; x <= size.width; x += _step, index++) {
+      final length = index % 10 == 0
+          ? size.height
+          : index % 5 == 0
+          ? size.height * 0.6
+          : size.height * 0.3;
+      canvas.drawLine(Offset(x, 0), Offset(x, length), paint);
+    }
   }
+
+  @override
+  bool shouldRepaint(covariant _RulerPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

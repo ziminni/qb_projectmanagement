@@ -329,7 +329,7 @@ void main() {
     await tester.tap(
       find.widgetWithText(
         DropdownButtonFormField<int>,
-        'Site engineer / foreman',
+        'Foreman',
       ),
     );
     await tester.pumpAndSettle();

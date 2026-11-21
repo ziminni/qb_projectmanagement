@@ -204,7 +204,9 @@ class ProjectFinancialsPage extends StatelessWidget {
                 balance: vm.storeBalance,
                 error: vm.storeBalanceError,
                 receipts: vm.storeReceipts,
-                onSubmitReceipt: vm.submitStorePaymentReceipt,
+                onSubmitReceipt: canManageFinance()
+                    ? vm.submitStorePaymentReceipt
+                    : null,
               ),
             ],
             gap,

@@ -51,11 +51,9 @@ void main() {
   }
 
   // Company finances are confidential: roles outside finance must never see
-  // a peso amount on any screen they can open.
-  const noFinance = {
-    AppRole.admin: 'maria@example.ph',
-    AppRole.siteEngineer: 'ana@example.ph',
-  };
+  // a peso amount on any screen they can open. (The admin reads finances on
+  // its dashboard, read-only.)
+  const noFinance = {AppRole.siteEngineer: 'ana@example.ph'};
   for (final entry in noFinance.entries) {
     testWidgets('${entry.key.name} sees no peso amounts', (tester) async {
       await pumpApp(tester, size: const Size(1400, 3000));

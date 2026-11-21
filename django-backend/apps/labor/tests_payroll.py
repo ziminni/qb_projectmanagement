@@ -432,10 +432,9 @@ class PayrollLineTests(PayrollWriteCase):
         self.assertEqual(mine['statutory_deductions'], '915.63')
         self.assertEqual(mine['net_pay'], '9959.37')
 
-    def test_site_engineer_and_admin_never_see_wages(self):
+    def test_site_engineer_never_sees_wages(self):
         for user, role in (
             (self.engineer, Role.SITE_ENGINEER),
-            (self.admin, Role.ADMIN),
         ):
             with self.subTest(role=role):
                 self.act_as(user, role)
@@ -445,6 +444,11 @@ class PayrollLineTests(PayrollWriteCase):
                 )
                 self.assertEqual(lines.status_code, 403, lines.data)
                 self.assertEqual(cost.status_code, 403, cost.data)
+
+    def test_admin_reads_wages(self):
+        self.act_as(self.admin, Role.ADMIN)
+        lines = self.client.get(self.period_url(self.period, 'lines/'))
+        self.assertEqual(lines.status_code, 200, lines.data)
 
     def test_cash_advance_reduces_net_pay(self):
         response = self.post_advance(self.worker.pk, '100.00')

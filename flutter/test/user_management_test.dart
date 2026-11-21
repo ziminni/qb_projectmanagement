@@ -159,7 +159,7 @@ void main() {
     );
   });
 
-  testWidgets('admin creates a site engineer assigned to a project', (
+  testWidgets('admin creates a site engineer without project assignments section', (
     tester,
   ) async {
     await pumpApp(tester);
@@ -171,6 +171,8 @@ void main() {
 
     await tester.tap(find.text('Add user'));
     await tester.pumpAndSettle();
+    expect(find.text('Project assignments'), findsNothing);
+
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Full name'),
       'Pedro Ramos',
@@ -180,19 +182,9 @@ void main() {
       'pedro@example.ph',
     );
     await tester.tap(
-      find.widgetWithText(FilterChip, 'Site engineer / foreman'),
+      find.widgetWithText(FilterChip, 'Foreman'),
     );
     await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.widgetWithText(DropdownButtonFormField<int>, 'Project'),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Warehouse extension').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Assign'));
-    await tester.pumpAndSettle();
-    expect(find.text('Warehouse extension'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Create user'));
     await tester.pumpAndSettle();
@@ -240,10 +232,103 @@ void main() {
     ) async {
       await signInAdmin(tester);
       expect(find.text('Dashboard'), findsWidgets);
+      for (final tab in [
+        'System',
+        'Projects',
+        'Finance',
+        'Procurement',
+        'People & Labor',
+        'Activity',
+      ]) {
+        expect(find.text(tab), findsOneWidget, reason: tab);
+      }
       expect(find.text('Active users'), findsOneWidget);
       expect(find.text('Active users by role'), findsOneWidget);
-      expect(find.text('Recent activity'), findsOneWidget);
+      expect(find.text('Latest changes'), findsOneWidget);
+      // The System tab is about accounts: no money on it.
       expect(find.textContaining('₱'), findsNothing);
+    });
+
+    testWidgets('every dashboard tab opens without errors', (tester) async {
+      await pumpApp(tester, size: const Size(1400, 2400));
+      await signInAs(tester, 'maria@example.ph');
+      for (final tab in [
+        'projects',
+        'finance',
+        'procurement',
+        'people',
+        'activity',
+      ]) {
+        await goTo(tester, '/admin/overview?tab=$tab');
+        expect(tester.takeException(), isNull, reason: tab);
+        expect(
+          find.textContaining('Could not load'),
+          findsNothing,
+          reason: tab,
+        );
+      }
+    });
+
+    testWidgets('finance tab shows figures read-only', (tester) async {
+      await pumpApp(tester, size: const Size(1400, 2400));
+      await signInAs(tester, 'maria@example.ph');
+      await goTo(tester, '/admin/overview?tab=finance');
+      expect(find.text('Billed to clients'), findsOneWidget);
+      expect(find.textContaining('₱'), findsWidgets);
+      expect(find.textContaining('Read-only'), findsOneWidget);
+      expect(find.text('Record payment'), findsNothing);
+      expect(find.text('Submit payment receipt'), findsNothing);
+    });
+
+    testWidgets('a client without a login opens a prefilled Add user', (
+      tester,
+    ) async {
+      await signInAdmin(tester);
+      await goTo(tester, '/admin/users/new?client=2');
+      expect(
+        find.widgetWithText(TextFormField, 'grace@tlc.example.ph'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('users list sorts, filters by status and clears filters', (
+      tester,
+    ) async {
+      await signInAdmin(tester);
+      await goTo(tester, '/admin/users');
+      expect(find.textContaining('accounts'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('status-all')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Inactive (').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Clear filters'), findsWidgets);
+      await tester.tap(find.text('Clear filters').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Ramon Dela Cruz'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).first, 'liza');
+      await tester.pumpAndSettle();
+      expect(find.text('Liza Garcia'), findsOneWidget);
+      expect(find.text('Ramon Dela Cruz'), findsNothing);
+    });
+
+    testWidgets('admin deactivates a user from the list row menu', (
+      tester,
+    ) async {
+      await signInAdmin(tester);
+      await goTo(tester, '/admin/users');
+      await tester.enterText(find.byType(TextField).first, 'ana');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Deactivate'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Deactivate').last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('was deactivated'), findsOneWidget);
+      final log = await getIt<AuditLogRepository>().getAll();
+      expect(log.any((l) => l.action == 'user_deactivated'), isTrue);
     });
 
     testWidgets('a role link filters the users list', (tester) async {
@@ -325,8 +410,9 @@ void main() {
       await tester.tap(find.byTooltip('Roles and permissions'));
       await tester.pumpAndSettle();
       expect(find.text('Roles and permissions'), findsWidgets);
-      expect(find.text('Owner / Project manager'), findsOneWidget);
-      expect(find.text('No company finances'), findsWidgets);
+      expect(find.text('Project manager'), findsWidgets);
+      // The dialog opens on the admin role: finances, read-only.
+      expect(find.text('Sees company finances (read-only)'), findsOneWidget);
     });
 
     test('settings changes are recorded in the audit log', () async {

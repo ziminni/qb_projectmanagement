@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_radii.dart';
 import '../../core/constants/app_spacing.dart';
 
@@ -28,7 +27,10 @@ class AppSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
     final flush = padding == EdgeInsets.zero;
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -48,11 +50,15 @@ class AppSectionCard extends StatelessWidget {
                   Container(
                     width: 32,
                     height: 32,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primaryContainer,
+                    decoration: BoxDecoration(
+                      color: cs.primary.withValues(alpha: isDark ? 0.22 : 0.14),
                       borderRadius: AppRadii.smAll,
                     ),
-                    child: Icon(icon, size: 18, color: AppColors.primary),
+                    child: Icon(
+                      icon,
+                      size: 18,
+                      color: isDark ? cs.secondary : cs.onPrimaryContainer,
+                    ),
                   ),
                   const SizedBox(width: AppSpacing.md),
                 ],

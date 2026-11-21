@@ -16,6 +16,7 @@ class UserManagementAssignmentEditor extends StatefulWidget {
     required this.projectsFor,
     required this.onAdd,
     required this.onRemove,
+    this.onPendingChanged,
   });
 
   final List<AssignmentDraft> assignments;
@@ -24,6 +25,7 @@ class UserManagementAssignmentEditor extends StatefulWidget {
   final List<Project> Function(AppRole role) projectsFor;
   final void Function(int projectId, AppRole role) onAdd;
   final ValueChanged<AssignmentDraft> onRemove;
+  final ValueChanged<AssignmentDraft?>? onPendingChanged;
 
   @override
   State<UserManagementAssignmentEditor> createState() =>
@@ -40,8 +42,9 @@ class _UserManagementAssignmentEditorState
     final textTheme = Theme.of(context).textTheme;
     if (widget.roles.isEmpty) {
       return Text(
-        'Project assignments apply to owners, site engineers and clients. '
-        'Accountants see every project.',
+        'Select ${AppRole.owner.label}, ${AppRole.siteEngineer.label}, or '
+        '${AppRole.client.label} above to assign projects. System admins and '
+        'accountants already see all projects.',
         style: textTheme.bodySmall,
       );
     }
@@ -85,7 +88,13 @@ class _UserManagementAssignmentEditorState
                   for (final r in widget.roles)
                     DropdownMenuItem(value: r, child: Text(r.label)),
                 ],
-                onChanged: (r) => setState(() => _role = r),
+                onChanged: (r) {
+                  setState(() {
+                    _role = r;
+                    _projectId = null;
+                  });
+                  widget.onPendingChanged?.call(null);
+                },
               ),
             ),
             SizedBox(
@@ -99,7 +108,14 @@ class _UserManagementAssignmentEditorState
                   for (final p in options)
                     DropdownMenuItem(value: p.id, child: Text(p.name)),
                 ],
-                onChanged: (id) => setState(() => _projectId = id),
+                onChanged: options.isEmpty
+                    ? null
+                    : (id) {
+                        setState(() => _projectId = id);
+                        widget.onPendingChanged?.call(
+                          id == null ? null : (projectId: id, role: role),
+                        );
+                      },
               ),
             ),
             OutlinedButton.icon(
@@ -108,12 +124,22 @@ class _UserManagementAssignmentEditorState
                   : () {
                       widget.onAdd(projectId, role);
                       setState(() => _projectId = null);
+                      widget.onPendingChanged?.call(null);
                     },
               icon: const Icon(Icons.add),
               label: const Text('Assign'),
             ),
           ],
         ),
+        if (options.isEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            role == AppRole.client
+                ? 'Choose a client above to see their unassigned projects.'
+                : 'All available projects are already assigned for this role.',
+            style: textTheme.bodySmall,
+          ),
+        ],
       ],
     );
   }

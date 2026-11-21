@@ -127,8 +127,14 @@ class CapabilitiesTests(TestCase):
         )
         self.assertEqual(
             capabilities.FINANCE_ROLES,
+            frozenset({Role.OWNER, Role.ACCOUNTANT, Role.ADMIN}),
+        )
+        self.assertEqual(
+            capabilities.MANAGE_FINANCE_ROLES,
             frozenset({Role.OWNER, Role.ACCOUNTANT}),
         )
+        self.assertTrue(capabilities.sees_finance('admin'))
+        self.assertFalse(capabilities.manages_finance('admin'))
         self.assertNotIn(Role.CLIENT, capabilities.STAFF_ROLES)
         self.assertTrue(capabilities.sees_finance('owner'))
         self.assertFalse(capabilities.sees_finance('site_engineer'))

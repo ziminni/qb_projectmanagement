@@ -48,7 +48,7 @@ class ProjectDocumentsViewModel extends ChangeNotifier with ActionRunner {
   /// Contracts carry the contract price, so only finance roles see them.
   List<DocumentType> get uploadTypes => [
     for (final t in DocumentType.values)
-      if (t != DocumentType.contract || _session.activeRole!.seesFinance) t,
+      if (t != DocumentType.contract || _session.activeRole!.managesFinance) t,
   ];
 
   Future<List<Document>> _visible() async => [

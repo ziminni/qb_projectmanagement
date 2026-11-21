@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
+import 'package:flutter/foundation.dart' show ChangeNotifier, kReleaseMode;
 
 import '../../../core/network/api_config.dart';
 import '../../../core/utils/action_runner.dart';
@@ -21,15 +21,40 @@ class LoginViewModel extends ChangeNotifier with ActionRunner {
     required UserRepository users,
     required SessionService session,
     bool? usesApi,
+    bool? showDemoLogins,
   }) : _auth = auth,
        _users = users,
        _session = session,
-       _usesApi = usesApi ?? useApi;
+       _usesApi = usesApi ?? useApi,
+       _showDemoLogins = showDemoLogins ?? defaultShowDemoLogins;
+
+  /// Demo sign-in shortcuts show in debug and profile builds, and in a
+  /// release build only with `--dart-define=SHOW_DEMO_LOGINS=true`, so a
+  /// production build never prints the shared demo password.
+  static const defaultShowDemoLogins =
+      !kReleaseMode || bool.fromEnvironment('SHOW_DEMO_LOGINS');
+
+  /// The accounts `seed_demo` creates on the backend
+  /// (`django-backend/apps/users/demo_data.py`).
+  static const _seededAccounts = [
+    (1, 'Maria Santos', 'maria@example.ph', [AppRole.admin]),
+    (2, 'Ramon Dela Cruz', 'ramon@example.ph', [AppRole.owner]),
+    (3, 'Ana Bautista', 'ana@example.ph', [AppRole.siteEngineer]),
+    (4, 'Liza Garcia', 'liza@example.ph', [AppRole.accountant]),
+    (5, 'Mark Villanueva', 'mark@example.ph', [AppRole.client]),
+    (
+      6,
+      'Elena Torres',
+      'elena@example.ph',
+      [AppRole.owner, AppRole.siteEngineer],
+    ),
+  ];
 
   final AuthRepository _auth;
   final UserRepository _users;
   final SessionService _session;
   final bool _usesApi;
+  final bool _showDemoLogins;
 
   String? _error;
   List<DemoAccount> _demoAccounts = const [];
@@ -42,10 +67,21 @@ class LoginViewModel extends ChangeNotifier with ActionRunner {
 
   bool get usesApi => _usesApi;
 
-  /// Real accounts in API mode: the demo list (which names users and prints
-  /// the shared demo password) stays mock-only.
+  /// The demo accounts to offer: the mock users, or in API mode the
+  /// accounts the backend seeds. None when demo logins are off.
   Future<void> loadDemoAccounts() async {
-    if (_usesApi) return;
+    if (!_showDemoLogins) return;
+    if (_usesApi) {
+      _demoAccounts = [
+        for (final (id, name, email, roles) in _seededAccounts)
+          DemoAccount(
+            User(id: id, companyId: 0, fullName: name, email: email),
+            roles,
+          ),
+      ];
+      notifyListeners();
+      return;
+    }
     final users = await _users.getUsers();
     _demoAccounts = [
       for (final u in users)

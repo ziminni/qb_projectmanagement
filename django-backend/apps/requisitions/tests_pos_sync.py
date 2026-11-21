@@ -1026,13 +1026,17 @@ class PosRouteAccessTests(PosWorkflowCase):
         self.client.post(f'/api/v1/purchase-orders/{self.order.pk}/pos-sync/')
         self.run_worker(fake)
 
-        for user, role in ((self.owner, Role.OWNER), (self.accountant, Role.ACCOUNTANT)):
+        for user, role in (
+            (self.owner, Role.OWNER),
+            (self.accountant, Role.ACCOUNTANT),
+            (self.admin, Role.ADMIN),
+        ):
             with self.subTest(role=role):
                 self.act_as(user, role)
                 data = self.client.get(self.status_url()).data
                 self.assertEqual(data['pos_expected_amount'], '2500.00')
 
-        for user, role in ((self.admin, Role.ADMIN), (self.engineer, Role.SITE_ENGINEER)):
+        for user, role in ((self.engineer, Role.SITE_ENGINEER),):
             with self.subTest(role=role):
                 self.act_as(user, role)
                 data = self.client.get(self.status_url()).data

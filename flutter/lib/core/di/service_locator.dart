@@ -16,6 +16,7 @@ import '../../data/repositories/http_procurement_repository.dart';
 import '../../data/repositories/http_project_repository.dart';
 import '../../data/repositories/http_schedule_repository.dart';
 import '../../data/repositories/http_store_catalog_repository.dart';
+import '../../data/repositories/http_system_admin_repository.dart';
 import '../../data/repositories/http_user_repository.dart';
 import '../../data/repositories/mock_auth_repository.dart';
 import '../../data/repositories/billing_repository.dart';
@@ -38,18 +39,24 @@ import '../../data/repositories/mock_labor_repository.dart';
 import '../../data/repositories/mock_notification_repository.dart';
 import '../../data/repositories/mock_procurement_repository.dart';
 import '../../data/repositories/mock_store_catalog_repository.dart';
+import '../../data/repositories/mock_system_admin_repository.dart';
 import '../../data/repositories/mock_user_repository.dart';
 import '../../data/repositories/notification_repository.dart';
 import '../../data/repositories/procurement_repository.dart';
 import '../../data/repositories/project_repository.dart';
 import '../../data/repositories/schedule_repository.dart';
 import '../../data/repositories/store_catalog_repository.dart';
+import '../../data/repositories/system_admin_repository.dart';
 import '../../data/repositories/user_repository.dart';
 import '../../data/services/approval_inbox.dart';
 import '../../data/services/approval_sources.dart';
+import '../../data/services/category_catalog_service.dart';
+import '../../data/services/local_settings_service.dart';
+import '../../data/services/notification_preferences_service.dart';
 import '../../data/services/notification_service.dart';
 import '../../data/services/project_cost_service.dart';
 import '../../data/services/session_service.dart';
+import '../../data/services/workspace_preferences_service.dart';
 import '../network/api_client.dart';
 import '../network/api_config.dart';
 import '../network/private_file_loader.dart';
@@ -65,7 +72,22 @@ void setupServiceLocator() {
     ..registerLazySingleton<NotificationService>(
       () => NotificationService(notifications: getIt()),
     )
-    ..registerLazySingleton<SessionService>(SessionService.new);
+    ..registerLazySingleton<NotificationPreferencesService>(
+      NotificationPreferencesService.new,
+    )
+    ..registerLazySingleton<WorkspacePreferencesService>(
+      WorkspacePreferencesService.new,
+    )
+    ..registerLazySingleton<LocalSettingsService>(
+      () => LocalSettingsService()..load(),
+    )
+    ..registerLazySingleton<SessionService>(SessionService.new)
+    ..registerLazySingleton<CategoryCatalogService>(
+      () => CategoryCatalogService(
+        projects: getIt<ProjectRepository>(),
+        schedule: getIt<ScheduleRepository>(),
+      ),
+    );
   _registerAccountRepositories();
   getIt
     ..registerLazySingleton<ProjectRepository>(() {
@@ -87,6 +109,11 @@ void setupServiceLocator() {
       () => useApi
           ? HttpCompanyRepository(getIt<ApiClient>())
           : MockCompanyRepository(),
+    )
+    ..registerLazySingleton<SystemAdminRepository>(
+      () => useApi
+          ? HttpSystemAdminRepository(getIt<ApiClient>())
+          : MockSystemAdminRepository(),
     )
     ..registerLazySingleton<MasterDataRepository>(
       () => useApi

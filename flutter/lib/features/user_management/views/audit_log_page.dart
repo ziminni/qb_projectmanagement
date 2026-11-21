@@ -8,10 +8,10 @@ import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
-import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_page_header.dart';
 import '../viewmodels/audit_log_viewmodel.dart';
 import '../widgets/user_management_audit_tile.dart';
+import '../widgets/admin_dashboard/admin_dashboard_kit.dart';
 
 class AuditLogPage extends StatefulWidget {
   const AuditLogPage({super.key});
@@ -57,16 +57,18 @@ class _AuditLogPageState extends State<AuditLogPage> {
       child: Consumer<AuditLogViewModel>(
         builder: (context, vm, _) {
           if (vm.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return const AdminTabSkeleton();
           }
-          if (vm.error != null) return AppEmptyState(message: vm.error!);
+          if (vm.error != null) {
+            return AdminErrorState(message: vm.error!, onRetry: vm.load);
+          }
           final groups = vm.itemsByDay;
           final textTheme = Theme.of(context).textTheme;
           return ListView(
             padding: pagePadding(context),
             children: [
               AppPageHeader(
-                title: 'Audit log',
+                title: 'Activity & audit trail',
                 subtitle:
                     'Every approval, order, delivery, payment and admin '
                     'change, with who did it and when.',

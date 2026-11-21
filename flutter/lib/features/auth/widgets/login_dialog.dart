@@ -31,10 +31,13 @@ Future<void> showLoginDialog(BuildContext context) {
 
 /// Sign-in form, with a "forgot password" step, shown as a modal.
 class LoginDialog extends StatefulWidget {
-  const LoginDialog({super.key, this.usesApi});
+  const LoginDialog({super.key, this.usesApi, this.showDemoLogins});
 
   /// Overrides the build-time [useApi] flag in tests.
   final bool? usesApi;
+
+  /// Overrides whether the demo account dropdown shows (tests).
+  final bool? showDemoLogins;
 
   @override
   State<LoginDialog> createState() => _LoginDialogState();
@@ -54,6 +57,7 @@ class _LoginDialogState extends State<LoginDialog> {
     users: getIt(),
     session: getIt(),
     usesApi: widget.usesApi,
+    showDemoLogins: widget.showDemoLogins,
   )..loadDemoAccounts();
   late final _reset = ForgotPasswordViewModel(auth: getIt());
 
@@ -183,6 +187,16 @@ class _LoginDialogState extends State<LoginDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (_login.demoAccounts.isNotEmpty) ...[
+                  AuthDemoAccounts(
+                    accounts: _login.demoAccounts,
+                    onSelected: (a) {
+                      _email.text = a.user.email;
+                      _password.text = MockData.demoPassword;
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
                 TextFormField(
                   controller: _email,
                   autofocus: true,
@@ -243,17 +257,6 @@ class _LoginDialogState extends State<LoginDialog> {
             ),
           ),
         ),
-        if (_login.demoAccounts.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xl),
-          AuthDemoAccounts(
-            accounts: _login.demoAccounts,
-            onSelected: (a) {
-              _email.text = a.user.email;
-              // Only the mock accounts share the demo password.
-              if (!_login.usesApi) _password.text = MockData.demoPassword;
-            },
-          ),
-        ],
       ],
     );
   }

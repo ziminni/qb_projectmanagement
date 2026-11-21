@@ -45,5 +45,9 @@ Thumbs.db
 # =====================
 # Agent skills (local AI tooling — do not commit)
 # =====================
+.agent/
 .agents/
+.claude/
+.cursor/
+.gemini/
 skills-lock.json

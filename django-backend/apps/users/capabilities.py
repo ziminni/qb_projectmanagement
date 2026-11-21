@@ -24,7 +24,13 @@ ROLE_ORDER = (
 ALL_PROJECTS_ROLES = frozenset({Role.ADMIN, Role.ACCOUNTANT})
 
 # Roles whose active role may see internal peso figures (AppRole.seesFinance).
-FINANCE_ROLES = frozenset({Role.OWNER, Role.ACCOUNTANT})
+# The admin reads every figure for the company-wide dashboard but never
+# changes money records: see MANAGE_FINANCE_ROLES.
+FINANCE_ROLES = frozenset({Role.OWNER, Role.ACCOUNTANT, Role.ADMIN})
+
+# Roles that may record or change money (payments, receipts, retention
+# releases, contracts, worker rates). AppRole.managesFinance on the client.
+MANAGE_FINANCE_ROLES = frozenset({Role.OWNER, Role.ACCOUNTANT})
 
 # Staff roles: everything except the client portal.
 STAFF_ROLES = frozenset(set(ROLE_ORDER) - {Role.CLIENT})
@@ -92,6 +98,11 @@ def active_role(request):
 def sees_finance(role):
     """Whether the active role may see internal peso figures."""
     return role in FINANCE_ROLES
+
+
+def manages_finance(role):
+    """Whether the active role may record or change money records."""
+    return role in MANAGE_FINANCE_ROLES
 
 
 def sees_all_projects(role):
