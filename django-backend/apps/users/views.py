@@ -207,7 +207,7 @@ def change_password_view(request):
 @throttle_classes([PasswordResetRateThrottle])
 def password_reset_request_view(request):
     """Email a 6-digit reset code. Never reveals whether an account exists."""
-    if not settings.EMAIL_HOST and not settings.DEBUG:
+    if not services.is_email_configured() and not settings.DEBUG:
         return Response(
             {
                 'detail': (
@@ -241,7 +241,7 @@ def password_reset_request_view(request):
             sent, err = services.send_password_reset_code_email(
                 user, code, expires_minutes=15,
             )
-            if not sent and settings.EMAIL_HOST:
+            if not sent and services.is_email_configured():
                 return Response(
                     {
                         'detail': (

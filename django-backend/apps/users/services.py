@@ -11,6 +11,7 @@ cannot forge them.
 import logging
 import secrets
 
+import requests
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -78,6 +79,100 @@ def notify(user, type, message, link=None):
     )
 
 
+def is_email_configured():
+    """Return True when an HTTPS email API (Brevo/Resend) or SMTP host is set."""
+    return bool(
+        getattr(settings, 'BREVO_API_KEY', '')
+        or getattr(settings, 'RESEND_API_KEY', '')
+        or settings.EMAIL_HOST
+    )
+
+
+def _deliver_email(subject, body, recipient_email):
+    """Send one plain-text email via Brevo HTTPS, Resend HTTPS, or Django SMTP.
+
+    Returns ``(sent: bool, error: str | None)``.
+    """
+    brevo_key = getattr(settings, 'BREVO_API_KEY', '')
+    if brevo_key:
+        try:
+            resp = requests.post(
+                'https://api.brevo.com/v3/smtp/email',
+                headers={
+                    'api-key': brevo_key,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                json={
+                    'sender': {
+                        'name': 'Queen Builders CPMS',
+                        'email': settings.DEFAULT_FROM_EMAIL,
+                    },
+                    'to': [{'email': recipient_email}],
+                    'subject': subject,
+                    'textContent': body,
+                },
+                timeout=getattr(settings, 'EMAIL_TIMEOUT', 15),
+            )
+            if 200 <= resp.status_code < 300:
+                return True, None
+            err = f'Brevo HTTP {resp.status_code}: {resp.text[:200]}'
+            logger.warning('Failed to send email to %s via Brevo: %s', recipient_email, err)
+            return False, err
+        except Exception as exc:
+            logger.warning('Failed to send email to %s via Brevo: %s', recipient_email, exc)
+            return False, str(exc)
+
+    resend_key = getattr(settings, 'RESEND_API_KEY', '')
+    if resend_key:
+        try:
+            resp = requests.post(
+                'https://api.resend.com/emails',
+                headers={
+                    'Authorization': f'Bearer {resend_key}',
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'from': settings.DEFAULT_FROM_EMAIL,
+                    'to': [recipient_email],
+                    'subject': subject,
+                    'text': body,
+                },
+                timeout=getattr(settings, 'EMAIL_TIMEOUT', 15),
+            )
+            if 200 <= resp.status_code < 300:
+                return True, None
+            err = f'Resend HTTP {resp.status_code}: {resp.text[:200]}'
+            logger.warning('Failed to send email to %s via Resend: %s', recipient_email, err)
+            return False, err
+        except Exception as exc:
+            logger.warning('Failed to send email to %s via Resend: %s', recipient_email, exc)
+            return False, str(exc)
+
+    if not settings.EMAIL_HOST:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[recipient_email],
+            fail_silently=True,
+        )
+        return False, 'Email is not configured on the server (set BREVO_API_KEY, RESEND_API_KEY, or EMAIL_HOST).'
+
+    try:
+        sent = send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[recipient_email],
+            fail_silently=False,
+        )
+        return bool(sent), None
+    except Exception as exc:
+        logger.warning('Failed to send email to %s via SMTP: %s', recipient_email, exc)
+        return False, str(exc)
+
+
 def send_credentials_email(user, temporary_password, *, is_reset=False):
     """Send the user's email + temporary password to their inbox.
 
@@ -102,29 +197,7 @@ def send_credentials_email(user, temporary_password, *, is_reset=False):
         'first time you sign in.\n\n'
         '— Queen Builders CPMS'
     )
-    if not settings.EMAIL_HOST:
-        # Console backend: still invoke send_mail so dev logs show the message,
-        # but report clearly that SMTP is not configured for real delivery.
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=True,
-        )
-        return False, 'SMTP email is not configured on the server (EMAIL_HOST is empty).'
-    try:
-        sent = send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
-        return bool(sent), None
-    except Exception as exc:
-        logger.warning('Failed to send credentials email to %s: %s', user.email, exc)
-        return False, str(exc)
+    return _deliver_email(subject, body, user.email)
 
 
 def send_password_reset_code_email(user, code, *, expires_minutes=15):
@@ -142,27 +215,7 @@ def send_password_reset_code_email(user, code, *, expires_minutes=15):
         'If you did not request a password reset, you can safely ignore this email.\n\n'
         '— Queen Builders CPMS'
     )
-    if not settings.EMAIL_HOST:
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=True,
-        )
-        return False, 'SMTP email is not configured on the server (EMAIL_HOST is empty).'
-    try:
-        sent = send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
-        return bool(sent), None
-    except Exception as exc:
-        logger.warning('Failed to send password reset email to %s: %s', user.email, exc)
-        return False, str(exc)
+    return _deliver_email(subject, body, user.email)
 
 
 def notify_admins(type, message, link=None):
