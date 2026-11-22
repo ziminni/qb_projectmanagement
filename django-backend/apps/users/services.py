@@ -17,6 +17,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 
+from . import email_templates
 from .models import AuditLog, Notification, Role, User
 
 logger = logging.getLogger(__name__)
@@ -89,8 +90,8 @@ def is_email_configured():
     )
 
 
-def _deliver_email(subject, body, recipient_email):
-    """Send one plain-text email via HTTPS webhook (e.g. Google Apps Script),
+def _deliver_email(subject, body, recipient_email, *, html_body=None):
+    """Send one email (plain text + optional HTML) via HTTPS webhook,
     Brevo/Resend HTTPS API, or Django SMTP.
 
     When no email provider is configured, returns ``(False, None)`` cleanly so
@@ -104,6 +105,8 @@ def _deliver_email(subject, body, recipient_email):
                 'subject': subject,
                 'body': body,
             }
+            if html_body:
+                payload['html'] = html_body
             secret = getattr(settings, 'EMAIL_WEBHOOK_SECRET', '')
             if secret:
                 payload['secret'] = secret
@@ -125,6 +128,17 @@ def _deliver_email(subject, body, recipient_email):
     brevo_key = getattr(settings, 'BREVO_API_KEY', '')
     if brevo_key:
         try:
+            brevo_payload = {
+                'sender': {
+                    'name': 'Queen Builders CPMS',
+                    'email': settings.DEFAULT_FROM_EMAIL,
+                },
+                'to': [{'email': recipient_email}],
+                'subject': subject,
+                'textContent': body,
+            }
+            if html_body:
+                brevo_payload['htmlContent'] = html_body
             resp = requests.post(
                 'https://api.brevo.com/v3/smtp/email',
                 headers={
@@ -132,15 +146,7 @@ def _deliver_email(subject, body, recipient_email):
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                 },
-                json={
-                    'sender': {
-                        'name': 'Queen Builders CPMS',
-                        'email': settings.DEFAULT_FROM_EMAIL,
-                    },
-                    'to': [{'email': recipient_email}],
-                    'subject': subject,
-                    'textContent': body,
-                },
+                json=brevo_payload,
                 timeout=getattr(settings, 'EMAIL_TIMEOUT', 15),
             )
             if 200 <= resp.status_code < 300:
@@ -155,18 +161,21 @@ def _deliver_email(subject, body, recipient_email):
     resend_key = getattr(settings, 'RESEND_API_KEY', '')
     if resend_key:
         try:
+            resend_payload = {
+                'from': settings.DEFAULT_FROM_EMAIL,
+                'to': [recipient_email],
+                'subject': subject,
+                'text': body,
+            }
+            if html_body:
+                resend_payload['html'] = html_body
             resp = requests.post(
                 'https://api.resend.com/emails',
                 headers={
                     'Authorization': f'Bearer {resend_key}',
                     'Content-Type': 'application/json',
                 },
-                json={
-                    'from': settings.DEFAULT_FROM_EMAIL,
-                    'to': [recipient_email],
-                    'subject': subject,
-                    'text': body,
-                },
+                json=resend_payload,
                 timeout=getattr(settings, 'EMAIL_TIMEOUT', 15),
             )
             if 200 <= resp.status_code < 300:
@@ -189,6 +198,7 @@ def _deliver_email(subject, body, recipient_email):
             message=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[recipient_email],
+            html_message=html_body,
             fail_silently=False,
         )
         return bool(sent), None
@@ -202,26 +212,10 @@ def send_credentials_email(user, temporary_password, *, is_reset=False):
 
     Returns ``(sent: bool, error: str | None)``.
     """
-    subject = (
-        'Queen Builders CPMS — Your Temporary Password'
-        if is_reset
-        else 'Welcome to Queen Builders CPMS — Your Sign-In Credentials'
+    subject, plain_text, html_body = email_templates.render_credentials_email(
+        user, temporary_password, is_reset=is_reset,
     )
-    intro = (
-        'Your password was reset by an administrator.'
-        if is_reset
-        else 'Your Queen Builders CPMS account has been created.'
-    )
-    body = (
-        f'Hello {user.full_name},\n\n'
-        f'{intro}\n\n'
-        f'Email: {user.email}\n'
-        f'Temporary password: {temporary_password}\n\n'
-        'For your security, you will be prompted to set a new password the '
-        'first time you sign in.\n\n'
-        '— Queen Builders CPMS'
-    )
-    return _deliver_email(subject, body, user.email)
+    return _deliver_email(subject, plain_text, user.email, html_body=html_body)
 
 
 def send_password_reset_code_email(user, code, *, expires_minutes=15):
@@ -229,17 +223,10 @@ def send_password_reset_code_email(user, code, *, expires_minutes=15):
 
     Returns ``(sent: bool, error: str | None)``.
     """
-    subject = 'Queen Builders CPMS — Your Password Reset Code'
-    body = (
-        f'Hello {user.full_name},\n\n'
-        'We received a request to reset your Queen Builders CPMS password.\n\n'
-        f'Reset code: {code}\n\n'
-        f'Enter this code in the app to choose a new password. '
-        f'It expires in {expires_minutes} minutes.\n\n'
-        'If you did not request a password reset, you can safely ignore this email.\n\n'
-        '— Queen Builders CPMS'
+    subject, plain_text, html_body = email_templates.render_password_reset_code_email(
+        user, code, expires_minutes=expires_minutes,
     )
-    return _deliver_email(subject, body, user.email)
+    return _deliver_email(subject, plain_text, user.email, html_body=html_body)
 
 
 def notify_admins(type, message, link=None):
