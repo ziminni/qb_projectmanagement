@@ -88,6 +88,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     is_active = models.BooleanField(default=True)
+    must_change_password = models.BooleanField(
+        default=False,
+        help_text='True until the user replaces their temporary password on first sign-in.',
+    )
+    reset_code_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        default='',
+        help_text='Hashed 6-digit password reset code.',
+    )
+    reset_code_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Expiration timestamp for the active password reset code.',
+    )
     is_staff = models.BooleanField(
         default=False,
         help_text='Grants access to the Django admin site.',

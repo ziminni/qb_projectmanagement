@@ -373,6 +373,31 @@ class ClientViewSet(ScopedViewSet):
 
     def list(self, request):
         scoping.require_staff(self.role(), 'Client records are staff-only.')
+        # Ensure every active client-role user has a Client profile so newly
+        # created client accounts always show up in the project form dropdown.
+        linked_user_ids = set(
+            Client.objects.exclude(user_id__isnull=True)
+            .values_list('user_id', flat=True),
+        )
+        for u in User.objects.filter(
+            is_active=True, user_roles__role=Role.CLIENT,
+        ).distinct():
+            if u.pk in linked_user_ids:
+                continue
+            unlinked = Client.objects.filter(
+                user__isnull=True, email__iexact=u.email,
+            ).first()
+            if unlinked is not None:
+                unlinked.user = u
+                unlinked.save(update_fields=['user', 'updated_at'])
+            else:
+                Client.objects.create(
+                    name=u.full_name,
+                    contact_person=u.full_name,
+                    email=u.email,
+                    phone=u.phone,
+                    user=u,
+                )
         return Response(ClientSerializer(self.get_queryset(), many=True).data)
 
     def retrieve(self, request, pk=None):

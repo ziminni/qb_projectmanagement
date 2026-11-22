@@ -8,6 +8,10 @@ import 'user_repository.dart';
 class MockUserRepository implements UserRepository {
   final _users = [...MockData.users];
   final _roles = [...MockData.userRoles];
+  String? _lastTemporaryPassword;
+
+  @override
+  String? get lastTemporaryPassword => _lastTemporaryPassword;
 
   @override
   Future<List<User>> getUsers() async => List.unmodifiable(_users);
@@ -53,6 +57,7 @@ class MockUserRepository implements UserRepository {
     final now = DateTime.now();
     late User saved;
     if (user.id == 0) {
+      _lastTemporaryPassword = MockData.demoPassword;
       saved = User(
         id: _users.fold(0, (m, u) => u.id > m ? u.id : m) + 1,
         companyId: user.companyId,
@@ -60,6 +65,7 @@ class MockUserRepository implements UserRepository {
         email: email,
         phone: user.phone,
         isActive: user.isActive,
+        mustChangePassword: true,
         createdAt: now,
         updatedAt: now,
       );

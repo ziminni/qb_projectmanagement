@@ -10,6 +10,10 @@ class HttpUserRepository implements UserRepository {
   HttpUserRepository(this._client);
 
   final ApiClient _client;
+  String? _lastTemporaryPassword;
+
+  @override
+  String? get lastTemporaryPassword => _lastTemporaryPassword;
 
   @override
   Future<List<User>> getUsers() async => [
@@ -78,6 +82,7 @@ class HttpUserRepository implements UserRepository {
   /// bare user; accept both.
   User _saved(Object? data) {
     final body = jsonObject(data);
+    _lastTemporaryPassword = body['temporary_password'] as String?;
     return User.fromJson(jsonObject(body['user'] ?? body));
   }
 }

@@ -103,6 +103,42 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
     try {
       _settings = await _company.getSettings();
       _clientList = await _clients.getClients();
+      // Ensure any active client-role user without a linked Client profile
+      // gets one automatically so they show up in the project Client picker.
+      try {
+        final clientUsers = await _users.getUsersWithRole(AppRole.client);
+        final linkedUserIds = {
+          for (final c in _clientList)
+            if (c.userId != null) c.userId!,
+        };
+        var createdAny = false;
+        for (final u in clientUsers) {
+          if (!u.isActive || linkedUserIds.contains(u.id)) continue;
+          final match = _clientList.where(
+            (c) =>
+                c.userId == null &&
+                c.email?.trim().toLowerCase() == u.email.trim().toLowerCase(),
+          );
+          final targetId = match.isNotEmpty
+              ? match.first.id
+              : (await _clients.saveClient(
+                  Client(
+                    id: 0,
+                    name: u.fullName,
+                    contactPerson: u.fullName,
+                    email: u.email,
+                    phone: u.phone,
+                  ),
+                )).id;
+          await _clients.linkUser(u.id, targetId);
+          createdAny = true;
+        }
+        if (createdAny) {
+          _clientList = await _clients.getClients();
+        }
+      } catch (_) {
+        // Non-writer roles still use the list returned by getClients().
+      }
       _siteEngineers = [
         for (final u in await _users.getUsersWithRole(AppRole.siteEngineer))
           if (u.isActive) u,

@@ -2,7 +2,7 @@
 .SYNOPSIS
     Wipe CPMS database and uploaded private_media on the Contabo Windows VPS to a clean,
     empty testing state (zero projects/materials/workers/reports/VOs) while keeping only
-    the company profile, the 6 clean accounts, and the Own-Store supplier auto-linked
+    the company profile, the System Admin account, and the Own-Store supplier auto-linked
     to the live POS contractor payer.
 
 .EXAMPLE
@@ -36,21 +36,34 @@ if (Test-Path $MediaDir) {
     Remove-Item -Recurse -Force (Join-Path $MediaDir '*') -ErrorAction SilentlyContinue
 }
 
-Write-Host "=== 3/4 Seeding company, 6 clean accounts & linking Own-Store POS payer ===" -ForegroundColor Cyan
+Write-Host "=== 3/4 Seeding company, System Admin account & linking Own-Store POS payer ===" -ForegroundColor Cyan
 $py = @'
+from apps.users import demo_data
 from apps.users.management.commands.seed_demo import Command as SeedCmd
+from apps.users.models import Role, User
 from apps.master_data.models import Supplier
 
 cmd = SeedCmd()
 company = cmd._seed_company()
-cmd._seed_users(company)
+admin_row = next(row for row in demo_data.USERS if Role.ADMIN in row["roles"])
+admin, _ = User.objects.get_or_create(
+    email=admin_row["email"],
+    defaults={"full_name": admin_row["full_name"], "company": company},
+)
+admin.full_name = admin_row["full_name"]
+admin.phone = admin_row["phone"]
+admin.company = company
+admin.is_active = True
+admin.set_password(demo_data.DEMO_PASSWORD)
+admin.save()
+admin.set_roles([Role.ADMIN])
 payer_id = cmd._discover_pos_payer_id()
 Supplier.objects.create(
     name="Own Hardware Store",
     is_own_store=True,
     pos_payer_id=payer_id,
 )
-print(f"FRESH EMPTY CPMS READY (POS_PAYER_ID={payer_id})")
+print(f"FRESH EMPTY CPMS READY (ADMIN={admin.email}, POS_PAYER_ID={payer_id})")
 '@
 
 $py | & $Python manage.py shell

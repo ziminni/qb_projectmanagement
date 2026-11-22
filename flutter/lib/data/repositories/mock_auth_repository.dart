@@ -11,6 +11,9 @@ class MockAuthRepository implements AuthRepository {
 
   final UserRepository _users;
   final _passwords = <int, String>{};
+  final _resetCodes = <String, String>{};
+
+  static const String mockResetCode = '123456';
 
   String _passwordFor(int userId) =>
       _passwords[userId] ?? MockData.demoPassword;
@@ -48,7 +51,40 @@ class MockAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> requestPasswordReset(String email) async {}
+  Future<void> requestPasswordReset(String email) async {
+    final normalized = email.trim().toLowerCase();
+    final users = await _users.getUsers();
+    final matches = users.where(
+      (u) => u.email.toLowerCase() == normalized && u.isActive,
+    );
+    if (matches.isNotEmpty) {
+      _resetCodes[normalized] = mockResetCode;
+    }
+  }
+
+  @override
+  Future<void> confirmPasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final normalized = email.trim().toLowerCase();
+    final expected = _resetCodes[normalized];
+    if (expected == null || expected != code.trim()) {
+      throw const BusinessRuleException('Invalid or expired reset code.');
+    }
+    final users = await _users.getUsers();
+    final matches = users.where(
+      (u) => u.email.toLowerCase() == normalized && u.isActive,
+    );
+    if (matches.isEmpty) {
+      throw const BusinessRuleException('Invalid or expired reset code.');
+    }
+    final error = AuthRules.validateNewPassword(newPassword);
+    if (error != null) throw BusinessRuleException(error);
+    _passwords[matches.first.id] = newPassword;
+    _resetCodes.remove(normalized);
+  }
 
   @override
   Future<String> resetPassword(int userId) async {

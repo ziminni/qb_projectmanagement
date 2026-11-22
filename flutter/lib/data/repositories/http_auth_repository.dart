@@ -56,6 +56,22 @@ class HttpAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> confirmPasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    await _client.post(
+      'auth/password-reset-confirm/',
+      body: {
+        'email': email.trim().toLowerCase(),
+        'code': code.trim(),
+        'new_password': newPassword,
+      },
+    );
+  }
+
+  @override
   Future<String> resetPassword(int userId) async {
     final data = jsonObject(
       await _client.post('users/$userId/reset-password/'),

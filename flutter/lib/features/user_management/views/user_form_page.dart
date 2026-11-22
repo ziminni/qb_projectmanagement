@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -8,13 +9,11 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/page_padding.dart';
-import '../../../data/models/app_role.dart';
 import '../../../data/services/auth_rules.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/admin_audit.dart';
 import '../viewmodels/user_form_viewmodel.dart';
-import '../widgets/user_management_assignment_editor.dart';
 import '../widgets/user_management_role_selector.dart';
 import '../widgets/admin_dashboard/admin_dashboard_kit.dart';
 
@@ -75,12 +74,115 @@ class _UserFormPageState extends State<UserFormPage> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    final isNew = widget.userId == null;
     final ok = await reportAction(
       context,
       _vm.save(fullName: _name.text, email: _email.text, phone: _phone.text),
-      success: 'User saved.',
+      success: isNew ? null : 'User saved.',
     );
     if (!ok || !mounted) return;
+    if (isNew) {
+      final email = _email.text.trim().toLowerCase();
+      final temp = _vm.temporaryPassword;
+      if (temp != null && temp.isNotEmpty) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('User created'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'An email with these sign-in credentials has been sent to $email. They will be prompted to set a new password on their first login.',
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        dialogContext,
+                      ).colorScheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Theme.of(
+                          dialogContext,
+                        ).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Email',
+                          style: Theme.of(dialogContext).textTheme.labelSmall,
+                        ),
+                        SelectableText(
+                          email,
+                          style: Theme.of(dialogContext).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          'Temporary password',
+                          style: Theme.of(dialogContext).textTheme.labelSmall,
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SelectableText(
+                                temp,
+                                style: Theme.of(dialogContext)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.6,
+                                    ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Copy credentials',
+                              icon: const Icon(Icons.copy_rounded, size: 18),
+                              onPressed: () {
+                                Clipboard.setData(
+                                  ClipboardData(
+                                    text: 'Email: $email\nPassword: $temp',
+                                  ),
+                                );
+                                showSuccessAlert(
+                                  dialogContext,
+                                  'Email and temporary password copied.',
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        showSuccessAlert(
+          context,
+          'User created and credentials email sent to $email.',
+        );
+      }
+    }
+    if (!mounted) return;
     context.go(
       widget.userId == null
           ? AppRoutes.adminUsers
@@ -163,49 +265,11 @@ class _UserFormPageState extends State<UserFormPage> {
                       const SizedBox(height: AppSpacing.lg),
                       AppSectionCard(
                         title: 'Roles',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            UserManagementRoleSelector(
-                              selected: vm.roles,
-                              onChanged: vm.toggleRole,
-                            ),
-                            if (vm.roles.contains(AppRole.client)) ...[
-                              const SizedBox(height: AppSpacing.lg),
-                              DropdownButtonFormField<int>(
-                                initialValue: vm.clientId,
-                                isExpanded: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Client this login belongs to',
-                                ),
-                                items: [
-                                  for (final c in vm.clients)
-                                    DropdownMenuItem(
-                                      value: c.id,
-                                      child: Text(c.name),
-                                    ),
-                                ],
-                                onChanged: vm.setClient,
-                              ),
-                            ],
-                          ],
+                        child: UserManagementRoleSelector(
+                          selected: vm.roles,
+                          onChanged: vm.toggleRole,
                         ),
                       ),
-                      if (!vm.isNew) ...[
-                        const SizedBox(height: AppSpacing.lg),
-                        AppSectionCard(
-                          title: 'Project assignments',
-                          child: UserManagementAssignmentEditor(
-                            assignments: vm.assignments,
-                            roles: vm.assignableRoles,
-                            projectById: vm.projectById,
-                            projectsFor: vm.projectsFor,
-                            onAdd: vm.addAssignment,
-                            onRemove: vm.removeAssignment,
-                            onPendingChanged: vm.setPendingAssignment,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),

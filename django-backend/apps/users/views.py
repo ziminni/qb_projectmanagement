@@ -12,11 +12,14 @@ Security rules enforced here (Phase 1.1 contract):
 # and validated_data are inferred loosely; `manage.py check` and the tests are the gate.
 # pyright: reportGeneralTypeIssues=false, reportAttributeAccessIssue=false, reportArgumentType=false
 
+from datetime import timedelta
 import hashlib
 import logging
 
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction
 from django.http import Http404
+from django.utils import timezone
 from rest_framework import generics, status, viewsets
 from rest_framework.decorators import (
     action,
@@ -191,7 +194,10 @@ def change_password_view(request):
 
     with transaction.atomic():
         request.user.set_password(new_password)
-        request.user.save(update_fields=['password', 'updated_at'])
+        request.user.must_change_password = False
+        request.user.save(
+            update_fields=['password', 'must_change_password', 'updated_at'],
+        )
         services.record(request.user, 'password_changed', 'user', request.user.pk)
     return Response({'detail': 'Password changed.'})
 
@@ -200,19 +206,82 @@ def change_password_view(request):
 @permission_classes([AllowAny])
 @throttle_classes([PasswordResetRateThrottle])
 def password_reset_request_view(request):
-    """Ask an admin for a reset. Always 204: the answer never reveals an account."""
+    """Email a 6-digit reset code. Always 204: never reveals whether an account exists."""
     email = str(request.data.get('email') or '').strip().lower()
     if email:
         user = User.objects.filter(email__iexact=email, is_active=True).first()
         if user is not None:
+            code = services.generate_reset_code()
             with transaction.atomic():
+                user.reset_code_hash = make_password(code)
+                user.reset_code_expires_at = timezone.now() + timedelta(minutes=15)
+                user.save(
+                    update_fields=[
+                        'reset_code_hash',
+                        'reset_code_expires_at',
+                        'updated_at',
+                    ],
+                )
                 services.record(user, 'password_reset_requested', 'user', user.pk)
                 services.notify_admins(
                     'password_reset_requested',
                     f'{user.full_name} ({user.email}) asked for a password reset.',
                     link='/user-management',
                 )
+            services.send_password_reset_code_email(user, code, expires_minutes=15)
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordResetRateThrottle])
+def password_reset_confirm_view(request):
+    """Verify the 6-digit reset code and replace the user's password."""
+    email = str(request.data.get('email') or '').strip().lower()
+    code = str(request.data.get('code') or '').strip()
+    new_password = str(request.data.get('new_password') or '')
+
+    if not email or not code or not new_password:
+        return Response(
+            {'detail': 'Email, reset code, and new password are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    invalid_response = Response(
+        {'detail': 'Invalid or expired reset code.'},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+    user = User.objects.filter(email__iexact=email, is_active=True).first()
+    if (
+        user is None
+        or not user.reset_code_hash
+        or user.reset_code_expires_at is None
+        or user.reset_code_expires_at < timezone.now()
+        or not check_password(code, user.reset_code_hash)
+    ):
+        return invalid_response
+
+    problem = services.password_rules_error(new_password, user)
+    if problem:
+        return Response({'detail': problem}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        user.set_password(new_password)
+        user.must_change_password = False
+        user.reset_code_hash = ''
+        user.reset_code_expires_at = None
+        user.save(
+            update_fields=[
+                'password',
+                'must_change_password',
+                'reset_code_hash',
+                'reset_code_expires_at',
+                'updated_at',
+            ],
+        )
+        services.record(user, 'password_reset_completed', 'user', user.pk)
+
+    return Response({'detail': 'Password reset successfully. You can now sign in.'})
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -247,9 +316,13 @@ class UserViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             user = serializer.save()
             user.set_password(password)
-            user.save(update_fields=['password', 'updated_at'])
+            user.must_change_password = True
+            user.save(
+                update_fields=['password', 'must_change_password', 'updated_at'],
+            )
             services.record(request.user, 'user_created', 'user', user.pk,
                             {'roles': user.roles, 'is_active': user.is_active})
+        services.send_credentials_email(user, password, is_reset=False)
         return Response(
             {**user_payload(user), 'temporary_password': password},
             status=status.HTTP_201_CREATED,
@@ -283,8 +356,12 @@ class UserViewSet(viewsets.ModelViewSet):
         password = services.generate_temporary_password()
         with transaction.atomic():
             user.set_password(password)
-            user.save(update_fields=['password', 'updated_at'])
+            user.must_change_password = True
+            user.save(
+                update_fields=['password', 'must_change_password', 'updated_at'],
+            )
             services.record(request.user, 'password_reset', 'user', user.pk)
+        services.send_credentials_email(user, password, is_reset=True)
         return Response({'temporary_password': password})
 
 

@@ -10,6 +10,7 @@ class User {
     required this.email,
     this.phone,
     this.isActive = true,
+    this.mustChangePassword = false,
     this.createdAt,
     this.updatedAt,
   });
@@ -20,6 +21,7 @@ class User {
   final String email;
   final String? phone;
   final bool isActive;
+  final bool mustChangePassword;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -30,6 +32,7 @@ class User {
     email: json['email'] as String,
     phone: json['phone'] as String?,
     isActive: json['is_active'] as bool? ?? true,
+    mustChangePassword: json['must_change_password'] as bool? ?? false,
     createdAt: JsonUtils.toDateOrNull(json['created_at']),
     updatedAt: JsonUtils.toDateOrNull(json['updated_at']),
   );
@@ -41,6 +44,7 @@ class User {
     'email': email,
     'phone': phone,
     'is_active': isActive,
+    'must_change_password': mustChangePassword,
     'created_at': JsonUtils.fromDateTimeOrNull(createdAt),
     'updated_at': JsonUtils.fromDateTimeOrNull(updatedAt),
   };

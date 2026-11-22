@@ -32,6 +32,7 @@ from .views import (
     me_view,
     notification_read_view,
     notifications_read_all_view,
+    password_reset_confirm_view,
     password_reset_request_view,
 )
 
@@ -46,6 +47,8 @@ urlpatterns = [
     path('auth/change-password/', change_password_view, name='auth-change-password'),
     path('auth/password-reset-request/', password_reset_request_view,
          name='auth-password-reset-request'),
+    path('auth/password-reset-confirm/', password_reset_confirm_view,
+         name='auth-password-reset-confirm'),
 
     path('user-roles/', UserRoleListView.as_view(), name='user-role-list'),
     path('audit-logs/', AuditLogListView.as_view(), name='audit-log-list'),

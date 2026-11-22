@@ -68,6 +68,7 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
   List<Project> get projects => _allProjects;
   List<Client> get clients => _allClients;
   bool get isSelf => userId != null && userId == _session.user?.id;
+  String? get temporaryPassword => _users.lastTemporaryPassword;
 
   /// Company a user is created under. The API scopes every row to the
   /// signed-in user's company, so the mock id must never be sent there.
@@ -209,11 +210,6 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     if (roles.isEmpty) {
       throw const BusinessRuleException('Give the user at least one role.');
     }
-    if (roles.contains(AppRole.client) && clientId == null) {
-      throw const BusinessRuleException(
-        'Choose which client this portal login belongs to.',
-      );
-    }
     if (isSelf && !roles.contains(AppRole.admin)) {
       throw const BusinessRuleException(
         'You cannot remove your own admin role.',
@@ -221,13 +217,6 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
     }
     if (isSelf && !isActive) {
       throw const BusinessRuleException('You cannot deactivate yourself.');
-    }
-    final pending = _pendingAssignment;
-    if (pending != null &&
-        roles.contains(pending.role) &&
-        projectsFor(pending.role).any((p) => p.id == pending.projectId)) {
-      assignments.add(pending);
-      _pendingAssignment = null;
     }
     final saved = await _users.saveUser(
       User(
@@ -241,13 +230,34 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
       ),
       roles.toList(),
     );
-    await _projects.setUserAssignments(saved.id, assignments);
-    // The server refuses a client that already has a login, or a user without
-    // the client role; that message reaches the admin from here.
-    await _clients.linkUser(
-      saved.id,
-      roles.contains(AppRole.client) ? clientId : null,
-    );
+    int? targetClientId;
+    if (roles.contains(AppRole.client)) {
+      targetClientId = clientId;
+      if (targetClientId == null) {
+        final normalizedEmail = email.trim().toLowerCase();
+        final match = clients.where(
+          (c) =>
+              c.userId == null &&
+              (c.email?.trim().toLowerCase() == normalizedEmail),
+        );
+        if (match.isNotEmpty) {
+          targetClientId = match.first.id;
+        } else {
+          final createdClient = await _clients.saveClient(
+            Client(
+              id: 0,
+              name: fullName.trim(),
+              contactPerson: fullName.trim(),
+              email: email.trim(),
+              phone: phone.trim().isEmpty ? null : phone.trim(),
+            ),
+          );
+          targetClientId = createdClient.id;
+          clientId = targetClientId;
+        }
+      }
+    }
+    await _clients.linkUser(saved.id, targetClientId);
     if (isSelf) _session.updateUser(saved);
     final wasActive = _user?.isActive;
     await _audit?.record(

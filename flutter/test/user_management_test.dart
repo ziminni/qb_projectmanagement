@@ -190,6 +190,23 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create user'));
     await tester.pumpAndSettle();
+    expect(find.text('User created'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('pedro@example.ph'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(MockData.demoPassword),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
     expect(find.text('Pedro Ramos'), findsOneWidget);
 
     // The admin's change is in the audit log.

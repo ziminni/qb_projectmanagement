@@ -24,6 +24,7 @@ class UserSerializer(serializers.ModelSerializer):
             'email',
             'phone',
             'is_active',
+            'must_change_password',
             'created_at',
             'updated_at',
         )

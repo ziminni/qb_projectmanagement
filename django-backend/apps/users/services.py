@@ -8,12 +8,17 @@ cannot forge them.
 # Pyright here runs without django-stubs, so model managers are untyped.
 # pyright: reportAttributeAccessIssue=false
 
+import logging
 import secrets
 
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 
 from .models import AuditLog, Notification, Role, User
+
+logger = logging.getLogger(__name__)
 
 # No look-alike glyphs (0/O, 1/l/I): an admin reads the temporary password out
 # loud to the user who has to type it in.
@@ -30,6 +35,11 @@ def generate_temporary_password():
         )
         if password_rules_error(password) is None:
             return password
+
+
+def generate_reset_code():
+    """Generate a 6-digit numeric password reset code."""
+    return f'{secrets.randbelow(1_000_000):06d}'
 
 
 def password_rules_error(password, user=None):
@@ -66,6 +76,67 @@ def notify(user, type, message, link=None):
         message=message,
         link=link,
     )
+
+
+def send_credentials_email(user, temporary_password, *, is_reset=False):
+    """Send the user's email + temporary password to their inbox."""
+    subject = (
+        'Queen Builders CPMS — Your Temporary Password'
+        if is_reset
+        else 'Welcome to Queen Builders CPMS — Your Sign-In Credentials'
+    )
+    intro = (
+        'Your password was reset by an administrator.'
+        if is_reset
+        else 'Your Queen Builders CPMS account has been created.'
+    )
+    body = (
+        f'Hello {user.full_name},\n\n'
+        f'{intro}\n\n'
+        f'Email: {user.email}\n'
+        f'Temporary password: {temporary_password}\n\n'
+        'For your security, you will be prompted to set a new password the '
+        'first time you sign in.\n\n'
+        '— Queen Builders CPMS'
+    )
+    try:
+        sent = send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        return bool(sent)
+    except Exception as exc:
+        logger.warning('Failed to send credentials email to %s: %s', user.email, exc)
+        return False
+
+
+def send_password_reset_code_email(user, code, *, expires_minutes=15):
+    """Email a 6-digit password reset code to `user`."""
+    subject = 'Queen Builders CPMS — Your Password Reset Code'
+    body = (
+        f'Hello {user.full_name},\n\n'
+        'We received a request to reset your Queen Builders CPMS password.\n\n'
+        f'Reset code: {code}\n\n'
+        f'Enter this code in the app to choose a new password. '
+        f'It expires in {expires_minutes} minutes.\n\n'
+        'If you did not request a password reset, you can safely ignore this email.\n\n'
+        '— Queen Builders CPMS'
+    )
+    try:
+        sent = send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        return bool(sent)
+    except Exception as exc:
+        logger.warning('Failed to send password reset email to %s: %s', user.email, exc)
+        return False
 
 
 def notify_admins(type, message, link=None):

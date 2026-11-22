@@ -104,5 +104,44 @@ class LoginViewModel extends ChangeNotifier with ActionRunner {
 
   bool get hasSeveralRoles => _session.roles.length > 1;
 
+  bool get mustChangePassword => _session.user?.mustChangePassword ?? false;
+
   AppRole get activeRole => _session.activeRole!;
+
+  /// Completes a forced first-login password change and clears the flag.
+  Future<bool> completeFirstLoginPasswordChange(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    _error = null;
+    final error = await runAction(() async {
+      final user = _session.user!;
+      await _auth.changePassword(
+        user.id,
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      _session.updateUser(
+        User(
+          id: user.id,
+          companyId: user.companyId,
+          fullName: user.fullName,
+          email: user.email,
+          phone: user.phone,
+          isActive: user.isActive,
+          mustChangePassword: false,
+          createdAt: user.createdAt,
+          updatedAt: DateTime.now(),
+        ),
+      );
+    });
+    _error = error;
+    notifyListeners();
+    return error == null;
+  }
+
+  /// Signs out if the user dismisses the first-login password setup dialog.
+  void cancelFirstLogin() {
+    _session.signOut();
+  }
 }

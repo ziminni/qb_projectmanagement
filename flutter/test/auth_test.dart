@@ -112,9 +112,51 @@ void main() {
       find.widgetWithText(TextFormField, 'Email'),
       'nobody@example.ph',
     );
-    await tester.tap(find.text('Send reset link'));
+    await tester.tap(find.text('Send reset code'));
     await tester.pumpAndSettle();
     expect(find.textContaining('If nobody@example.ph belongs'), findsOneWidget);
+  });
+
+  testWidgets('forgot password resets password with 6-digit code', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await openLoginDialog(tester);
+    await tester.tap(find.text('Forgot password?'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Email'),
+      'ramon@example.ph',
+    );
+    await tester.tap(find.text('Send reset code'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, '6-digit reset code'),
+      MockAuthRepository.mockResetCode,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'New password'),
+      'NewPass123',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Confirm new password'),
+      'NewPass123',
+    );
+    await tester.tap(find.text('Reset password'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Password updated. Sign in with your new password.'),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Password'),
+      'NewPass123',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginDialog), findsNothing);
   });
 
   group('login demo helpers', () {
