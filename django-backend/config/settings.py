@@ -14,6 +14,16 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+try:
+    import certifi
+
+    # Windows Server VMs often lack updated root CAs in the OS store, causing
+    # SMTP STARTTLS (e.g. smtp.gmail.com) to fail with CERTIFICATE_VERIFY_FAILED.
+    # Point Python's default SSL context at certifi's Mozilla CA bundle.
+    os.environ.setdefault('SSL_CERT_FILE', certifi.where())
+except ImportError:
+    pass
+
 from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 
