@@ -447,10 +447,10 @@ class _LoginDialogState extends State<LoginDialog> {
         const SizedBox(height: AppSpacing.xs),
         Text(
           sentTo == null
-              ? 'Enter your account email and we will send a 6-digit reset code.'
-              : 'If $sentTo belongs to an account, a 6-digit reset code is on '
-                    'its way. Check your inbox and spam folder, then enter the '
-                    'code below.',
+              ? 'Enter your account email to request a 6-digit reset code.'
+              : 'If $sentTo belongs to an account, a 6-digit reset code has '
+                    'been generated. Check your email or ask your system '
+                    'administrator for the code, then enter it below.',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: AppColors.textSecondary,
           ),

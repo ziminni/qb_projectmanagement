@@ -251,6 +251,8 @@ EMAIL_USE_TLS = (
     else os.environ.get('EMAIL_USE_TLS', 'true').lower() in ('1', 'true', 'yes')
 )
 EMAIL_TIMEOUT = env_int('EMAIL_TIMEOUT', 15)
+EMAIL_WEBHOOK_URL = os.environ.get('EMAIL_WEBHOOK_URL', '').strip()
+EMAIL_WEBHOOK_SECRET = os.environ.get('EMAIL_WEBHOOK_SECRET', '').strip()
 BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '').strip()
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
 DEFAULT_FROM_EMAIL = os.environ.get(

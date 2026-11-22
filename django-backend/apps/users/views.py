@@ -206,22 +206,27 @@ def change_password_view(request):
 @permission_classes([AllowAny])
 @throttle_classes([PasswordResetRateThrottle])
 def password_reset_request_view(request):
-    """Email a 6-digit reset code. Never reveals whether an account exists."""
-    if not services.is_email_configured() and not settings.DEBUG:
-        return Response(
-            {
-                'detail': (
-                    'Password reset email is not configured on the server yet. '
-                    'Ask your system administrator to reset your password.'
-                ),
-            },
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+    """Generate a 6-digit reset code.
+
+    When an email provider is configured, emails the code to the user.
+    When email is off, delivers the 6-digit code directly into the System
+    Administrator's in-app notifications so resets work with zero SMTP setup.
+    Always returns 204 when accepted (never reveals whether an account exists).
+    """
     email = str(request.data.get('email') or '').strip().lower()
+    email_enabled = services.is_email_configured()
     if email:
         user = User.objects.filter(email__iexact=email, is_active=True).first()
         if user is not None:
             code = services.generate_reset_code()
+            admin_msg = (
+                f'{user.full_name} ({user.email}) asked for a password reset.'
+                if email_enabled
+                else (
+                    f'{user.full_name} ({user.email}) asked for a password reset. '
+                    f'6-digit reset code (valid 15 min): {code}'
+                )
+            )
             with transaction.atomic():
                 user.reset_code_hash = make_password(code)
                 user.reset_code_expires_at = timezone.now() + timedelta(minutes=15)
@@ -235,23 +240,22 @@ def password_reset_request_view(request):
                 services.record(user, 'password_reset_requested', 'user', user.pk)
                 services.notify_admins(
                     'password_reset_requested',
-                    f'{user.full_name} ({user.email}) asked for a password reset.',
+                    admin_msg,
                     link='/user-management',
                 )
-            sent, err = services.send_password_reset_code_email(
-                user, code, expires_minutes=15,
-            )
-            if not sent and services.is_email_configured():
-                return Response(
-                    {
-                        'detail': (
-                            'Could not send the password reset email right now '
-                            f'({err or "SMTP error"}). Please try again or ask '
-                            'your administrator to reset your password.'
-                        ),
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            if email_enabled:
+                sent, err = services.send_password_reset_code_email(
+                    user, code, expires_minutes=15,
                 )
+                if not sent:
+                    # Fallback: still deliver the code to admins in-app so the
+                    # user is never locked out even if an email relay hiccups.
+                    services.notify_admins(
+                        'password_reset_requested',
+                        f'Email failed for {user.email} ({err}). '
+                        f'6-digit reset code (valid 15 min): {code}',
+                        link='/user-management',
+                    )
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 

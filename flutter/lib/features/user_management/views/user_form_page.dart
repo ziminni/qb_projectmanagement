@@ -99,7 +99,9 @@ class _UserFormPageState extends State<UserFormPage> {
                   Text(
                     _vm.emailSent
                         ? 'An email with these sign-in credentials has been sent to $email. They will be prompted to set a new password on their first login.'
-                        : 'Account created, but the email could not be sent to $email. Share these credentials manually (they will still be prompted to set a new password on first login).',
+                        : _vm.emailError != null
+                        ? 'Account created, but the email could not be sent to $email. Share these credentials manually (they will still be prompted to set a new password on first login).'
+                        : 'Account created. Share these sign-in credentials with $email — they will be prompted to set a new password on their first login.',
                   ),
                   if (!_vm.emailSent && _vm.emailError != null) ...[
                     const SizedBox(height: AppSpacing.sm),

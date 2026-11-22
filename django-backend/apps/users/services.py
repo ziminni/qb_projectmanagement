@@ -80,19 +80,48 @@ def notify(user, type, message, link=None):
 
 
 def is_email_configured():
-    """Return True when an HTTPS email API (Brevo/Resend) or SMTP host is set."""
+    """Return True when an HTTPS webhook/email API or SMTP host is configured."""
     return bool(
-        getattr(settings, 'BREVO_API_KEY', '')
+        getattr(settings, 'EMAIL_WEBHOOK_URL', '')
+        or getattr(settings, 'BREVO_API_KEY', '')
         or getattr(settings, 'RESEND_API_KEY', '')
         or settings.EMAIL_HOST
     )
 
 
 def _deliver_email(subject, body, recipient_email):
-    """Send one plain-text email via Brevo HTTPS, Resend HTTPS, or Django SMTP.
+    """Send one plain-text email via HTTPS webhook (e.g. Google Apps Script),
+    Brevo/Resend HTTPS API, or Django SMTP.
 
-    Returns ``(sent: bool, error: str | None)``.
+    When no email provider is configured, returns ``(False, None)`` cleanly so
+    the app uses its built-in in-app handoff flow with no error banner.
     """
+    webhook_url = getattr(settings, 'EMAIL_WEBHOOK_URL', '')
+    if webhook_url:
+        try:
+            payload = {
+                'to': recipient_email,
+                'subject': subject,
+                'body': body,
+            }
+            secret = getattr(settings, 'EMAIL_WEBHOOK_SECRET', '')
+            if secret:
+                payload['secret'] = secret
+            resp = requests.post(
+                webhook_url,
+                json=payload,
+                timeout=getattr(settings, 'EMAIL_TIMEOUT', 15),
+                allow_redirects=True,
+            )
+            if 200 <= resp.status_code < 300:
+                return True, None
+            err = f'Email webhook HTTP {resp.status_code}: {resp.text[:200]}'
+            logger.warning('Failed to send email to %s via webhook: %s', recipient_email, err)
+            return False, err
+        except Exception as exc:
+            logger.warning('Failed to send email to %s via webhook: %s', recipient_email, exc)
+            return False, str(exc)
+
     brevo_key = getattr(settings, 'BREVO_API_KEY', '')
     if brevo_key:
         try:
@@ -150,14 +179,9 @@ def _deliver_email(subject, body, recipient_email):
             return False, str(exc)
 
     if not settings.EMAIL_HOST:
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[recipient_email],
-            fail_silently=True,
-        )
-        return False, 'Email is not configured on the server (set BREVO_API_KEY, RESEND_API_KEY, or EMAIL_HOST).'
+        # Email delivery is intentionally off: return (False, None) so the UI
+        # presents the manual/in-app credential handoff cleanly without an error.
+        return False, None
 
     try:
         sent = send_mail(
