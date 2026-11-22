@@ -158,6 +158,13 @@ enum SidebarFinish {
 }
 
 enum DisplayComfort {
+  extraCompact(
+    'extra_compact',
+    'Extra compact',
+    '88%',
+    0.88,
+    VisualDensity(horizontal: -3, vertical: -3),
+  ),
   compact('compact', 'Compact', '94%', 0.94, VisualDensity.compact),
   standard('standard', 'Standard', '100%', 1.0, VisualDensity.standard),
   comfortable(

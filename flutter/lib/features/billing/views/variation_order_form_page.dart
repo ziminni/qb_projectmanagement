@@ -13,6 +13,7 @@ import '../../../data/models/variation_order.dart';
 import '../../../data/services/billing_rules.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_action_bar.dart';
+import '../../../shared/widgets/app_date_field.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../viewmodels/variation_order_form_viewmodel.dart';
@@ -68,6 +69,29 @@ class _VariationOrderFormPageState extends State<VariationOrderFormPage> {
     _days.dispose();
     _vm.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate({required bool isStart}) async {
+    final current = isStart ? _vm.workStartDate : _vm.workEndDate;
+    final firstDate = isStart
+        ? DateTime(2020)
+        : (_vm.workStartDate ?? DateTime(2020));
+    final initial = current ??
+        (isStart
+            ? DateTime.now()
+            : (_vm.workStartDate ?? DateTime.now()));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial.isBefore(firstDate) ? firstDate : initial,
+      firstDate: firstDate,
+      lastDate: DateTime(2040),
+    );
+    if (picked == null) return;
+    if (isStart) {
+      _vm.setWorkStartDate(picked);
+    } else {
+      _vm.setWorkEndDate(picked);
+    }
   }
 
   Future<void> _save() async {
@@ -321,6 +345,38 @@ class _VariationOrderFormPageState extends State<VariationOrderFormPage> {
                   validator: (v) => InputParsers.integer(v) == null
                       ? 'Enter whole days.'
                       : null,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppDateField(
+                        label: 'Task start date',
+                        value: vm.workStartDate,
+                        hasError: false,
+                        onTap: () => _pickDate(isStart: true),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: AppDateField(
+                        label: 'Task end date',
+                        value: vm.workEndDate,
+                        hasError:
+                            vm.workStartDate != null &&
+                            vm.workEndDate != null &&
+                            vm.workEndDate!.isBefore(vm.workStartDate!),
+                        onTap: () => _pickDate(isStart: false),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Plots this ${vm.type.label.toLowerCase()} bar on the project Gantt chart.',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),

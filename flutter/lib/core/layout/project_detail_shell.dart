@@ -77,6 +77,7 @@ class ProjectDetailShell extends StatefulWidget {
 
 class _ProjectDetailShellState extends State<ProjectDetailShell> {
   late ProjectDetailController _controller = _create();
+  bool _headerCollapsed = false;
 
   ProjectDetailController _create() => ProjectDetailController(
     projectId: widget.projectId,
@@ -127,82 +128,119 @@ class _ProjectDetailShellState extends State<ProjectDetailShell> {
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         side,
-                        AppSpacing.md,
+                        AppSpacing.sm,
                         side,
-                        AppSpacing.lg,
+                        _headerCollapsed ? AppSpacing.xs : AppSpacing.lg,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          AppBackButton(
-                            onPressed: () => AppShellBack.goBack(context),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 52,
-                                height: 52,
-                                decoration: const BoxDecoration(
-                                  gradient: AppColors.brandGradient,
-                                  borderRadius: AppRadii.lgAll,
+                              AppBackButton(
+                                onPressed: () => AppShellBack.goBack(context),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                tooltip: _headerCollapsed
+                                    ? 'Show project header'
+                                    : 'Hide project header',
+                                onPressed: () => setState(
+                                  () => _headerCollapsed = !_headerCollapsed,
                                 ),
-                                child: const Icon(
-                                  Icons.apartment_rounded,
-                                  color: Colors.white,
-                                  size: 28,
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(
+                                  _headerCollapsed
+                                      ? Icons.keyboard_arrow_down_rounded
+                                      : Icons.keyboard_arrow_up_rounded,
                                 ),
                               ),
-                              const SizedBox(width: AppSpacing.lg),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Wrap(
-                                      spacing: AppSpacing.sm,
-                                      runSpacing: AppSpacing.xs,
+                            ],
+                          ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeInOut,
+                            alignment: Alignment.topCenter,
+                            child: _headerCollapsed
+                                ? const SizedBox.shrink()
+                                : Padding(
+                                    padding: const EdgeInsets.only(
+                                      top: AppSpacing.sm,
+                                    ),
+                                    child: Row(
                                       crossAxisAlignment:
-                                          WrapCrossAlignment.center,
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          project.code,
-                                          style: textTheme.labelMedium,
+                                        Container(
+                                          width: 52,
+                                          height: 52,
+                                          decoration: const BoxDecoration(
+                                            gradient: AppColors.brandGradient,
+                                            borderRadius: AppRadii.lgAll,
+                                          ),
+                                          child: const Icon(
+                                            Icons.apartment_rounded,
+                                            color: Colors.white,
+                                            size: 28,
+                                          ),
                                         ),
-                                        AppProjectStatusChip(
-                                          status: project.status,
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: AppSpacing.xs),
-                                    Text(
-                                      project.name,
-                                      style: textTheme.headlineSmall,
-                                    ),
-                                    const SizedBox(height: AppSpacing.xs),
-                                    Wrap(
-                                      spacing: AppSpacing.lg,
-                                      runSpacing: AppSpacing.xs,
-                                      children: [
-                                        _meta(
-                                          context,
-                                          Icons.place_outlined,
-                                          project.location,
-                                        ),
-                                        _meta(
-                                          context,
-                                          Icons.event_outlined,
-                                          Formatters.dateRange(
-                                            project.startDate,
-                                            project.targetEndDate,
+                                        const SizedBox(width: AppSpacing.lg),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Wrap(
+                                                spacing: AppSpacing.sm,
+                                                runSpacing: AppSpacing.xs,
+                                                crossAxisAlignment:
+                                                    WrapCrossAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    project.code,
+                                                    style:
+                                                        textTheme.labelMedium,
+                                                  ),
+                                                  AppProjectStatusChip(
+                                                    status: project.status,
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(
+                                                height: AppSpacing.xs,
+                                              ),
+                                              Text(
+                                                project.name,
+                                                style: textTheme.headlineSmall,
+                                              ),
+                                              const SizedBox(
+                                                height: AppSpacing.xs,
+                                              ),
+                                              Wrap(
+                                                spacing: AppSpacing.lg,
+                                                runSpacing: AppSpacing.xs,
+                                                children: [
+                                                  _meta(
+                                                    context,
+                                                    Icons.place_outlined,
+                                                    project.location,
+                                                  ),
+                                                  _meta(
+                                                    context,
+                                                    Icons.event_outlined,
+                                                    Formatters.dateRange(
+                                                      project.startDate,
+                                                      project.targetEndDate,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                                  ),
                           ),
                         ],
                       ),

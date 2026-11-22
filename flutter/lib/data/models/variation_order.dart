@@ -45,6 +45,8 @@ class VariationOrder {
     required this.amount,
     required this.daysImpact,
     required this.status,
+    this.workStartDate,
+    this.workEndDate,
     this.primaryAttachments = const [],
     this.secondaryAttachments = const [],
     this.approvedByOwner,
@@ -61,6 +63,8 @@ class VariationOrder {
   final double amount;
   final int daysImpact;
   final VariationOrderStatus status;
+  final DateTime? workStartDate;
+  final DateTime? workEndDate;
 
   /// Files or photos attached to the variation order (images, PDFs, CAD, etc.):
   /// - [VariationOrderType.additive]: evidence of what is to be added.
@@ -88,6 +92,8 @@ class VariationOrder {
     double? amount,
     int? daysImpact,
     VariationOrderStatus? status,
+    DateTime? Function()? workStartDate,
+    DateTime? Function()? workEndDate,
     List<String>? primaryAttachments,
     List<String>? secondaryAttachments,
     int? Function()? approvedByOwner,
@@ -101,6 +107,8 @@ class VariationOrder {
     amount: amount ?? this.amount,
     daysImpact: daysImpact ?? this.daysImpact,
     status: status ?? this.status,
+    workStartDate: workStartDate != null ? workStartDate() : this.workStartDate,
+    workEndDate: workEndDate != null ? workEndDate() : this.workEndDate,
     primaryAttachments: primaryAttachments ?? this.primaryAttachments,
     secondaryAttachments: secondaryAttachments ?? this.secondaryAttachments,
     approvedByOwner: approvedByOwner != null
@@ -135,6 +143,8 @@ class VariationOrder {
     amount: JsonUtils.toDouble(json['amount']),
     daysImpact: json['days_impact'] as int,
     status: VariationOrderStatus.fromJson(json['status']),
+    workStartDate: JsonUtils.toDateOrNull(json['work_start_date']),
+    workEndDate: JsonUtils.toDateOrNull(json['work_end_date']),
     primaryAttachments: _parseAttachments(
       json['primary_attachments'],
       json['primary_photo_url'],
@@ -158,6 +168,8 @@ class VariationOrder {
     'amount': amount,
     'days_impact': daysImpact,
     'status': status.toJson(),
+    'work_start_date': JsonUtils.fromDateOrNull(workStartDate),
+    'work_end_date': JsonUtils.fromDateOrNull(workEndDate),
     if (primaryAttachments.isNotEmpty)
       'primary_attachments': primaryAttachments,
     if (secondaryAttachments.isNotEmpty)

@@ -6,7 +6,8 @@ import '../../../data/models/trade.dart';
 import '../../../data/models/worker.dart';
 import '../../../data/services/labor_rules.dart';
 
-/// Add a worker (Full name, Address, Phone number) or edit an existing worker.
+/// Add a worker (Full name, Address, Phone number, Daily rate) or edit an
+/// existing worker.
 class LaborWorkerDialog extends StatefulWidget {
   const LaborWorkerDialog({super.key, this.initial, required this.trades});
 
@@ -27,8 +28,6 @@ class LaborWorkerDialog extends StatefulWidget {
 }
 
 class _LaborWorkerDialogState extends State<LaborWorkerDialog> {
-  static const double _defaultDailyRate = 500;
-
   final _formKey = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.initial?.fullName);
   late final _address = TextEditingController(text: widget.initial?.address);
@@ -61,13 +60,14 @@ class _LaborWorkerDialogState extends State<LaborWorkerDialog> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    final enteredRate = InputParsers.amount(_rate.text)!;
     final base =
         widget.initial ??
         Worker(
           id: 0,
           fullName: '',
           trade: _defaultTradeName(),
-          dailyRate: _defaultDailyRate,
+          dailyRate: enteredRate,
         );
     Navigator.of(context).pop(
       base.copyWith(
@@ -75,9 +75,7 @@ class _LaborWorkerDialogState extends State<LaborWorkerDialog> {
         address: () => InputParsers.optional(_address.text),
         phone: () => InputParsers.optional(_phone.text),
         trade: _isAdding ? _defaultTradeName() : _trade,
-        dailyRate: _isAdding
-            ? _defaultDailyRate
-            : InputParsers.amount(_rate.text),
+        dailyRate: enteredRate,
         isActive: _isAdding ? true : _active,
       ),
     );
@@ -124,8 +122,22 @@ class _LaborWorkerDialogState extends State<LaborWorkerDialog> {
                       ? 'Enter the worker\'s phone number.'
                       : null,
                 ),
+                const SizedBox(height: AppSpacing.md),
+                if (_isAdding)
+                  TextFormField(
+                    controller: _rate,
+                    decoration: const InputDecoration(
+                      labelText: 'Daily rate',
+                      prefixText: '₱ ',
+                      helperText: 'Used as the basis for payroll computation',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (v) =>
+                        LaborRules.validateDailyRate(InputParsers.amount(v)),
+                  ),
                 if (!_isAdding) ...[
-                  const SizedBox(height: AppSpacing.md),
                   Row(
                     children: [
                       Expanded(

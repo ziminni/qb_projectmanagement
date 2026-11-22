@@ -288,4 +288,38 @@ void main() {
     final afterWorker = (await repo.getWorkers()).firstWhere((w) => w.id == 8);
     expect(afterWorker.cashAdvanceBalance, closeTo(750, 0.001));
   });
+
+  testWidgets('adding a worker saves the inputted daily rate as payroll basis', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signInAs(tester, 'liza@example.ph');
+    await goTo(tester, '/workers');
+
+    await tester.tap(find.text('Add worker'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Full name'),
+      'Marco Santos',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'Lipa City',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Phone number'),
+      '09171112222',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Daily rate'),
+      '680',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    final workers = await getIt<LaborRepository>().getWorkers();
+    final added = workers.firstWhere((w) => w.fullName == 'Marco Santos');
+    expect(added.dailyRate, 680);
+  });
 }

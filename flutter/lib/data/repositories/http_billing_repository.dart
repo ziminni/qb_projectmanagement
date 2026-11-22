@@ -329,6 +329,8 @@ class HttpBillingRepository implements BillingRepository {
       'type': vo.type.apiValue,
       'description': vo.description.trim(),
       'days_impact': vo.daysImpact,
+      'work_start_date': JsonUtils.fromDateOrNull(vo.workStartDate),
+      'work_end_date': JsonUtils.fromDateOrNull(vo.workEndDate),
       if (_client.seesFinance) 'amount': vo.amount,
       'primary_attachments': primary,
       'secondary_attachments': secondary,

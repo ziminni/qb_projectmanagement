@@ -533,6 +533,8 @@ class VariationOrder(models.Model):
         max_digits=14, decimal_places=2, default=Decimal('0.00'),
     )
     days_impact = models.IntegerField(default=0)
+    work_start_date = models.DateField(null=True, blank=True)
+    work_end_date = models.DateField(null=True, blank=True)
     primary_attachments = models.JSONField(default=list, blank=True)
     secondary_attachments = models.JSONField(default=list, blank=True)
     status = models.CharField(

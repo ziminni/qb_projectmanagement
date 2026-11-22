@@ -129,7 +129,8 @@ class VariationOrderSerializer(serializers.ModelSerializer):
         model = VariationOrder
         fields = (
             'id', 'project_id', 'vo_no', 'type', 'description', 'amount',
-            'days_impact', 'primary_attachments', 'secondary_attachments',
+            'days_impact', 'work_start_date', 'work_end_date',
+            'primary_attachments', 'secondary_attachments',
             'status', 'approved_by_owner', 'approved_by_client',
             'created_at', 'updated_at',
         )
@@ -251,6 +252,8 @@ class VariationOrderWriteSerializer(serializers.Serializer):
                         'min_value': rules.VO_DAYS_INVALID,
                         'max_value': rules.VO_DAYS_INVALID},
     )
+    work_start_date = StrictISODateField(required=False, allow_null=True)
+    work_end_date = StrictISODateField(required=False, allow_null=True)
     primary_attachments = serializers.ListField(
         child=serializers.CharField(max_length=1024),
         required=False,

@@ -312,6 +312,10 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
             list(payload.get('secondary_attachments', []))
             if vo_type == VariationOrderType.CHANGE else []
         )
+        work_start_date = payload.get('work_start_date')
+        work_end_date = payload.get('work_end_date')
+        if work_start_date and work_end_date and work_end_date < work_start_date:
+            _refuse('End date must be on or after the start date.')
 
         if vo is None:
             count = VariationOrder.objects.filter(project=project).count()
@@ -322,6 +326,8 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
                 description=description,
                 amount=amount,
                 days_impact=days_impact,
+                work_start_date=work_start_date,
+                work_end_date=work_end_date,
                 primary_attachments=primary_attachments,
                 secondary_attachments=secondary_attachments,
                 status=VariationOrderStatus.PROPOSED,
@@ -338,12 +344,17 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
             vo.description = description
             vo.amount = amount
             vo.days_impact = days_impact
+            if 'work_start_date' in payload:
+                vo.work_start_date = work_start_date
+            if 'work_end_date' in payload:
+                vo.work_end_date = work_end_date
             if 'primary_attachments' in payload:
                 vo.primary_attachments = primary_attachments
             if 'secondary_attachments' in payload or vo_type != VariationOrderType.CHANGE:
                 vo.secondary_attachments = secondary_attachments
             vo.save(update_fields=[
                 'type', 'description', 'amount', 'days_impact',
+                'work_start_date', 'work_end_date',
                 'primary_attachments', 'secondary_attachments', 'updated_at',
             ])
             user_services.record(user, 'vo_updated', 'variation_order', vo.pk)

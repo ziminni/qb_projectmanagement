@@ -415,6 +415,8 @@ class MockBillingRepository implements BillingRepository {
       description: vo.description.trim(),
       amount: isPm ? amount : _vos[i].amount,
       daysImpact: vo.daysImpact,
+      workStartDate: () => vo.workStartDate,
+      workEndDate: () => vo.workEndDate,
       primaryAttachments: List<String>.unmodifiable(vo.primaryAttachments),
       secondaryAttachments: List<String>.unmodifiable(vo.secondaryAttachments),
     );

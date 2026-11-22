@@ -6,6 +6,8 @@ import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
 import '../../../data/models/project.dart';
 import '../../../data/models/todo.dart';
+import '../../../data/models/variation_order.dart';
+import '../../../data/repositories/billing_repository.dart';
 import '../../../data/repositories/company_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
@@ -28,11 +30,13 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
     required ScheduleRepository schedule,
     required UserRepository users,
     required CompanyRepository company,
+    BillingRepository? billing,
   }) : _company = company,
        _session = session,
        _projects = projects,
        _schedule = schedule,
-       _users = users;
+       _users = users,
+       _billing = billing;
 
   final int projectId;
   final SessionService _session;
@@ -40,6 +44,7 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   final ScheduleRepository _schedule;
   final UserRepository _users;
   final CompanyRepository _company;
+  final BillingRepository? _billing;
 
   bool _loading = true;
   String? _error;
@@ -47,6 +52,8 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   Project? _project;
   List<Category> _categories = const [];
   List<Todo> _todos = const [];
+  List<VariationOrder> _variationOrders = const [];
+  int? _selectedVoIndex;
   ProjectProgress? _progress;
   final _userNames = <int, String>{};
   double _behindThreshold = 0.05;
@@ -57,6 +64,54 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   Project? get project => _project;
   ProjectProgress? get progress => _progress;
   AppRole get role => _session.activeRole!;
+
+  /// Non-rejected variation orders for this project, oldest first.
+  List<VariationOrder> get variationOrders => _variationOrders;
+
+  /// Null means "Original"; 0..N-1 means cumulative up to Variation Order i+1.
+  int? get selectedVoIndex => _selectedVoIndex;
+
+  VariationOrder? get selectedVariationOrder =>
+      _selectedVoIndex != null &&
+          _selectedVoIndex! >= 0 &&
+          _selectedVoIndex! < _variationOrders.length
+      ? _variationOrders[_selectedVoIndex!]
+      : null;
+
+  /// Variation orders plotted on the Gantt chart for the active version tab.
+  List<VariationOrder> get visibleVariationOrders {
+    final idx = _selectedVoIndex;
+    if (idx == null || _variationOrders.isEmpty) return const [];
+    final end = (idx + 1).clamp(0, _variationOrders.length);
+    return _variationOrders.sublist(0, end);
+  }
+
+  /// Total schedule day impact of the currently visible variation orders.
+  int get cumulativeVoDays =>
+      visibleVariationOrders.fold<int>(0, (sum, vo) => sum + vo.daysImpact);
+
+  /// Target end date adjusted by the selected variation order version.
+  DateTime get effectiveProjectEnd =>
+      _project!.targetEndDate.add(Duration(days: cumulativeVoDays));
+
+  void selectVoVersion(int? index) {
+    if (_selectedVoIndex == index) return;
+    _selectedVoIndex = index;
+    notifyListeners();
+  }
+
+  String voVersionLabel(int index) {
+    final vo = _variationOrders[index];
+    final sign = vo.daysImpact > 0
+        ? '+${vo.daysImpact}d'
+        : vo.daysImpact < 0
+        ? '${vo.daysImpact}d'
+        : '0d';
+    final pending = vo.status == VariationOrderStatus.approved
+        ? ''
+        : ' · ${vo.status.label}';
+    return 'Variation Order ${index + 1} ($sign$pending)';
+  }
 
   bool get canView => _assigned;
   bool get canEdit => role == AppRole.owner && _assigned;
@@ -113,6 +168,22 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   Future<void> _refresh() async {
     _categories = await _schedule.getCategories(projectId);
     _todos = await _schedule.getTodos(projectId);
+    if (_billing != null) {
+      try {
+        final vos = await _billing.getVariationOrders(projectIds: [projectId]);
+        _variationOrders =
+            vos
+                .where((v) => v.status != VariationOrderStatus.rejected)
+                .toList()
+              ..sort((a, b) => a.id.compareTo(b.id));
+        if (_selectedVoIndex != null &&
+            _selectedVoIndex! >= _variationOrders.length) {
+          _selectedVoIndex = null;
+        }
+      } catch (_) {
+        _variationOrders = const [];
+      }
+    }
     _progress = computeProjectProgress(
       project: _project!,
       categories: _categories,

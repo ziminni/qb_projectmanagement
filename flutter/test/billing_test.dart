@@ -458,4 +458,46 @@ void main() {
       expect(find.text('Raise a variation order'), findsNothing);
     },
   );
+
+  testWidgets(
+    'project Gantt chart switches between Original and Variation Order with task dates',
+    (tester) async {
+      await pumpApp(tester);
+      await signInAs(tester, 'ramon@example.ph');
+
+      final billing = getIt<BillingRepository>();
+      await billing.saveVariationOrder(
+        VariationOrder(
+          id: 0,
+          projectId: 1,
+          voNo: '',
+          type: VariationOrderType.additive,
+          description: 'Add roof deck pergola',
+          amount: 120000,
+          daysImpact: 10,
+          workStartDate: DateTime(2026, 11, 1),
+          workEndDate: DateTime(2026, 11, 10),
+          status: VariationOrderStatus.proposed,
+        ),
+        userId: 3,
+      );
+
+      await goTo(tester, '/projects/1/gantt');
+      expect(find.text('Original'), findsOneWidget);
+      // Original view hides the VO rows until a VO version is selected.
+      expect(find.text('Variation orders'), findsNothing);
+
+      // Select the newly added VO (+10d) from the dropdown bar.
+      await tester.tap(find.byType(DropdownButton<int?>));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text('Variation Order 3 (+10d · Proposed)').last,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Variation orders'), findsOneWidget);
+      expect(find.textContaining('Add roof deck pergola'), findsOneWidget);
+      expect(find.textContaining('VO · Added work'), findsOneWidget);
+    },
+  );
 }

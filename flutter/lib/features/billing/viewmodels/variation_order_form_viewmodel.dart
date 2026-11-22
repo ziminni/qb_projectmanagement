@@ -49,6 +49,8 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
   int? categoryId;
   int? todoSelection; // null = none, -1 = custom task, >0 = existing todo id
   VariationOrderType type = VariationOrderType.additive;
+  DateTime? workStartDate;
+  DateTime? workEndDate;
   List<String> primaryAttachments = [];
   List<String> secondaryAttachments = [];
 
@@ -105,6 +107,8 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
         }
         projectId = _existing!.projectId;
         type = _existing!.type;
+        workStartDate = _existing!.workStartDate;
+        workEndDate = _existing!.workEndDate;
         primaryAttachments = List<String>.from(_existing!.primaryAttachments);
         secondaryAttachments = List<String>.from(
           _existing!.secondaryAttachments,
@@ -174,6 +178,24 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
   void setTodoSelection(int? value) {
     if (todoSelection == value) return;
     todoSelection = value;
+    final todo = selectedTodo;
+    if (todo != null && workStartDate == null && workEndDate == null) {
+      workStartDate = todo.startDate;
+      workEndDate = todo.endDate;
+    }
+    notifyListeners();
+  }
+
+  void setWorkStartDate(DateTime? date) {
+    workStartDate = date;
+    if (date != null && workEndDate != null && workEndDate!.isBefore(date)) {
+      workEndDate = date;
+    }
+    notifyListeners();
+  }
+
+  void setWorkEndDate(DateTime? date) {
+    workEndDate = date;
     notifyListeners();
   }
 
@@ -256,12 +278,22 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
           status: VariationOrderStatus.proposed,
           createdAt: DateTime.now(),
         );
+    if (workStartDate != null &&
+        workEndDate != null &&
+        workEndDate!.isBefore(workStartDate!)) {
+      throw const BusinessRuleException(
+        'End date must be on or after the start date.',
+      );
+    }
+
     final saved = await _billing.saveVariationOrder(
       base.copyWith(
         type: type,
         description: fullDescription,
         amount: amount,
         daysImpact: daysImpact,
+        workStartDate: () => workStartDate,
+        workEndDate: () => workEndDate,
         primaryAttachments: List<String>.unmodifiable(primaryAttachments),
         secondaryAttachments: type == VariationOrderType.change
             ? List<String>.unmodifiable(secondaryAttachments)

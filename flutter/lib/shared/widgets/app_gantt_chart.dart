@@ -6,6 +6,7 @@ import '../../core/constants/app_radii.dart';
 import '../../core/constants/app_spacing.dart';
 import '../../core/utils/formatters.dart';
 import '../../data/models/todo.dart';
+import '../../data/models/variation_order.dart';
 import '../../data/services/progress_calculator.dart';
 
 /// Gantt chart: categories as parent rows spanning their earliest to-do start
@@ -17,12 +18,14 @@ class AppGanttChart extends StatefulWidget {
     required this.progress,
     required this.projectStart,
     required this.projectEnd,
+    this.variationOrders = const [],
     this.today,
   });
 
   final ProjectProgress progress;
   final DateTime projectStart;
   final DateTime projectEnd;
+  final List<VariationOrder> variationOrders;
   final DateTime? today;
 
   @override
@@ -37,25 +40,67 @@ class _AppGanttChartState extends State<AppGanttChart> {
   static const _rowHeight = 36.0;
   static const _headerHeight = 32.0;
 
-  late final DateTime _rangeStart;
-  late final DateTime _rangeEnd;
+  late DateTime _rangeStart;
+  late DateTime _rangeEnd;
   late final DateTime _today;
   late final ScrollController _scroll;
 
   @override
   void initState() {
     super.initState();
+    _computeRange();
+    _today = _day(widget.today ?? DateTime.now());
+    _scroll = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToToday());
+  }
+
+  @override
+  void didUpdateWidget(covariant AppGanttChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.projectStart != widget.projectStart ||
+        oldWidget.projectEnd != widget.projectEnd ||
+        oldWidget.progress != widget.progress ||
+        oldWidget.variationOrders != widget.variationOrders) {
+      _computeRange();
+    }
+  }
+
+  (DateTime, DateTime) _voSpan(VariationOrder vo) {
+    if (vo.workStartDate != null && vo.workEndDate != null) {
+      final s = _day(vo.workStartDate!);
+      final e = _day(vo.workEndDate!);
+      return e.isBefore(s) ? (s, s) : (s, e);
+    }
+    if (vo.workStartDate != null) {
+      final s = _day(vo.workStartDate!);
+      final days = vo.daysImpact.abs() > 0 ? vo.daysImpact.abs() - 1 : 0;
+      return (s, s.add(Duration(days: days)));
+    }
+    if (vo.workEndDate != null) {
+      final e = _day(vo.workEndDate!);
+      final days = vo.daysImpact.abs() > 0 ? vo.daysImpact.abs() - 1 : 0;
+      return (e.subtract(Duration(days: days)), e);
+    }
+    // Legacy VO without explicit task dates: anchor near project end.
+    final end = _day(widget.projectEnd);
+    final span = vo.daysImpact.abs() > 0 ? vo.daysImpact.abs() - 1 : 0;
+    return (end.subtract(Duration(days: span)), end);
+  }
+
+  void _computeRange() {
     var start = _day(widget.projectStart);
     var end = _day(widget.projectEnd);
     for (final c in widget.progress.categories) {
       if (c.startDate case final s? when s.isBefore(start)) start = s;
       if (c.endDate case final e? when e.isAfter(end)) end = e;
     }
+    for (final vo in widget.variationOrders) {
+      final (s, e) = _voSpan(vo);
+      if (s.isBefore(start)) start = s;
+      if (e.isAfter(end)) end = e;
+    }
     _rangeStart = DateTime(start.year, start.month, 1);
     _rangeEnd = DateTime(end.year, end.month + 1, 0);
-    _today = _day(widget.today ?? DateTime.now());
-    _scroll = ScrollController();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToToday());
   }
 
   /// Scrolls so today sits about two-thirds across, keeping recent and
@@ -89,7 +134,8 @@ class _AppGanttChartState extends State<AppGanttChart> {
   @override
   Widget build(BuildContext context) {
     final categories = widget.progress.categories;
-    if (categories.isEmpty) {
+    final vos = widget.variationOrders;
+    if (categories.isEmpty && vos.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
         child: Center(
@@ -113,6 +159,14 @@ class _AppGanttChartState extends State<AppGanttChart> {
       for (final t in c.todos) {
         labels.add(_todoLabel(context, t));
         bars.add(_todoBar(t));
+      }
+    }
+    if (vos.isNotEmpty) {
+      labels.add(_voGroupLabel(context, vos));
+      bars.add(_voGroupBar(vos));
+      for (final vo in vos) {
+        labels.add(_voLabel(context, vo));
+        bars.add(_voBar(vo));
       }
     }
 
@@ -383,6 +437,172 @@ class _AppGanttChartState extends State<AppGanttChart> {
     );
   }
 
+  (Color, Color) _voColors(VariationOrderType type) => switch (type) {
+    VariationOrderType.additive => (
+      const Color(0xFFD1FAE5),
+      const Color(0xFF059669),
+    ),
+    VariationOrderType.change => (
+      const Color(0xFFE0E7FF),
+      const Color(0xFF4F46E5),
+    ),
+    VariationOrderType.deductive => (
+      const Color(0xFFFEE2E2),
+      const Color(0xFFDC2626),
+    ),
+  };
+
+  Widget _voGroupLabel(BuildContext context, List<VariationOrder> vos) {
+    final textTheme = Theme.of(context).textTheme;
+    final totalDays = vos.fold<int>(0, (s, v) => s + v.daysImpact);
+    final daysText = totalDays > 0
+        ? '+${totalDays}d'
+        : totalDays < 0
+        ? '${totalDays}d'
+        : '0d';
+    return Container(
+      height: _rowHeight,
+      color: AppColors.primaryContainer.withValues(alpha: 0.45),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Variation orders',
+              style: textTheme.titleSmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            daysText,
+            style: textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _voGroupBar(List<VariationOrder> vos) {
+    DateTime? start;
+    DateTime? end;
+    for (final vo in vos) {
+      final (s, e) = _voSpan(vo);
+      if (start == null || s.isBefore(start)) start = s;
+      if (end == null || e.isAfter(end)) end = e;
+    }
+    return Container(
+      height: _rowHeight,
+      color: AppColors.primaryContainer.withValues(alpha: 0.25),
+      child: start == null || end == null
+          ? null
+          : Stack(
+              children: [
+                Positioned(
+                  left: _x(start),
+                  top: 10,
+                  width: _w(start, end),
+                  height: 16,
+                  child: Tooltip(
+                    message:
+                        'Variation orders (${vos.length})\n'
+                        '${Formatters.dateRange(start, end)}',
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.brandGold.withValues(alpha: 0.85),
+                        borderRadius: AppRadii.smAll,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _voLabel(BuildContext context, VariationOrder vo) {
+    final (_, accent) = _voColors(vo.type);
+    final sign = vo.daysImpact > 0
+        ? '+${vo.daysImpact}d'
+        : vo.daysImpact < 0
+        ? '${vo.daysImpact}d'
+        : '0d';
+    return Container(
+      height: _rowHeight,
+      padding: const EdgeInsets.only(left: AppSpacing.xl, right: AppSpacing.sm),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            margin: const EdgeInsets.only(right: AppSpacing.xs),
+            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+          ),
+          Expanded(
+            child: Tooltip(
+              message: '${vo.voNo} · ${vo.type.label}\n${vo.description}',
+              child: Text(
+                '${vo.voNo}: ${vo.description}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textPrimary),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            sign,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: accent,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _voBar(VariationOrder vo) {
+    final (start, end) = _voSpan(vo);
+    final (fill, border) = _voColors(vo.type);
+    final sign = vo.daysImpact > 0
+        ? '+${vo.daysImpact} days'
+        : vo.daysImpact < 0
+        ? '${vo.daysImpact} days'
+        : '0 days';
+    return SizedBox(
+      height: _rowHeight,
+      child: Stack(
+        children: [
+          Positioned(
+            left: _x(start),
+            top: 11,
+            width: _w(start, end),
+            height: 14,
+            child: Tooltip(
+              message:
+                  '${vo.voNo} · ${vo.type.label} ($sign)\n'
+                  '${vo.description}\n'
+                  '${Formatters.dateRange(start, end)}',
+              child: Container(
+                decoration: BoxDecoration(
+                  color: fill,
+                  border: Border.all(color: border, width: 1.5),
+                  borderRadius: AppRadii.smAll,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _legend(BuildContext context) {
     final style = Theme.of(context).textTheme.bodySmall;
     Widget swatch(Color fill, Color border, String label) => Row(
@@ -414,6 +634,23 @@ class _AppGanttChartState extends State<AppGanttChart> {
         ),
         swatch(AppColors.surface, AppColors.textDisabled, 'Not done'),
         swatch(AppColors.plannedMarker, AppColors.plannedMarker, 'Today'),
+        if (widget.variationOrders.isNotEmpty) ...[
+          swatch(
+            const Color(0xFFD1FAE5),
+            const Color(0xFF059669),
+            'VO · Added work',
+          ),
+          swatch(
+            const Color(0xFFE0E7FF),
+            const Color(0xFF4F46E5),
+            'VO · Design change',
+          ),
+          swatch(
+            const Color(0xFFFEE2E2),
+            const Color(0xFFDC2626),
+            'VO · Removed work',
+          ),
+        ],
       ],
     );
   }
