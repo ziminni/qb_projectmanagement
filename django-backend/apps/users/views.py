@@ -322,9 +322,16 @@ class UserViewSet(viewsets.ModelViewSet):
             )
             services.record(request.user, 'user_created', 'user', user.pk,
                             {'roles': user.roles, 'is_active': user.is_active})
-        services.send_credentials_email(user, password, is_reset=False)
+        email_sent, email_error = services.send_credentials_email(
+            user, password, is_reset=False,
+        )
         return Response(
-            {**user_payload(user), 'temporary_password': password},
+            {
+                **user_payload(user),
+                'temporary_password': password,
+                'email_sent': email_sent,
+                'email_error': email_error,
+            },
             status=status.HTTP_201_CREATED,
         )
 
@@ -361,8 +368,14 @@ class UserViewSet(viewsets.ModelViewSet):
                 update_fields=['password', 'must_change_password', 'updated_at'],
             )
             services.record(request.user, 'password_reset', 'user', user.pk)
-        services.send_credentials_email(user, password, is_reset=True)
-        return Response({'temporary_password': password})
+        email_sent, email_error = services.send_credentials_email(
+            user, password, is_reset=True,
+        )
+        return Response({
+            'temporary_password': password,
+            'email_sent': email_sent,
+            'email_error': email_error,
+        })
 
 
 class UserRoleListView(generics.ListAPIView):

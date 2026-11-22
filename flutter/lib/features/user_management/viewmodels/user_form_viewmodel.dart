@@ -69,6 +69,8 @@ class UserFormViewModel extends ChangeNotifier with ActionRunner {
   List<Client> get clients => _allClients;
   bool get isSelf => userId != null && userId == _session.user?.id;
   String? get temporaryPassword => _users.lastTemporaryPassword;
+  bool get emailSent => _users.lastEmailSent;
+  String? get emailError => _users.lastEmailError;
 
   /// Company a user is created under. The API scopes every row to the
   /// signed-in user's company, so the mock id must never be sent there.

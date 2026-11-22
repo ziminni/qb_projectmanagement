@@ -48,9 +48,14 @@ class ApprovalInbox {
   final List<ApprovalSource> _sources;
 
   Future<List<ApprovalItem>> pendingFor(int userId, AppRole role) async {
-    final items = <ApprovalItem>[
-      for (final s in _sources) ...await s.pendingFor(userId, role),
-    ];
+    final items = <ApprovalItem>[];
+    for (final s in _sources) {
+      try {
+        items.addAll(await s.pendingFor(userId, role));
+      } catch (_) {
+        // One failing source must never blank out the dashboard or inbox.
+      }
+    }
     items.sort(
       (a, b) => (a.date ?? DateTime(0)).compareTo(b.date ?? DateTime(0)),
     );

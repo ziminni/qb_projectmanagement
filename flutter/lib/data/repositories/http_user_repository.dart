@@ -11,9 +11,17 @@ class HttpUserRepository implements UserRepository {
 
   final ApiClient _client;
   String? _lastTemporaryPassword;
+  bool _lastEmailSent = true;
+  String? _lastEmailError;
 
   @override
   String? get lastTemporaryPassword => _lastTemporaryPassword;
+
+  @override
+  bool get lastEmailSent => _lastEmailSent;
+
+  @override
+  String? get lastEmailError => _lastEmailError;
 
   @override
   Future<List<User>> getUsers() async => [
@@ -83,6 +91,8 @@ class HttpUserRepository implements UserRepository {
   User _saved(Object? data) {
     final body = jsonObject(data);
     _lastTemporaryPassword = body['temporary_password'] as String?;
+    _lastEmailSent = body['email_sent'] as bool? ?? true;
+    _lastEmailError = body['email_error'] as String?;
     return User.fromJson(jsonObject(body['user'] ?? body));
   }
 }

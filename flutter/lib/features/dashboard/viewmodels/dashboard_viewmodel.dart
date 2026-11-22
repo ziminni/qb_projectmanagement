@@ -81,8 +81,11 @@ class DashboardViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final userId = _session.user!.id;
-      final threshold =
-          (await _company.getSettings()).behindScheduleThresholdPct / 100;
+      double threshold = 0.05;
+      try {
+        threshold =
+            (await _company.getSettings()).behindScheduleThresholdPct / 100;
+      } catch (_) {}
       final list = <DashboardProject>[];
       for (final p in await _projects.getProjectsFor(userId, role)) {
         final progress = computeProjectProgress(
@@ -112,9 +115,13 @@ class DashboardViewModel extends ChangeNotifier {
         counts[item.kind] = (counts[item.kind] ?? 0) + 1;
       }
       _pending = counts;
-      _billed = await _billing.billedSummary(
-        projectIds: _projectsList.map((p) => p.project.id).toList(),
-      );
+      try {
+        _billed = await _billing.billedSummary(
+          projectIds: _projectsList.map((p) => p.project.id).toList(),
+        );
+      } catch (_) {
+        _billed = const BilledSummary(billed: 0, collected: 0);
+      }
     } catch (e) {
       _error = 'Could not load the dashboard. $e';
     } finally {

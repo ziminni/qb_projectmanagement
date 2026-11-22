@@ -14,6 +14,12 @@ class MockUserRepository implements UserRepository {
   String? get lastTemporaryPassword => _lastTemporaryPassword;
 
   @override
+  bool get lastEmailSent => true;
+
+  @override
+  String? get lastEmailError => null;
+
+  @override
   Future<List<User>> getUsers() async => List.unmodifiable(_users);
 
   @override

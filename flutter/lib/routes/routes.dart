@@ -430,6 +430,9 @@ GoRouter createRouter() {
       if (!session.isSignedIn || role == null) {
         return public ? null : AppRoutes.landing;
       }
+      if (session.user?.mustChangePassword == true) {
+        return public ? null : AppRoutes.landing;
+      }
       if (public) return RoleNavigation.homeFor(role);
       if (location == AppRoutes.chooseRole) return null;
       if (!RoleNavigation.allows(role, location)) {

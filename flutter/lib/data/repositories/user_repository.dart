@@ -19,6 +19,12 @@ abstract interface class UserRepository {
   /// call, if any.
   String? get lastTemporaryPassword;
 
+  /// Whether the backend sent the credentials email on the last user creation.
+  bool get lastEmailSent;
+
+  /// Error detail when the credentials email could not be sent.
+  String? get lastEmailError;
+
   Future<User> setActive(int userId, bool active);
 
   /// Users holding [role], e.g. every PM for an assignment picker.

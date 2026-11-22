@@ -97,8 +97,19 @@ class _UserFormPageState extends State<UserFormPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'An email with these sign-in credentials has been sent to $email. They will be prompted to set a new password on their first login.',
+                    _vm.emailSent
+                        ? 'An email with these sign-in credentials has been sent to $email. They will be prompted to set a new password on their first login.'
+                        : 'Account created, but the email could not be sent to $email. Share these credentials manually (they will still be prompted to set a new password on first login).',
                   ),
+                  if (!_vm.emailSent && _vm.emailError != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Email error: ${_vm.emailError}',
+                      style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: AppSpacing.md),
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.md),

@@ -68,6 +68,7 @@ class DailyReportApprovalSource implements ApprovalSource {
       for (final p in await _projects.getProjectsFor(userId, AppRole.owner))
         p.id: p,
     };
+    if (projects.isEmpty) return const [];
     final reports = await _reports.getReports(
       projectIds: projects.keys.toList(),
       status: DailyReportStatus.submitted,
@@ -102,6 +103,7 @@ class MaterialRequestApprovalSource implements ApprovalSource {
     final projects = {
       for (final p in await _projects.getProjectsFor(userId, role)) p.id: p,
     };
+    if (projects.isEmpty) return const [];
     final requests = await _procurement.getRequests(
       projectIds: projects.keys.toList(),
       statuses: [MaterialRequestStatus.pending],
@@ -142,6 +144,7 @@ class PayrollVerificationSource implements ApprovalSource {
       for (final p in await _projects.getProjectsFor(userId, AppRole.owner))
         p.id: p,
     };
+    if (projects.isEmpty) return const [];
     final today = _clock();
     return [
       for (final p in await _labor.getPeriods(
@@ -177,6 +180,7 @@ class VariationOrderApprovalSource implements ApprovalSource {
     final projects = {
       for (final p in await _projects.getProjectsFor(userId, role)) p.id: p,
     };
+    if (projects.isEmpty) return const [];
     return [
       for (final v in await _billing.getVariationOrders(
         projectIds: projects.keys.toList(),

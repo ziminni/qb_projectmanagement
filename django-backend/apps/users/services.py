@@ -79,7 +79,10 @@ def notify(user, type, message, link=None):
 
 
 def send_credentials_email(user, temporary_password, *, is_reset=False):
-    """Send the user's email + temporary password to their inbox."""
+    """Send the user's email + temporary password to their inbox.
+
+    Returns ``(sent: bool, error: str | None)``.
+    """
     subject = (
         'Queen Builders CPMS — Your Temporary Password'
         if is_reset
@@ -99,6 +102,17 @@ def send_credentials_email(user, temporary_password, *, is_reset=False):
         'first time you sign in.\n\n'
         '— Queen Builders CPMS'
     )
+    if not settings.EMAIL_HOST:
+        # Console backend: still invoke send_mail so dev logs show the message,
+        # but report clearly that SMTP is not configured for real delivery.
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        return False, 'SMTP email is not configured on the server (EMAIL_HOST is empty).'
     try:
         sent = send_mail(
             subject=subject,
@@ -107,10 +121,10 @@ def send_credentials_email(user, temporary_password, *, is_reset=False):
             recipient_list=[user.email],
             fail_silently=False,
         )
-        return bool(sent)
+        return bool(sent), None
     except Exception as exc:
         logger.warning('Failed to send credentials email to %s: %s', user.email, exc)
-        return False
+        return False, str(exc)
 
 
 def send_password_reset_code_email(user, code, *, expires_minutes=15):
