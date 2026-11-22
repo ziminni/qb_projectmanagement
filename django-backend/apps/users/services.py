@@ -128,7 +128,10 @@ def send_credentials_email(user, temporary_password, *, is_reset=False):
 
 
 def send_password_reset_code_email(user, code, *, expires_minutes=15):
-    """Email a 6-digit password reset code to `user`."""
+    """Email a 6-digit password reset code to `user`.
+
+    Returns ``(sent: bool, error: str | None)``.
+    """
     subject = 'Queen Builders CPMS — Your Password Reset Code'
     body = (
         f'Hello {user.full_name},\n\n'
@@ -139,6 +142,15 @@ def send_password_reset_code_email(user, code, *, expires_minutes=15):
         'If you did not request a password reset, you can safely ignore this email.\n\n'
         '— Queen Builders CPMS'
     )
+    if not settings.EMAIL_HOST:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        return False, 'SMTP email is not configured on the server (EMAIL_HOST is empty).'
     try:
         sent = send_mail(
             subject=subject,
@@ -147,10 +159,10 @@ def send_password_reset_code_email(user, code, *, expires_minutes=15):
             recipient_list=[user.email],
             fail_silently=False,
         )
-        return bool(sent)
+        return bool(sent), None
     except Exception as exc:
         logger.warning('Failed to send password reset email to %s: %s', user.email, exc)
-        return False
+        return False, str(exc)
 
 
 def notify_admins(type, message, link=None):

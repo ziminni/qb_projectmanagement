@@ -206,7 +206,17 @@ def change_password_view(request):
 @permission_classes([AllowAny])
 @throttle_classes([PasswordResetRateThrottle])
 def password_reset_request_view(request):
-    """Email a 6-digit reset code. Always 204: never reveals whether an account exists."""
+    """Email a 6-digit reset code. Never reveals whether an account exists."""
+    if not settings.EMAIL_HOST and not settings.DEBUG:
+        return Response(
+            {
+                'detail': (
+                    'Password reset email is not configured on the server yet. '
+                    'Ask your system administrator to reset your password.'
+                ),
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
     email = str(request.data.get('email') or '').strip().lower()
     if email:
         user = User.objects.filter(email__iexact=email, is_active=True).first()
@@ -228,7 +238,20 @@ def password_reset_request_view(request):
                     f'{user.full_name} ({user.email}) asked for a password reset.',
                     link='/user-management',
                 )
-            services.send_password_reset_code_email(user, code, expires_minutes=15)
+            sent, err = services.send_password_reset_code_email(
+                user, code, expires_minutes=15,
+            )
+            if not sent and settings.EMAIL_HOST:
+                return Response(
+                    {
+                        'detail': (
+                            'Could not send the password reset email right now '
+                            f'({err or "SMTP error"}). Please try again or ask '
+                            'your administrator to reset your password.'
+                        ),
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
