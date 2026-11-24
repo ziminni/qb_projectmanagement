@@ -5,6 +5,7 @@ enum ApprovalKind {
   todoVerification('To-do verification'),
   dailyReport('Daily reports'),
   materialRequest('Material requests'),
+  equipmentRequest('Equipment requests'),
   payroll('Attendance verification'),
   laborerRequest('Laborer requests'),
   variationOrder('Variation orders');

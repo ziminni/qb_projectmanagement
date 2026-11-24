@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     EquipmentLogViewSet,
     EquipmentViewSet,
+    ProjectEquipmentBorrowViewSet,
     SiteStockViewSet,
     ToolViewSet,
 )
@@ -15,6 +16,11 @@ router.register(r'site-stock', SiteStockViewSet, basename='sitestock')
 router.register(r'tools', ToolViewSet, basename='tool')
 router.register(r'equipment', EquipmentViewSet, basename='equipment')
 router.register(r'equipment-logs', EquipmentLogViewSet, basename='equipmentlog')
+router.register(
+    r'project-equipment-borrows',
+    ProjectEquipmentBorrowViewSet,
+    basename='projectequipmentborrow',
+)
 
 urlpatterns = [
     path('', include(router.urls)),

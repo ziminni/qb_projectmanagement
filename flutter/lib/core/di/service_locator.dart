@@ -24,10 +24,13 @@ import '../../data/repositories/client_repository.dart';
 import '../../data/repositories/company_repository.dart';
 import '../../data/repositories/daily_report_repository.dart';
 import '../../data/repositories/document_repository.dart';
+import '../../data/repositories/equipment_repository.dart';
+import '../../data/repositories/http_equipment_repository.dart';
 import '../../data/repositories/labor_repository.dart';
 import '../../data/repositories/master_data_repository.dart';
 import '../../data/repositories/mock_daily_report_repository.dart';
 import '../../data/repositories/mock_document_repository.dart';
+import '../../data/repositories/mock_equipment_repository.dart';
 import '../../data/repositories/mock_audit_log_repository.dart';
 import '../../data/repositories/mock_billing_repository.dart';
 import '../../data/repositories/mock_client_repository.dart';
@@ -48,6 +51,7 @@ import '../../data/repositories/schedule_repository.dart';
 import '../../data/repositories/store_catalog_repository.dart';
 import '../../data/repositories/system_admin_repository.dart';
 import '../../data/repositories/user_repository.dart';
+import '../../data/services/equipment_request_approval_source.dart';
 import '../../data/services/laborer_request_approval_source.dart';
 import '../../data/services/approval_inbox.dart';
 import '../../data/services/approval_sources.dart';
@@ -151,6 +155,7 @@ void setupServiceLocator() {
         TodoVerificationSource(projects: getIt(), schedule: getIt()),
         DailyReportApprovalSource(projects: getIt(), reports: getIt()),
         MaterialRequestApprovalSource(projects: getIt(), procurement: getIt()),
+        EquipmentRequestApprovalSource(projects: getIt(), equipment: getIt()),
         PayrollVerificationSource(projects: getIt(), labor: getIt()),
         LaborerRequestApprovalSource(projects: getIt(), labor: getIt()),
         VariationOrderApprovalSource(projects: getIt(), billing: getIt()),
@@ -174,6 +179,15 @@ void setupServiceLocator() {
       () => useApi
           ? HttpDocumentRepository(getIt<ApiClient>())
           : MockDocumentRepository(projects: getIt()),
+    )
+    ..registerLazySingleton<EquipmentRepository>(
+      () => useApi
+          ? HttpEquipmentRepository(getIt<ApiClient>())
+          : MockEquipmentRepository(
+              users: getIt(),
+              schedule: getIt(),
+              labor: getIt(),
+            ),
     )
     ..registerLazySingleton<ProjectCostService>(
       () => ProjectCostService(

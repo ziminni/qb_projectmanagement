@@ -11,11 +11,13 @@ import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/category.dart';
+import '../../../data/models/equipment_borrow.dart';
 import '../../../data/models/project.dart';
 import '../../../data/models/project_worker_request.dart';
 import '../../../data/models/todo.dart';
 import '../../../data/models/variation_order.dart';
 import '../../../data/models/worker.dart';
+import '../../../data/repositories/equipment_repository.dart';
 import '../../../data/repositories/labor_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
@@ -259,6 +261,14 @@ class _ApprovalReviewDialogState extends State<ApprovalReviewDialog> {
         requestId: id,
         onChanged: _markChanged,
         onSubNavigation: _setSubNavigation,
+        onClose: () => Navigator.of(context).pop(_didChange),
+      ),
+      ApprovalKind.equipmentRequest => _EquipmentRequestReviewPane(
+        requestIds: item.effectiveIds,
+        projectId: item.projectId,
+        projectCode: item.projectCode,
+        projectName: item.projectName,
+        onChanged: _markChanged,
         onClose: () => Navigator.of(context).pop(_didChange),
       ),
       ApprovalKind.variationOrder => _VariationOrderReviewPane(
@@ -1922,3 +1932,482 @@ class _PayrollVerificationReviewPane extends StatelessWidget {
     );
   }
 }
+
+// ============================================================================
+// 7. EQUIPMENT BORROW / RENTAL REQUEST REVIEW PANE (SINGLE & BULK)
+// ============================================================================
+
+class _EquipmentRequestReviewPane extends StatefulWidget {
+  const _EquipmentRequestReviewPane({
+    required this.requestIds,
+    required this.projectId,
+    required this.projectCode,
+    required this.projectName,
+    required this.onChanged,
+    required this.onClose,
+  });
+
+  final List<int> requestIds;
+  final int? projectId;
+  final String? projectCode;
+  final String? projectName;
+  final VoidCallback onChanged;
+  final VoidCallback onClose;
+
+  @override
+  State<_EquipmentRequestReviewPane> createState() =>
+      _EquipmentRequestReviewPaneState();
+}
+
+class _EquipmentRequestReviewPaneState
+    extends State<_EquipmentRequestReviewPane> {
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  List<EquipmentBorrow> _requests = const [];
+  final Set<int> _selectedIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load(selectAllPending: true);
+  }
+
+  List<EquipmentBorrow> get _pendingRequests => _requests
+      .where((r) => r.status == EquipmentBorrowStatus.pending)
+      .toList();
+
+  Future<void> _load({bool selectAllPending = false}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final all = await getIt<EquipmentRepository>().getBorrows(
+        projectId: widget.projectId,
+      );
+      final target = widget.requestIds.toSet();
+      final matched = all.where((r) => target.contains(r.id)).toList();
+      if (!mounted) return;
+      setState(() {
+        _requests = matched;
+        if (matched.isEmpty) {
+          _error = 'Equipment request not found.';
+        } else {
+          final pendingIds = {
+            for (final r in matched)
+              if (r.status == EquipmentBorrowStatus.pending) r.id,
+          };
+          _selectedIds.removeWhere((id) => !pendingIds.contains(id));
+          if (selectAllPending || _selectedIds.isEmpty) {
+            _selectedIds.addAll(pendingIds);
+          }
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not load equipment request. $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _toggleSelectAll(bool select) {
+    setState(() {
+      if (select) {
+        _selectedIds.addAll(_pendingRequests.map((r) => r.id));
+      } else {
+        _selectedIds.clear();
+      }
+    });
+  }
+
+  void _toggleOne(int id) {
+    setState(() {
+      if (!_selectedIds.remove(id)) _selectedIds.add(id);
+    });
+  }
+
+  Future<void> _approveIds(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final singleName = ids.length == 1
+        ? _requests.where((r) => r.id == ids.first).firstOrNull?.equipmentName
+        : null;
+    setState(() => _busy = true);
+    try {
+      final uid = getIt<SessionService>().user!.id;
+      final repo = getIt<EquipmentRepository>();
+      for (final id in ids) {
+        await repo.approveBorrow(id, userId: uid);
+      }
+      widget.onChanged();
+      await _load(selectAllPending: true);
+      if (!mounted) return;
+      showSuccessAlert(
+        context,
+        singleName != null
+            ? '$singleName approved and marked on site.'
+            : '${ids.length} equipment requests approved.',
+      );
+      if (_pendingRequests.isEmpty) widget.onClose();
+    } on BusinessRuleException catch (e) {
+      if (mounted) showAppMessage(context, e.message);
+    } catch (e) {
+      if (mounted) showAppMessage(context, 'Could not approve request. $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _rejectIds(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final singleName = ids.length == 1
+        ? _requests.where((r) => r.id == ids.first).firstOrNull?.equipmentName
+        : null;
+    final reason = await AppReasonDialog.show(
+      context,
+      title: singleName != null
+          ? 'Reject $singleName'
+          : 'Reject ${ids.length} equipment requests',
+      confirmLabel: 'Reject',
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final uid = getIt<SessionService>().user!.id;
+      final repo = getIt<EquipmentRepository>();
+      for (final id in ids) {
+        await repo.rejectBorrow(id, userId: uid, reason: reason);
+      }
+      widget.onChanged();
+      await _load(selectAllPending: true);
+      if (!mounted) return;
+      showSuccessAlert(
+        context,
+        ids.length == 1
+            ? 'Equipment request rejected.'
+            : '${ids.length} equipment requests rejected.',
+      );
+      if (_pendingRequests.isEmpty) widget.onClose();
+    } on BusinessRuleException catch (e) {
+      if (mounted) showAppMessage(context, e.message);
+    } catch (e) {
+      if (mounted) showAppMessage(context, 'Could not reject request. $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) return AppEmptyState(message: _error!);
+
+    if (_requests.length == 1) {
+      return _buildSingle(context, _requests.first);
+    }
+    return _buildBulk(context);
+  }
+
+  Widget _buildSingle(BuildContext context, EquipmentBorrow req) {
+    final isPending = req.status == EquipmentBorrowStatus.pending;
+    final isOwned = req.source == EquipmentBorrowSource.owned;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            children: [
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    '${req.equipmentName} × ${req.quantity}',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  _statusChip(req.status),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              AppSectionCard(
+                title: 'Equipment & borrower details',
+                icon: Icons.handyman_outlined,
+                child: Column(
+                  children: [
+                    AppInfoRow(
+                      label: 'Source',
+                      value: isOwned
+                          ? 'Queen Builders owned equipment'
+                          : 'External rental',
+                    ),
+                    if (!isOwned && req.rentalSupplier.isNotEmpty)
+                      AppInfoRow(
+                        label: 'Rental lessor',
+                        value: req.rentalSupplier,
+                      ),
+                    AppInfoRow(
+                      label: 'Borrowed by',
+                      value: req.hasBorrower
+                          ? '${req.borrowerName}${req.borrowerTrade != null ? ' (${req.borrowerTrade})' : ''}'
+                          : 'General site crew',
+                    ),
+                    if (req.categoryName != null &&
+                        req.categoryName!.isNotEmpty)
+                      AppInfoRow(
+                        label: 'Item of work',
+                        value: req.categoryName!,
+                      ),
+                    AppInfoRow(
+                      label: 'Date needed',
+                      value: Formatters.date(req.neededDate),
+                    ),
+                    if (req.expectedReturnDate != null)
+                      AppInfoRow(
+                        label: 'Expected return',
+                        value: Formatters.date(req.expectedReturnDate!),
+                      ),
+                    AppInfoRow(
+                      label: 'Requested by',
+                      value: req.requestedByName ?? 'Site Engineer',
+                    ),
+                    if (req.notes.isNotEmpty)
+                      AppInfoRow(label: 'Purpose / notes', value: req.notes),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        _ModalFooterBar(
+          hint: isPending
+              ? 'Approving marks this equipment as active on site under the borrower.'
+              : 'Decision recorded for this equipment request.',
+          actions: [
+            if (isPending) ...[
+              OutlinedButton.icon(
+                onPressed: _busy ? null : () => _rejectIds([req.id]),
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('Reject'),
+              ),
+              FilledButton.icon(
+                onPressed: _busy ? null : () => _approveIds([req.id]),
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Approve'),
+              ),
+            ] else
+              FilledButton(
+                onPressed: widget.onClose,
+                child: const Text('Done'),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBulk(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pending = _pendingRequests;
+    final selectedPending = [
+      for (final r in pending)
+        if (_selectedIds.contains(r.id)) r.id,
+    ];
+    final allSelected =
+        pending.isNotEmpty && selectedPending.length == pending.length;
+    final someSelected = selectedPending.isNotEmpty && !allSelected;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            children: [
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    '${_requests.length} equipment requests',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  if (pending.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? cs.surfaceContainerHighest
+                            : AppColors.surfaceSunken,
+                        borderRadius: AppRadii.mdAll,
+                        border: Border.all(color: cs.outlineVariant),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            tristate: true,
+                            value: allSelected
+                                ? true
+                                : (someSelected ? null : false),
+                            onChanged: _busy
+                                ? null
+                                : (_) => _toggleSelectAll(!allSelected),
+                          ),
+                          Text(
+                            'Select all (${selectedPending.length}/${pending.length})',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Material(
+                color: cs.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: AppRadii.lgAll,
+                  side: BorderSide(color: cs.outlineVariant),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _requests.length; i++) ...[
+                      if (i > 0) Divider(height: 1, color: cs.outlineVariant),
+                      Builder(
+                        builder: (context) {
+                          final req = _requests[i];
+                          final isPending =
+                              req.status == EquipmentBorrowStatus.pending;
+                          final isSelected =
+                              isPending && _selectedIds.contains(req.id);
+                          return InkWell(
+                            onTap: isPending && !_busy
+                                ? () => _toggleOne(req.id)
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  if (isPending)
+                                    Checkbox(
+                                      value: isSelected,
+                                      onChanged: _busy
+                                          ? null
+                                          : (_) => _toggleOne(req.id),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${req.equipmentName} × ${req.quantity}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        Text(
+                                          [
+                                            req.source.label,
+                                            if (req.hasBorrower)
+                                              'Borrower: ${req.borrowerName}'
+                                            else
+                                              'Site crew',
+                                            'Needed ${Formatters.date(req.neededDate)}',
+                                          ].join(' · '),
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _statusChip(req.status),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        _ModalFooterBar(
+          hint: pending.isNotEmpty
+              ? 'Select all or untick items to approve or reject in bulk.'
+              : 'All equipment requests in this batch have been decided.',
+          actions: [
+            if (pending.isNotEmpty) ...[
+              OutlinedButton.icon(
+                onPressed: _busy || selectedPending.isEmpty
+                    ? null
+                    : () => _rejectIds(selectedPending),
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: Text('Reject selected (${selectedPending.length})'),
+              ),
+              FilledButton.icon(
+                onPressed: _busy || selectedPending.isEmpty
+                    ? null
+                    : () => _approveIds(selectedPending),
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: Text('Approve selected (${selectedPending.length})'),
+              ),
+            ] else
+              FilledButton(
+                onPressed: widget.onClose,
+                child: const Text('Done'),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static AppStatusChip _statusChip(EquipmentBorrowStatus status) =>
+      switch (status) {
+        EquipmentBorrowStatus.pending => const AppStatusChip(
+          label: 'Pending',
+          foreground: AppColors.warning,
+          background: AppColors.warningContainer,
+        ),
+        EquipmentBorrowStatus.borrowed => const AppStatusChip(
+          label: 'On site',
+          foreground: AppColors.success,
+          background: AppColors.successContainer,
+        ),
+        EquipmentBorrowStatus.returned => const AppStatusChip(
+          label: 'Returned',
+          foreground: AppColors.textSecondary,
+          background: AppColors.surfaceSunken,
+        ),
+        EquipmentBorrowStatus.rejected => const AppStatusChip(
+          label: 'Rejected',
+          foreground: AppColors.error,
+          background: AppColors.errorContainer,
+        ),
+      };
+}
+

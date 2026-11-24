@@ -55,6 +55,7 @@ import '../features/procurement/views/material_request_detail_page.dart';
 import '../features/procurement/views/material_request_form_page.dart';
 import '../features/procurement/views/material_requests_page.dart';
 import '../features/procurement/views/payables_page.dart';
+import '../features/procurement/views/project_equipment_page.dart';
 import '../features/procurement/views/project_materials_page.dart';
 import '../data/models/material_source.dart';
 import '../features/procurement/views/material_order_page.dart';
@@ -196,6 +197,7 @@ final _projectTabPages = <ProjectTab, Widget Function(int projectId)>{
   ProjectTab.dailyReports: (id) => DailyReportsPage(projectId: id),
   ProjectTab.plannedMaterials: (id) => PlannedMaterialsPage(projectId: id),
   ProjectTab.materials: (id) => ProjectMaterialsPage(projectId: id),
+  ProjectTab.equipment: (id) => ProjectEquipmentPage(projectId: id),
   ProjectTab.laborers: (id) => ProjectLaborersPage(projectId: id),
   ProjectTab.labor: (id) => ProjectLaborPage(projectId: id),
   ProjectTab.financials: (id) => ProjectFinancialsPage(projectId: id),

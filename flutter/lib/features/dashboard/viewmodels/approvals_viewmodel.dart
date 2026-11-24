@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/di/service_locator.dart';
+import '../../../data/repositories/equipment_repository.dart';
 import '../../../data/repositories/labor_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
 import '../../../data/services/approval_inbox.dart';
@@ -209,6 +210,32 @@ class ApprovalsViewModel extends ChangeNotifier {
       return e.message;
     } catch (e) {
       return 'Could not approve laborer request. $e';
+    } finally {
+      _busyKeys.remove(key);
+      notifyListeners();
+    }
+  }
+
+  /// Quick inline approval for a single or bulked equipment request batch.
+  Future<String?> quickApproveEquipment(ApprovalItem item) async {
+    final ids = item.effectiveIds;
+    if (ids.isEmpty || !getIt.isRegistered<EquipmentRepository>()) return null;
+    final key = _itemKey(item);
+    _busyKeys.add(key);
+    notifyListeners();
+    try {
+      final repo = getIt<EquipmentRepository>();
+      final uid = _session.user!.id;
+      for (final id in ids) {
+        await repo.approveBorrow(id, userId: uid);
+      }
+      _refreshBadges();
+      await load(silent: true);
+      return null;
+    } on BusinessRuleException catch (e) {
+      return e.message;
+    } catch (e) {
+      return 'Could not approve equipment request. $e';
     } finally {
       _busyKeys.remove(key);
       notifyListeners();

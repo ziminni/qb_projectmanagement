@@ -261,3 +261,124 @@ class EquipmentLog(models.Model):
 
     def __str__(self):
         return f'{self.equipment.asset_code} — {self.get_event_type_display()}'
+
+
+class EquipmentBorrowSource(models.TextChoices):
+    OWNED = 'owned', 'Queen Builders owned'
+    RENTED = 'rented', 'External rental'
+
+
+class EquipmentBorrowStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending PM approval'
+    BORROWED = 'borrowed', 'On site (borrowed)'
+    RETURNED = 'returned', 'Returned'
+    REJECTED = 'rejected', 'Rejected'
+
+
+class EquipmentReturnCondition(models.TextChoices):
+    GOOD = 'good', 'Good'
+    DAMAGED = 'damaged', 'Damaged'
+    MAINTENANCE = 'maintenance', 'Needs maintenance'
+
+
+class ProjectEquipmentBorrow(models.Model):
+    """Project-scoped borrowed Queen Builders equipment or external rental,
+    including laborer borrower accountability and return condition tracking.
+    """
+
+    project = models.ForeignKey(
+        'apps_projects.Project',
+        on_delete=models.CASCADE,
+        related_name='equipment_borrows',
+    )
+    category = models.ForeignKey(
+        'apps_projects.Category',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='equipment_borrows',
+    )
+    equipment_item = models.ForeignKey(
+        'apps_master_data.EquipmentItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='project_borrows',
+    )
+    source = models.CharField(
+        max_length=16,
+        choices=EquipmentBorrowSource.choices,
+        default=EquipmentBorrowSource.OWNED,
+    )
+    equipment_name = models.CharField(max_length=200)
+    quantity = models.PositiveIntegerField(default=1)
+
+    borrower_worker = models.ForeignKey(
+        'apps_labor.Worker',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='borrowed_equipment',
+    )
+    borrower_name = models.CharField(max_length=200, blank=True)
+
+    rental_supplier = models.CharField(max_length=200, blank=True)
+    rental_rate = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+    )
+    rate_unit = models.CharField(max_length=8, default='day')
+
+    needed_date = models.DateField()
+    expected_return_date = models.DateField(null=True, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=EquipmentBorrowStatus.choices,
+        default=EquipmentBorrowStatus.PENDING,
+        db_index=True,
+    )
+
+    return_condition = models.CharField(
+        max_length=16,
+        choices=EquipmentReturnCondition.choices,
+        blank=True,
+    )
+    return_notes = models.TextField(blank=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    returned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='returned_equipment_borrows',
+    )
+
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='requested_equipment_borrows',
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_equipment_borrows',
+    )
+    rejection_reason = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-created_at', '-id')
+        verbose_name = 'Project equipment borrow'
+        verbose_name_plural = 'Project equipment borrows'
+        indexes = [models.Index(fields=['project', 'status'])]
+
+    def __str__(self):
+        return f'{self.project.code} — {self.equipment_name} (x{self.quantity})'

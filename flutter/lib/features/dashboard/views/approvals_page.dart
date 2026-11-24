@@ -85,6 +85,22 @@ class _ApprovalsPageState extends State<ApprovalsPage> {
               : 'Laborer approved and added to project.',
         );
       }
+      return;
+    }
+    if (item.kind == ApprovalKind.equipmentRequest) {
+      final count = item.effectiveIds.length;
+      final err = await vm.quickApproveEquipment(item);
+      if (!context.mounted) return;
+      if (err != null) {
+        showAppMessage(context, err);
+      } else {
+        showSuccessAlert(
+          context,
+          count > 1
+              ? '$count equipment requests approved.'
+              : 'Equipment request approved.',
+        );
+      }
     }
   }
 
@@ -482,6 +498,8 @@ class _ApprovalGroupPanel extends StatelessWidget {
       'Submitted field logs — inspect weather, manpower, and photos to approve or return.',
     ApprovalKind.materialRequest =>
       'Site requisitions — inspect DUPA plan balance and fulfill from own store or external store.',
+    ApprovalKind.equipmentRequest =>
+      'Borrowed Queen Builders tools & external rental requests — approve to deploy to site.',
     ApprovalKind.payroll =>
       'Completed attendance cut-offs — verify days worked so Accounting can process pay.',
     ApprovalKind.laborerRequest =>
@@ -492,7 +510,7 @@ class _ApprovalGroupPanel extends StatelessWidget {
 
   static String? _quickLabelForItem(ApprovalItem item) => switch (item.kind) {
     ApprovalKind.todoVerification => 'Quick verify',
-    ApprovalKind.laborerRequest =>
+    ApprovalKind.laborerRequest || ApprovalKind.equipmentRequest =>
       item.isBulk
           ? 'Approve all (${item.effectiveIds.length})'
           : 'Quick approve',

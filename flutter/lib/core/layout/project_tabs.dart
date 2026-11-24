@@ -9,6 +9,7 @@ enum ProjectTab {
   dailyReports('Daily reports', 'daily-reports', _siteTeam),
   plannedMaterials('Planned materials', 'planned-materials', _internal),
   materials('Materials', 'materials', _siteTeam),
+  equipment('Equipment', 'equipment', _internal),
   laborers('Laborers', 'laborers', [
     AppRole.owner,
     AppRole.siteEngineer,

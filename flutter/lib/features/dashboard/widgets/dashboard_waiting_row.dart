@@ -22,6 +22,7 @@ class DashboardWaitingRow extends StatelessWidget {
     ApprovalKind.todoVerification => Icons.fact_check_outlined,
     ApprovalKind.dailyReport => Icons.edit_note_outlined,
     ApprovalKind.materialRequest => Icons.inventory_2_outlined,
+    ApprovalKind.equipmentRequest => Icons.handyman_outlined,
     ApprovalKind.payroll => Icons.badge_outlined,
     ApprovalKind.laborerRequest => Icons.engineering_outlined,
     ApprovalKind.variationOrder => Icons.difference_outlined,
