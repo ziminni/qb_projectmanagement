@@ -108,5 +108,5 @@ abstract interface class ScheduleRepository {
 
   /// Downloads the exact DPWH SF-INFR-41 Bar Chart Excel template.
   /// [variant] is `'original'`, `'revised'`, or `'combined'`.
-  Future<Uint8List> downloadBarChartTemplate({String variant = 'combined'});
+  Future<Uint8List> downloadBarChartTemplate({String variant = 'original'});
 }

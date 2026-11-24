@@ -115,20 +115,20 @@ class _ImportExportPageState extends State<ImportExportPage> {
     final cs = theme.colorScheme;
 
     final exportCard = AppSectionCard(
-      title: 'Export Bar Chart Templates (.xlsx)',
+      title: 'Export Excel Templates (.xlsx)',
       subtitle:
-          'Exact DPWH SF-INFR-41 template with formulas, blue bar conditional formatting, and S-Curve',
+          'Blank DPWH Bar Chart and DUPA templates with built-in formulas ready to fill out in Excel',
       icon: Icons.file_download_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _TemplateRow(
             title: 'Original Bar Chart Template',
-            badge: 'Sheet: ORIGINAL',
+            badge: 'DPWH SF-INFR-41',
             description:
-                'First / baseline Gantt schedule (120 calendar days). Use this '
-                'when creating a new project so Target End Date and Contract '
-                'Amount auto-fill.',
+                'Blank DPWH Bar Chart schedule template with formulas, bar conditional '
+                'formatting, and S-Curve. Use this for new projects (and save a copy '
+                'if revising for a Variation Order).',
             fileName: 'DPWH_Bar_Chart_Original_Template.xlsx',
             busy: _downloadingVariant == 'original',
             disabled: _downloadingVariant != null,
@@ -139,34 +139,18 @@ class _ImportExportPageState extends State<ImportExportPage> {
           ),
           const Divider(height: AppSpacing.xl),
           _TemplateRow(
-            title: 'Variation Order Revised Bar Chart Template',
-            badge: 'Sheet: REVISED (VO)',
+            title: 'DUPA Breakdown Template',
+            badge: 'Sections A–J · Sheet: DUPA',
             description:
-                'Revised Gantt schedule for raising a Variation Order (+23cd '
-                'realignment example). Upload this in Variation Orders to '
-                'auto-flag every changed item.',
-            fileName: 'DPWH_Bar_Chart_VO_Revised_Template.xlsx',
-            busy: _downloadingVariant == 'revised',
+                'Blank Queen Builders DPWH Detailed Unit Price Analysis (DUPA) sheet '
+                'with Labor (A), Equipment (B), Materials (C), and Direct/Adjusted '
+                'Cost formulas (D–J). Duplicate the DUPA tab per Item of Work.',
+            fileName: 'DPWH_DUPA_Template.xlsx',
+            busy: _downloadingVariant == 'dupa',
             disabled: _downloadingVariant != null,
             onExport: () => _exportTemplate(
-              variant: 'revised',
-              fileName: 'DPWH_Bar_Chart_VO_Revised_Template.xlsx',
-            ),
-          ),
-          const Divider(height: AppSpacing.xl),
-          _TemplateRow(
-            title: 'Combined Bar Chart Workbook (Original + VO Revised)',
-            badge: '2 Sheets: ORIGINAL & REVISED (VO)',
-            description:
-                'Both the Original baseline sheet and the Variation Order '
-                'Revised sheet in a single Excel workbook — choose which sheet '
-                'to import from the Sheet dropdown.',
-            fileName: 'DPWH_Bar_Chart_Combined_Template.xlsx',
-            busy: _downloadingVariant == 'combined',
-            disabled: _downloadingVariant != null,
-            onExport: () => _exportTemplate(
-              variant: 'combined',
-              fileName: 'DPWH_Bar_Chart_Combined_Template.xlsx',
+              variant: 'dupa',
+              fileName: 'DPWH_DUPA_Template.xlsx',
             ),
           ),
         ],

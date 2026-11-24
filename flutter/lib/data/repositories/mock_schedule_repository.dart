@@ -579,6 +579,6 @@ class MockScheduleRepository implements ScheduleRepository {
 
   @override
   Future<Uint8List> downloadBarChartTemplate({
-    String variant = 'combined',
+    String variant = 'original',
   }) async => Uint8List(0);
 }

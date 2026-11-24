@@ -243,22 +243,18 @@ class ProjectViewSet(ScopedViewSet):
             'bar_chart_original.xlsx',
             'DPWH_Bar_Chart_Original_Template.xlsx',
         ),
-        'revised': (
-            'bar_chart_vo_revised.xlsx',
-            'DPWH_Bar_Chart_VO_Revised_Template.xlsx',
-        ),
-        'combined': (
-            'bar_chart_combined.xlsx',
-            'DPWH_Bar_Chart_Combined_Template.xlsx',
+        'dupa': (
+            'dupa_template.xlsx',
+            'DPWH_DUPA_Template.xlsx',
         ),
     }
 
     @action(detail=False, methods=['get'], url_path='bar-chart-template')
     def bar_chart_template(self, request):
-        """Download the exact DPWH SF-INFR-41 Bar Chart Excel template."""
-        variant = (request.query_params.get('variant') or 'combined').strip().lower()
+        """Download a blank DPWH Bar Chart or DUPA Excel template."""
+        variant = (request.query_params.get('variant') or 'original').strip().lower()
         if variant not in self._TEMPLATE_VARIANTS:
-            raise RuleRefused('Unknown template variant. Choose original, revised, or combined.')
+            raise RuleRefused('Unknown template variant. Choose original or dupa.')
         src_name, download_name = self._TEMPLATE_VARIANTS[variant]
         path = Path(__file__).resolve().parent / 'excel_templates' / src_name
         if not path.is_file():

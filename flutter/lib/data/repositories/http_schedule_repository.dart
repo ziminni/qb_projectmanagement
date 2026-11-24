@@ -265,6 +265,6 @@ class HttpScheduleRepository implements ScheduleRepository {
   }
 
   @override
-  Future<Uint8List> downloadBarChartTemplate({String variant = 'combined'}) =>
+  Future<Uint8List> downloadBarChartTemplate({String variant = 'original'}) =>
       _client.getBytes('projects/bar-chart-template/?variant=$variant');
 }
