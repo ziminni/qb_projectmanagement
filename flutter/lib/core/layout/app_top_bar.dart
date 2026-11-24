@@ -219,6 +219,8 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
         return 'Track progress billings, collections, and statements.';
       case 'variation orders':
         return 'Review scope changes and revised contract amounts.';
+      case 'import & export':
+        return 'Export DPWH Bar Chart templates or import schedules and DUPA workbooks.';
       case 'user management':
         return 'Manage staff directory, roles, and access permissions.';
       case 'audit log':

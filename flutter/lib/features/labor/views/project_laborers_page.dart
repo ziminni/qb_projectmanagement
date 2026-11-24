@@ -11,7 +11,6 @@ import '../../../core/utils/page_padding.dart';
 import '../../../data/models/project_worker_request.dart';
 import '../../../data/models/worker.dart';
 import '../../../shared/widgets/app_empty_state.dart';
-import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_reason_dialog.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_status_chip.dart';
@@ -96,27 +95,24 @@ class ProjectLaborersPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
-            AppPageHeader(
-              title: 'Laborers',
-              subtitle:
-                  'Request workers for this project; requests go to the project manager for approval.',
-              actions: [
-                if (vm.canRequest)
-                  FilledButton.icon(
-                    onPressed: vm.isBusy
-                        ? null
-                        : () => _openRequestDialog(context, vm),
-                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-                    label: const Text('Add laborer'),
-                  ),
-              ],
-            ),
             AppSectionCard(
               title: 'Pending requests (${pending.length})',
               subtitle: vm.canReview
                   ? 'Approve to add the laborer to this project and attendance sheet'
                   : 'Waiting for project manager approval',
               icon: Icons.pending_actions_outlined,
+              trailing: vm.canRequest
+                  ? FilledButton.icon(
+                      onPressed: vm.isBusy
+                          ? null
+                          : () => _openRequestDialog(context, vm),
+                      icon: const Icon(
+                        Icons.person_add_alt_1_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('Add laborer'),
+                    )
+                  : null,
               padding: EdgeInsets.zero,
               child: pending.isEmpty
                   ? const Padding(

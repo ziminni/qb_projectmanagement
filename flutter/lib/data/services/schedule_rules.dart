@@ -49,16 +49,28 @@ abstract final class ScheduleRules {
   static String? validateTodoTitle(String? title) =>
       (title == null || title.trim().isEmpty) ? 'Enter a to-do title.' : null;
 
-  /// To-do dates must fall within the project's start and target end dates,
-  /// with the end on or after the start.
+  /// To-do dates must fall within the parent Item of Work's date range (when
+  /// set) or otherwise within the project's start and target end dates, with
+  /// the end on or after the start.
   static String? validateTodoDates({
     required DateTime? start,
     required DateTime? end,
     required Project project,
+    Category? category,
   }) {
     if (start == null || end == null) return 'Choose start and end dates.';
     if (_day(end).isBefore(_day(start))) {
       return 'End date must be on or after the start date.';
+    }
+    if (category?.startDate != null && category?.endDate != null) {
+      final catStart = _day(category!.startDate!);
+      final catEnd = _day(category.endDate!);
+      if (_day(start).isBefore(catStart) || _day(end).isAfter(catEnd)) {
+        final days = catEnd.difference(catStart).inDays + 1;
+        return 'Dates must fall within this Item of Work '
+            '(${_d(catStart)} to ${_d(catEnd)}, $days days).';
+      }
+      return null;
     }
     if (_day(start).isBefore(_day(project.startDate)) ||
         _day(end).isAfter(_day(project.targetEndDate))) {

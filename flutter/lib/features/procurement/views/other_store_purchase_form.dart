@@ -25,9 +25,14 @@ import '../widgets/procurement_request_summary.dart';
 /// The "Other store" tab: the owner logs materials already bought and paid
 /// at another store, with the official receipt number and its photo.
 class OtherStorePurchaseForm extends StatefulWidget {
-  const OtherStorePurchaseForm({super.key, required this.requestId});
+  const OtherStorePurchaseForm({
+    super.key,
+    required this.requestId,
+    this.onSaved,
+  });
 
   final int requestId;
+  final VoidCallback? onSaved;
 
   @override
   State<OtherStorePurchaseForm> createState() => _OtherStorePurchaseFormState();
@@ -63,8 +68,14 @@ class _OtherStorePurchaseFormState extends State<OtherStorePurchaseForm> {
           ? 'Purchase saved. Every requested item is covered.'
           : 'Purchase saved. Add another order for the rest if needed.',
     );
-    // Back to the request, where the rest can go to the other source.
-    if (ok && mounted) context.go(AppRoutes.materialRequest(widget.requestId));
+    // Back to the request (or modal caller), where the rest can go to the other source.
+    if (ok && mounted) {
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      } else {
+        context.go(AppRoutes.materialRequest(widget.requestId));
+      }
+    }
   }
 
   @override

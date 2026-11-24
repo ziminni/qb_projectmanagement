@@ -426,36 +426,50 @@ void main() {
     await pumpApp(tester);
     await signInAs(tester, 'ana@example.ph');
     await goTo(tester, '/material-requests/new?projectId=1');
-    // No category picker; the unit is chosen from a list, never typed.
+    // Planned materials from DUPA are presented with locked units and zero
+    // peso costs visible to the site engineer.
     expect(find.textContaining('Category'), findsNothing);
     expect(find.widgetWithText(TextFormField, 'Unit'), findsNothing);
-    expect(
-      find.widgetWithText(DropdownButtonFormField<String>, 'Unit'),
-      findsOneWidget,
-    );
     final counts = find.widgetWithText(TextFormField, 'Counted');
     expect(counts, findsWidgets);
     for (var i = 0; i < counts.evaluate().length; i++) {
       await tester.enterText(counts.at(i), '5');
     }
-    await tester.enterText(find.widgetWithText(TextFormField, 'Item'), 'Nails');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Qty'), '2.5');
-    expect(find.textContaining('₱'), findsNothing);
-    // Without a unit the request is not sent: "2.5" of what?
-    await tester.tap(find.text('Send to owner'));
-    await tester.pumpAndSettle();
-    expect(find.text('Choose a unit.'), findsOneWidget);
-    await tester.tap(
-      find.widgetWithText(DropdownButtonFormField<String>, 'Unit'),
+    final plannedPicker = find.widgetWithText(
+      DropdownButtonFormField<int?>,
+      'Planned material (DUPA)',
+    );
+    await tester.scrollUntilVisible(
+      plannedPicker,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(Form),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('kg').last);
+    expect(plannedPicker, findsOneWidget);
+    // Without choosing a planned material, the request cannot be sent.
+    await tester.tap(find.text('Send to owner'));
     await tester.pumpAndSettle();
+    expect(find.text('Choose a planned material.'), findsOneWidget);
+    // Pick Portland Cement (40kg) from DUPA planned materials.
+    await tester.tap(plannedPicker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Portland Cement (40kg)').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Qty'), '20');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('₱'), findsNothing);
+    expect(find.textContaining('Within DUPA plan'), findsOneWidget);
     await tester.tap(find.text('Send to owner'));
     await tester.pumpAndSettle();
     expect(find.text('Request sent to the owner.'), findsOneWidget);
     expect(find.text('Waiting for owner'), findsOneWidget);
     expect(find.text('Site count before this request'), findsOneWidget);
+    expect(find.text('DUPA planned'), findsOneWidget);
   });
 
   testWidgets('owner orders a request from the own store', (tester) async {

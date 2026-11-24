@@ -535,6 +535,11 @@ class VariationOrder(models.Model):
     days_impact = models.IntegerField(default=0)
     work_start_date = models.DateField(null=True, blank=True)
     work_end_date = models.DateField(null=True, blank=True)
+    revised_schedule = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Parsed revised bar-chart diff & per-item DUPA (A-J) snapshot for this VO.',
+    )
     primary_attachments = models.JSONField(default=list, blank=True)
     secondary_attachments = models.JSONField(default=list, blank=True)
     status = models.CharField(

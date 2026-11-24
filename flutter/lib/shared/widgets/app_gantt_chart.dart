@@ -20,6 +20,7 @@ class AppGanttChart extends StatefulWidget {
     required this.projectEnd,
     this.variationOrders = const [],
     this.today,
+    this.relativeMode = false,
   });
 
   final ProjectProgress progress;
@@ -27,6 +28,10 @@ class AppGanttChart extends StatefulWidget {
   final DateTime projectEnd;
   final List<VariationOrder> variationOrders;
   final DateTime? today;
+
+  /// When true, renders the planned bar chart in relative `W1, W2, W3...`
+  /// format (no calendar dates or "Today" line) matching the DPWH Bar Chart.
+  final bool relativeMode;
 
   @override
   State<AppGanttChart> createState() => _AppGanttChartState();
@@ -36,7 +41,7 @@ class _AppGanttChartState extends State<AppGanttChart> {
   /// Zoom levels: pixels per day.
   static const _zoomLevels = {'Weeks': 14.0, 'Months': 6.0, 'Quarters': 3.0};
 
-  double _dayWidth = 6.0;
+  late double _dayWidth;
   static const _rowHeight = 36.0;
   static const _headerHeight = 32.0;
 
@@ -48,20 +53,38 @@ class _AppGanttChartState extends State<AppGanttChart> {
   @override
   void initState() {
     super.initState();
+    _dayWidth = widget.relativeMode ? 14.0 : 6.0;
     _computeRange();
     _today = _day(widget.today ?? DateTime.now());
     _scroll = ScrollController();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToToday());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!widget.relativeMode) _jumpToToday();
+    });
   }
 
   @override
   void didUpdateWidget(covariant AppGanttChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.projectStart != widget.projectStart ||
+    final modeChanged = oldWidget.relativeMode != widget.relativeMode;
+    if (modeChanged) {
+      _dayWidth = widget.relativeMode ? 14.0 : 6.0;
+    }
+    if (modeChanged ||
+        oldWidget.projectStart != widget.projectStart ||
         oldWidget.projectEnd != widget.projectEnd ||
         oldWidget.progress != widget.progress ||
         oldWidget.variationOrders != widget.variationOrders) {
       _computeRange();
+      if (modeChanged) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scroll.hasClients) return;
+          if (widget.relativeMode) {
+            _scroll.jumpTo(0);
+          } else {
+            _jumpToToday();
+          }
+        });
+      }
     }
   }
 
@@ -99,8 +122,15 @@ class _AppGanttChartState extends State<AppGanttChart> {
       if (s.isBefore(start)) start = s;
       if (e.isAfter(end)) end = e;
     }
-    _rangeStart = DateTime(start.year, start.month, 1);
-    _rangeEnd = DateTime(end.year, end.month + 1, 0);
+    if (widget.relativeMode) {
+      final spanDays = (end.difference(start).inDays + 1).clamp(28, 3650);
+      final totalWeeks = (spanDays + 6) ~/ 7;
+      _rangeStart = start;
+      _rangeEnd = start.add(Duration(days: totalWeeks * 7 - 1));
+    } else {
+      _rangeStart = DateTime(start.year, start.month, 1);
+      _rangeEnd = DateTime(end.year, end.month + 1, 0);
+    }
   }
 
   /// Scrolls so today sits about two-thirds across, keeping recent and
@@ -187,11 +217,12 @@ class _AppGanttChartState extends State<AppGanttChart> {
               selected: {_dayWidth},
               onSelectionChanged: (s) => _setZoom(s.first),
             ),
-            TextButton.icon(
-              onPressed: _jumpToToday,
-              icon: const Icon(Icons.today, size: 18),
-              label: const Text('Jump to today'),
-            ),
+            if (!widget.relativeMode)
+              TextButton.icon(
+                onPressed: _jumpToToday,
+                icon: const Icon(Icons.today, size: 18),
+                label: const Text('Jump to today'),
+              ),
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -245,16 +276,21 @@ class _AppGanttChartState extends State<AppGanttChart> {
                       width: timelineWidth,
                       child: Stack(
                         children: [
-                          ..._monthLines(),
+                          ...(widget.relativeMode
+                              ? _relativeGridLines()
+                              : _monthLines()),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _monthHeader(context),
+                              widget.relativeMode
+                                  ? _relativeHeader(context)
+                                  : _monthHeader(context),
                               const Divider(height: 1),
                               ...bars,
                             ],
                           ),
-                          if (!_today.isBefore(_rangeStart) &&
+                          if (!widget.relativeMode &&
+                              !_today.isBefore(_rangeStart) &&
                               !_today.isAfter(_rangeEnd))
                             Positioned(
                               left: _x(_today) + _dayWidth / 2 - 1,
@@ -297,6 +333,102 @@ class _AppGanttChartState extends State<AppGanttChart> {
         child: Container(width: 1, color: AppColors.border),
       ),
   ];
+
+  int get _relativeTotalWeeks =>
+      ((_rangeEnd.difference(_rangeStart).inDays + 1) + 6) ~/ 7;
+
+  List<Widget> _relativeGridLines() {
+    final weeks = _relativeTotalWeeks;
+    if (_dayWidth >= 10) {
+      return [
+        for (var w = 0; w < weeks; w++)
+          Positioned(
+            left: w * 7 * _dayWidth,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: w % 4 == 0 ? 1.2 : 1,
+              color: w % 4 == 0
+                  ? AppColors.border
+                  : AppColors.border.withValues(alpha: 0.5),
+            ),
+          ),
+      ];
+    }
+    final stepWeeks = _dayWidth >= 5 ? 4 : 12;
+    return [
+      for (var w = 0; w < weeks; w += stepWeeks)
+        Positioned(
+          left: w * 7 * _dayWidth,
+          top: 0,
+          bottom: 0,
+          child: Container(width: 1, color: AppColors.border),
+        ),
+    ];
+  }
+
+  Widget _relativeHeader(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall;
+    final weeks = _relativeTotalWeeks;
+    if (_dayWidth >= 10) {
+      return SizedBox(
+        height: _headerHeight,
+        child: Stack(
+          children: [
+            for (var w = 0; w < weeks; w++)
+              Positioned(
+                left: w * 7 * _dayWidth + AppSpacing.sm,
+                top: 0,
+                bottom: 0,
+                child: Center(child: Text('W${w + 1}', style: style)),
+              ),
+          ],
+        ),
+      );
+    }
+    if (_dayWidth >= 5) {
+      final months = (weeks + 3) ~/ 4;
+      return SizedBox(
+        height: _headerHeight,
+        child: Stack(
+          children: [
+            for (var m = 0; m < months; m++)
+              Positioned(
+                left: m * 28 * _dayWidth + AppSpacing.sm,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text(
+                    'M${m + 1} (W${m * 4 + 1}–W${(m + 1) * 4})',
+                    style: style,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    final quarters = (weeks + 11) ~/ 12;
+    return SizedBox(
+      height: _headerHeight,
+      child: Stack(
+        children: [
+          for (var q = 0; q < quarters; q++)
+            Positioned(
+              left: q * 84 * _dayWidth + AppSpacing.sm,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: Text(
+                  'Q${q + 1} (W${q * 12 + 1}–W${(q + 1) * 12})',
+                  style: style,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _monthHeader(BuildContext context) {
     final style = Theme.of(context).textTheme.labelSmall;
@@ -360,6 +492,22 @@ class _AppGanttChartState extends State<AppGanttChart> {
     ),
   );
 
+  String _barTooltip(CategoryProgress c, DateTime start, DateTime end) {
+    if (widget.relativeMode) {
+      final startDay = _day(start).difference(_rangeStart).inDays + 1;
+      final endDay = _day(end).difference(_rangeStart).inDays + 1;
+      final dur = endDay - startDay + 1;
+      final w1 = (startDay - 1) ~/ 7 + 1;
+      final w2 = (endDay - 1) ~/ 7 + 1;
+      final wLabel = w1 == w2 ? 'W$w1' : 'W$w1–W$w2';
+      return '${c.category.name} (${Formatters.percent(c.weight)} weight)\n'
+          'Day $startDay – Day $endDay ($dur days · $wLabel)';
+    }
+    return '${c.category.name}: ${Formatters.percent(c.progress)} complete '
+        '(${Formatters.percent(c.weight)} weight)\n'
+        '${Formatters.dateRange(start, end)}';
+  }
+
   Widget _categoryBar(CategoryProgress c) {
     final start = c.startDate;
     final end = c.endDate;
@@ -376,10 +524,7 @@ class _AppGanttChartState extends State<AppGanttChart> {
                   width: _w(start, end),
                   height: 16,
                   child: Tooltip(
-                    message:
-                        '${c.category.name}: ${Formatters.percent(c.progress)} complete '
-                        '(${Formatters.percent(c.weight)} weight)\n'
-                        '${Formatters.dateRange(start, end)}',
+                    message: _barTooltip(c, start, end),
                     child: ClipRRect(
                       borderRadius: AppRadii.smAll,
                       child: Stack(

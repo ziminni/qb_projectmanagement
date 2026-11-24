@@ -12,11 +12,21 @@ server-computed category `weight` so progress matches across roles
 # of ModelSerializer.Meta, and the mixin's `super()` / `self.context` are untyped.
 # pyright: reportIncompatibleVariableOverride=false, reportAttributeAccessIssue=false, reportGeneralTypeIssues=false
 
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from ..users import capabilities
 from ..users.models import Role
-from .models import Category, Client, Project, ProjectAssignment, Site, Todo
+from .models import (
+    Category,
+    Client,
+    PlannedMaterial,
+    Project,
+    ProjectAssignment,
+    Site,
+    Todo,
+)
 
 
 def category_weights(project):
@@ -85,8 +95,8 @@ class ProjectSerializer(FinanceRedactedSerializer):
         fields = (
             'id', 'code', 'name', 'location', 'latitude', 'longitude',
             'client_id', 'contract_amount', 'down_payment_pct', 'retention_pct',
-            'start_date', 'target_end_date', 'actual_end_date', 'status',
-            'created_at', 'updated_at',
+            'start_date', 'timeline_start_date', 'target_end_date', 'actual_end_date',
+            'status', 'created_at', 'updated_at',
         )
         read_only_fields = fields
 
@@ -124,19 +134,69 @@ class ProjectRequestSerializer(serializers.BaseSerializer):
 
 
 class CategorySerializer(FinanceRedactedSerializer):
-    finance_fields = ('budget',)
+    finance_fields = (
+        'budget', 'labor_budget', 'equipment_budget', 'material_budget',
+        'dupa_breakdown',
+    )
     weight = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = (
-            'id', 'project_id', 'name', 'budget', 'weight', 'sort_order',
-            'created_at', 'updated_at',
+            'id', 'project_id', 'item_no', 'name', 'budget',
+            'labor_budget', 'equipment_budget', 'material_budget',
+            'dupa_breakdown',
+            'planned_weeks', 'planned_days', 'day_to_start', 'start_date', 'end_date',
+            'weight', 'sort_order', 'created_at', 'updated_at',
         )
         read_only_fields = fields
 
     def get_weight(self, category):
         return self.context.get('weights', {}).get(category.pk, 0.0)
+
+
+class PlannedMaterialSerializer(FinanceRedactedSerializer):
+    finance_fields = ('unit_cost', 'amount')
+    category_name = serializers.SerializerMethodField()
+    amount = serializers.SerializerMethodField()
+    requested_qty = serializers.SerializerMethodField()
+    delivered_qty = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlannedMaterial
+        fields = (
+            'id', 'project_id', 'category_id', 'category_name',
+            'material_item_id', 'name', 'unit', 'planned_qty',
+            'unit_cost', 'amount', 'requested_qty', 'delivered_qty',
+            'sort_order', 'created_at', 'updated_at',
+        )
+        read_only_fields = fields
+
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category_id else None
+
+    def get_amount(self, obj):
+        return str((obj.planned_qty * obj.unit_cost).quantize(Decimal('0.01')))
+
+    def _usage_key(self, obj):
+        return (obj.name or '').strip().lower()
+
+    def get_requested_qty(self, obj):
+        by_planned = self.context.get('requested_by_planned_id', {})
+        if obj.pk in by_planned:
+            return str(by_planned[obj.pk])
+        by_id = self.context.get('requested_by_item_id', {})
+        by_name = self.context.get('requested_by_name', {})
+        if obj.material_item_id and obj.material_item_id in by_id:
+            return str(by_id[obj.material_item_id])
+        return str(by_name.get(self._usage_key(obj), Decimal('0.00')))
+
+    def get_delivered_qty(self, obj):
+        by_id = self.context.get('delivered_by_item_id', {})
+        by_name = self.context.get('delivered_by_name', {})
+        if obj.material_item_id and obj.material_item_id in by_id:
+            return str(by_id[obj.material_item_id])
+        return str(by_name.get(self._usage_key(obj), Decimal('0.00')))
 
 
 class TodoSerializer(serializers.ModelSerializer):

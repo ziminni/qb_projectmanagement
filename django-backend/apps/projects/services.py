@@ -314,6 +314,8 @@ def update_project(actor, active_role, project, payload):
                 changed.append(field)
                 setattr(project, field, value)
     _save_project(project)
+    if 'start_date' in changed:
+        auto_start_project_if_due(project)
     record(actor, 'project_updated', 'project', project.pk, {'fields': changed})
     return project
 
@@ -512,8 +514,40 @@ def set_user_assignments(actor, target, rows):
     return target.project_assignments.select_related('project').order_by('pk')
 
 
+def auto_start_project_if_due(project):
+    """Promote an Accepted project to Ongoing once its start_date has arrived."""
+    if (
+        project.status != ProjectStatus.ACCEPTED
+        or project.start_date is None
+        or project.start_date > timezone.localdate()
+    ):
+        return False
+    project.status = ProjectStatus.ONGOING
+    project.save(update_fields=['status', 'updated_at'])
+    message = f'{project.code} {project.name} is now Ongoing (start date reached).'
+    members = User.objects.filter(
+        pk__in=project.assignments.filter(
+            response=RequestResponse.ACCEPTED,
+        ).values_list('user_id', flat=True),
+    )
+    for member in members:
+        notify(member, 'project_status', message)
+    return True
+
+
+def auto_start_due_projects():
+    """Promote all Accepted projects whose start_date <= today to Ongoing."""
+    due = Project.objects.filter(
+        status=ProjectStatus.ACCEPTED,
+        start_date__isnull=False,
+        start_date__lte=timezone.localdate(),
+    )
+    for project in due:
+        auto_start_project_if_due(project)
+
+
 def _accept_if_ready(project):
-    """Move `site_engineer_pending` to `accepted` once an SE joined and none is pending."""
+    """Move `site_engineer_pending` to `accepted` (or straight to `ongoing` if start_date <= today)."""
     if project.status != ProjectStatus.SITE_ENGINEER_PENDING:
         return
     involved = project.assignments.filter(
@@ -528,10 +562,17 @@ def _accept_if_ready(project):
         return
     project.status = ProjectStatus.ACCEPTED
     project.save(update_fields=['status', 'updated_at'])
+    if auto_start_project_if_due(project):
+        return
+    start_hint = (
+        f'It will automatically become Ongoing on {project.start_date}, '
+        'or you can start it manually anytime.'
+        if project.start_date
+        else 'Start it when work begins.'
+    )
     notify_owners(
         project,
-        f'{project.code} is accepted by the client and the site engineer. '
-        'Start it when work begins.',
+        f'{project.code} is accepted by the client and the site engineer. {start_hint}',
     )
 
 
@@ -657,6 +698,42 @@ def save_category(project, payload, category=None):
         category = Category(project=project)
     category.name = _text(payload.get('name', category.name))
     category.budget = budget
+    if 'planned_weeks' in payload:
+        category.planned_weeks = _text(payload.get('planned_weeks'))[:32]
+    if 'planned_days' in payload:
+        raw_days = payload.get('planned_days')
+        if raw_days is None or str(raw_days).strip() == '':
+            category.planned_days = None
+        else:
+            try:
+                days_val = int(raw_days)
+                if days_val <= 0:
+                    _refuse('Days must be greater than zero.')
+                category.planned_days = days_val
+            except (TypeError, ValueError):
+                _refuse('Days must be a whole number.')
+    if 'start_date' in payload:
+        category.start_date = _date(payload.get('start_date'))
+    if 'end_date' in payload:
+        category.end_date = _date(payload.get('end_date'))
+    # Auto-calculate start/end from Weeks & Days whenever explicit dates weren't sent
+    if (
+        ('planned_weeks' in payload or 'planned_days' in payload)
+        and 'start_date' not in payload
+        and 'end_date' not in payload
+        and (category.planned_weeks or category.planned_days)
+    ):
+        from .dupa_importer import compute_week_schedule
+
+        s, e, d = compute_week_schedule(
+            project.start_date, category.planned_weeks, category.planned_days,
+        )
+        category.start_date = s
+        category.end_date = e
+        if category.planned_days is None:
+            category.planned_days = d
+    if category.start_date and category.end_date and category.end_date < category.start_date:
+        _refuse('End date must be on or after the start date.')
     if payload.get('sort_order') is not None:
         try:
             category.sort_order = int(payload['sort_order'])
@@ -683,7 +760,15 @@ def _validate_todo(category, project, payload, todo=None):
         _refuse('Choose start and end dates.')
     if end < start:
         _refuse('End date must be on or after the start date.')
-    if project.start_date and project.target_end_date and (
+    if category.start_date and category.end_date:
+        if start < category.start_date or end > category.end_date:
+            days = (category.end_date - category.start_date).days + 1
+            _refuse(
+                f'Dates must fall within this Item of Work '
+                f'({category.start_date.isoformat()} to '
+                f'{category.end_date.isoformat()}, {days} days).'
+            )
+    elif project.start_date and project.target_end_date and (
         start < project.start_date or end > project.target_end_date
     ):
         _refuse(

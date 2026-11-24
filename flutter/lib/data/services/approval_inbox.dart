@@ -21,6 +21,13 @@ class ApprovalItem {
     required this.title,
     required this.subtitle,
     required this.route,
+    this.entityId,
+    this.entityIds = const [],
+    this.projectId,
+    this.projectCode,
+    this.projectName,
+    this.requesterName,
+    this.badgeText,
     this.amount,
     this.date,
   });
@@ -29,8 +36,24 @@ class ApprovalItem {
   final String title;
   final String subtitle;
 
-  /// Where to review and act on the item.
+  /// Fallback route if opened outside the approvals modal.
   final String route;
+
+  /// Primary record ID (todoId, reportId, requestId, workerRequestId, voId, periodId).
+  final int? entityId;
+
+  /// Batch of record IDs when multiple requests are grouped into a single inbox row.
+  final List<int> entityIds;
+
+  List<int> get effectiveIds =>
+      entityIds.isNotEmpty ? entityIds : [?entityId];
+
+  bool get isBulk => effectiveIds.length > 1;
+  final int? projectId;
+  final String? projectCode;
+  final String? projectName;
+  final String? requesterName;
+  final String? badgeText;
   final double? amount;
   final DateTime? date;
 }

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_radii.dart';
+import '../../../core/constants/app_spacing.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../data/models/material_request_item.dart';
 import '../../../data/models/site_count.dart';
 import '../../../shared/widgets/app_section_card.dart';
 
-/// What the site engineer asked for, as they typed it, with the order that
-/// covers each item. With [selected], open items get checkboxes so the
-/// owner can tick off what the order being prepared covers.
+/// What the site engineer asked for, with DUPA plan badges (Planned / Over plan /
+/// Unplanned) and the order that covers each item. With [selected], open items
+/// get checkboxes so the owner can tick off what the order being prepared covers.
 class ProcurementRequestedItems extends StatelessWidget {
   const ProcurementRequestedItems({
     super.key,
@@ -24,6 +27,57 @@ class ProcurementRequestedItems extends StatelessWidget {
   final String Function(int orderId) orderNo;
   final Set<int>? selected;
   final ValueChanged<int>? onToggle;
+
+  Widget? _planBadge(MaterialRequestItem i) {
+    if (i.isUnplanned) {
+      return _chip('Unplanned', AppColors.warningContainer, AppColors.warning);
+    }
+    if (i.isOverPlan) {
+      return _chip(
+        'Over DUPA (${Formatters.number(i.plannedQty!)} ${i.unit})',
+        AppColors.warningContainer,
+        AppColors.warning,
+      );
+    }
+    if (i.isPlanned) {
+      return _chip(
+        'DUPA planned',
+        AppColors.successContainer,
+        AppColors.success,
+      );
+    }
+    return null;
+  }
+
+  Widget _chip(String label, Color bg, Color fg) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(color: bg, borderRadius: AppRadii.smAll),
+    child: Text(
+      label,
+      style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
+    ),
+  );
+
+  Widget _titleRow(MaterialRequestItem i) {
+    final badge = _planBadge(i);
+    if (badge == null) return Text(i.description);
+    return Wrap(
+      spacing: AppSpacing.xs,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [Text(i.description), badge],
+    );
+  }
+
+  String _subtitleText(MaterialRequestItem i) {
+    final base = i.isCovered
+        ? 'Covered by ${orderNo(i.purchaseOrderId!)}'
+        : 'Not ordered yet';
+    if (i.overPlanReason.trim().isNotEmpty) {
+      return '$base · Reason: ${i.overPlanReason.trim()}';
+    }
+    return base;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +109,10 @@ class ProcurementRequestedItems extends StatelessWidget {
                 controlAffinity: ListTileControlAffinity.leading,
                 value: selected!.contains(i.id),
                 onChanged: (_) => onToggle!(i.id),
-                title: Text(i.description),
+                title: _titleRow(i),
+                subtitle: i.overPlanReason.trim().isNotEmpty
+                    ? Text('Reason: ${i.overPlanReason.trim()}')
+                    : null,
                 secondary: Text(qty(i)),
               )
             else
@@ -68,12 +125,8 @@ class ProcurementRequestedItems extends StatelessWidget {
                   size: 20,
                   color: i.isCovered ? AppColors.success : null,
                 ),
-                title: Text(i.description),
-                subtitle: Text(
-                  i.isCovered
-                      ? 'Covered by ${orderNo(i.purchaseOrderId!)}'
-                      : 'Not ordered yet',
-                ),
+                title: _titleRow(i),
+                subtitle: Text(_subtitleText(i)),
                 trailing: Text(
                   qty(i),
                   style: Theme.of(context).textTheme.titleSmall,

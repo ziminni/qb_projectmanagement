@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/utils/action_runner.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/client.dart';
 import '../../../data/models/project.dart';
@@ -103,6 +104,10 @@ class ProjectOverviewViewModel extends ChangeNotifier with ActionRunner {
             'Edit the project, then send it again.',
       ProjectStatus.siteEngineerPending =>
         'The client accepted. Waiting for the site engineer.$siteNote',
+      ProjectStatus.accepted =>
+        'Accepted by the client and site engineer. Will automatically start '
+            'on ${Formatters.date(_project!.startDate)} — or use Change status '
+            'to start early.$siteNote',
       _ => declinedSite.isEmpty ? null : siteNote.trim(),
     };
   }

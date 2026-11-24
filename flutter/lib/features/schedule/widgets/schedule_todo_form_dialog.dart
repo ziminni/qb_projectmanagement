@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_spacing.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/services/schedule_rules.dart';
 import '../../../shared/widgets/app_date_field.dart';
 
@@ -126,6 +127,14 @@ class _ScheduleTodoFormDialogState extends State<ScheduleTodoFormDialog> {
               Text(
                 widget.categoryName,
                 style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'Allowed range: ${Formatters.dateRange(widget.firstDate, widget.lastDate)} '
+                '(${widget.lastDate.difference(widget.firstDate).inDays + 1} days)',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: AppSpacing.md),
               TextFormField(

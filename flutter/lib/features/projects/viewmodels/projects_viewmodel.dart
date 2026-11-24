@@ -49,6 +49,8 @@ class ProjectsViewModel extends ChangeNotifier with ActionRunner {
   bool get canCreate => role == AppRole.owner;
   bool get isSiteEngineer => role == AppRole.siteEngineer;
   ProjectStatus? get statusFilter => _status;
+  String get query => _query;
+  List<ProjectSummary> get allItems => _all;
 
   /// Site engineers' requests waiting for an answer.
   List<ProjectRequest> get requests => _requests;

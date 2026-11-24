@@ -11,6 +11,7 @@ abstract final class Formatters {
     symbol: '₱',
     decimalDigits: 0,
   );
+  static final _number = NumberFormat('#,##0.##', 'en');
   static final _date = DateFormat('MMM d, yyyy');
   static final _shortDate = DateFormat('MMM d');
   static final _dateTime = DateFormat('MMM d, yyyy h:mm a');
@@ -18,6 +19,8 @@ abstract final class Formatters {
   static String peso(num amount) => _peso.format(amount);
 
   static String pesoWhole(num amount) => _pesoWhole.format(amount);
+
+  static String number(num value) => _number.format(value);
 
   /// Formats a 0–1 fraction as a whole percentage, e.g. 0.37 → "37%".
   static String percent(double fraction) => '${(fraction * 100).round()}%';

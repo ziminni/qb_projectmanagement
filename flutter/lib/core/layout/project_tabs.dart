@@ -4,9 +4,10 @@ import '../../data/models/app_role.dart';
 /// The site team works the site; the accountant sees only the money side.
 enum ProjectTab {
   overview('Overview', 'overview', _internal),
-  schedule('Categories and to-dos', 'schedule', _siteTeam),
+  schedule('Items of work', 'schedule', _siteTeam),
   gantt('Gantt', 'gantt', _siteTeam),
   dailyReports('Daily reports', 'daily-reports', _siteTeam),
+  plannedMaterials('Planned materials', 'planned-materials', _internal),
   materials('Materials', 'materials', _siteTeam),
   laborers('Laborers', 'laborers', [
     AppRole.owner,

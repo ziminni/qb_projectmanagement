@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+
 import '../../routes/routes.dart';
 import '../models/app_role.dart';
 import '../models/category.dart';
+import '../models/planned_material.dart';
+import '../models/project.dart';
 import '../models/todo.dart';
 import '../services/notification_service.dart';
 import '../services/schedule_rules.dart';
@@ -24,6 +28,32 @@ class MockScheduleRepository implements ScheduleRepository {
   final NotificationService? _notifications;
   final _categories = [...MockData.categories];
   final _todos = [...MockData.todos];
+  final _plannedMaterials = <PlannedMaterial>[
+    const PlannedMaterial(
+      id: 1,
+      projectId: 1,
+      categoryId: 1,
+      categoryName: 'Site preparation & foundation',
+      name: 'Portland Cement (40kg)',
+      unit: 'bags',
+      plannedQty: 250,
+      unitCost: 245,
+      requestedQty: 180,
+      deliveredQty: 150,
+    ),
+    const PlannedMaterial(
+      id: 2,
+      projectId: 1,
+      categoryId: 1,
+      categoryName: 'Site preparation & foundation',
+      name: '12mm Deformed Rebar',
+      unit: 'pcs',
+      plannedQty: 180,
+      unitCost: 265,
+      requestedQty: 120,
+      deliveredQty: 120,
+    ),
+  ];
 
   int get _nextCategoryId =>
       _categories.fold(0, (m, c) => c.id > m ? c.id : m) + 1;
@@ -110,6 +140,7 @@ class MockScheduleRepository implements ScheduleRepository {
         start: todo.startDate,
         end: todo.endDate,
         project: project,
+        category: category,
       ),
     );
 
@@ -260,4 +291,294 @@ class MockScheduleRepository implements ScheduleRepository {
     if (index < 0) throw const ScheduleRuleException('To-do not found.');
     return index;
   }
+
+  @override
+  Future<List<PlannedMaterial>> getPlannedMaterials(int projectId) async => [
+    for (final m in _plannedMaterials)
+      if (m.projectId == projectId) m,
+  ];
+
+  @override
+  Future<PlannedMaterial> savePlannedMaterial(PlannedMaterial item) async {
+    final catName = _categories
+        .where((c) => c.id == item.categoryId)
+        .firstOrNull
+        ?.name;
+    if (item.id == 0) {
+      final nextId = _plannedMaterials.isEmpty
+          ? 1
+          : _plannedMaterials.map((e) => e.id).reduce((a, b) => a > b ? a : b) +
+                1;
+      final created = item.copyWith(
+        id: nextId,
+        categoryName: () => catName,
+      );
+      _plannedMaterials.add(created);
+      return created;
+    }
+    final idx = _plannedMaterials.indexWhere((e) => e.id == item.id);
+    if (idx < 0) {
+      throw const ScheduleRuleException('Planned material not found.');
+    }
+    final updated = item.copyWith(categoryName: () => catName);
+    _plannedMaterials[idx] = updated;
+    return updated;
+  }
+
+  @override
+  Future<void> deletePlannedMaterial(int id) async {
+    _plannedMaterials.removeWhere((e) => e.id == id);
+  }
+
+  @override
+  Future<ItemsExcelPreview> previewBarChartForNewProject({
+    required String fileName,
+    required Uint8List bytes,
+    required DateTime startDate,
+    String? sheetName,
+  }) async {
+    final end = startDate.add(const Duration(days: 18));
+    return ItemsExcelPreview(
+      sheet: sheetName ?? 'REVISED',
+      sheets: const ['REVISED', 'REVISED +23cd'],
+      format: 'bar_chart',
+      targetEndDate: end,
+      totalDays: 19,
+      totalBudget: 250000,
+      items: [
+        ItemsExcelRow(
+          itemNo: 'B3',
+          name: 'B3 — Permits and Clearances',
+          budget: 100000,
+          plannedWeeks: 'Week 1',
+          plannedDays: 7,
+          dayToStart: 1,
+          startDate: startDate,
+          endDate: startDate.add(const Duration(days: 6)),
+        ),
+        ItemsExcelRow(
+          itemNo: '803(1)',
+          name: '803(1) — Structure Excavation',
+          budget: 150000,
+          plannedWeeks: 'Week 2-3',
+          plannedDays: 12,
+          dayToStart: 8,
+          startDate: startDate.add(const Duration(days: 7)),
+          endDate: end,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<ItemsExcelPreview> previewItemsExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    String? sheetName,
+  }) async {
+    final project = await _projects.getProject(projectId);
+    final base = project?.startDate ?? DateTime.now();
+    return ItemsExcelPreview(
+      sheet: sheetName ?? 'Sheet1',
+      sheets: const ['Sheet1'],
+      format: 'simple',
+      items: [
+        ItemsExcelRow(
+          name: 'Mobilization & Site Clearing',
+          plannedWeeks: 'Week 1',
+          plannedDays: 7,
+          startDate: base,
+          endDate: base.add(const Duration(days: 6)),
+        ),
+        ItemsExcelRow(
+          name: 'Excavation & Earthworks',
+          plannedWeeks: '2-3',
+          plannedDays: 12,
+          startDate: base.add(const Duration(days: 7)),
+          endDate: base.add(const Duration(days: 18)),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<int> importItemsExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    String? sheetName,
+    bool replaceExisting = false,
+  }) async {
+    final preview = await previewItemsExcel(
+      projectId,
+      fileName: fileName,
+      bytes: bytes,
+      sheetName: sheetName,
+    );
+    if (replaceExisting) {
+      _categories.removeWhere((c) => c.projectId == projectId);
+    }
+    final rows = preview.items;
+    for (final r in rows) {
+      await saveCategory(
+        Category(
+          id: 0,
+          projectId: projectId,
+          name: r.name,
+          plannedWeeks: r.plannedWeeks,
+          plannedDays: r.plannedDays,
+          startDate: r.startDate,
+          endDate: r.endDate,
+          sortOrder: _categories.length + 1,
+        ),
+      );
+    }
+    return rows.length;
+  }
+
+  @override
+  Future<Project> startTimeline(int projectId, DateTime startDate) async {
+    final project = (await _projects.getProject(projectId))!;
+    final prevBase = project.timelineStartDate ?? project.startDate;
+    for (var i = 0; i < _categories.length; i++) {
+      final c = _categories[i];
+      if (c.projectId != projectId) continue;
+      final offset =
+          c.dayToStart ??
+          (c.startDate != null
+              ? (c.startDate!.difference(prevBase).inDays + 1).clamp(1, 9999)
+              : null);
+      final dur =
+          c.plannedDays ??
+          (c.startDate != null && c.endDate != null
+              ? (c.endDate!.difference(c.startDate!).inDays + 1).clamp(1, 9999)
+              : null);
+      if (offset != null && dur != null) {
+        final ns = startDate.add(Duration(days: offset - 1));
+        final ne = ns.add(Duration(days: dur - 1));
+        _categories[i] = c.copyWith(
+          dayToStart: () => offset,
+          plannedDays: () => dur,
+          startDate: () => ns,
+          endDate: () => ne,
+        );
+      }
+    }
+    return Project(
+      id: project.id,
+      code: project.code,
+      name: project.name,
+      location: project.location,
+      latitude: project.latitude,
+      longitude: project.longitude,
+      clientId: project.clientId,
+      contractAmount: project.contractAmount,
+      downPaymentPct: project.downPaymentPct,
+      retentionPct: project.retentionPct,
+      startDate: project.startDate,
+      timelineStartDate: startDate,
+      targetEndDate: project.targetEndDate,
+      actualEndDate: project.actualEndDate,
+      status: project.status,
+      createdAt: project.createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<DupaImportPreview> previewDupaExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    int? categoryId,
+    String? sheetName,
+  }) async => const DupaImportPreview(
+    items: [
+      DupaPreviewItem(
+        sheet: 'B.7(2)',
+        itemNo: 'B.7(2)',
+        name: 'B.7(2) — Occupational Safety & Health Program',
+        budget: 100913.40,
+        laborBudget: 60000,
+        equipmentBudget: 0,
+        materialBudget: 20090,
+        materials: [
+          DupaPreviewMaterial(
+            name: 'Reflectorized Vest',
+            unit: 'pcs',
+            plannedQty: 10,
+            unitCost: 200,
+            amount: 2000,
+          ),
+          DupaPreviewMaterial(
+            name: 'Safety Shoes',
+            unit: 'pairs',
+            plannedQty: 2,
+            unitCost: 1300,
+            amount: 2600,
+          ),
+        ],
+      ),
+    ],
+    totalItems: 1,
+    totalMaterials: 2,
+    totalBudget: 100913.40,
+  );
+
+  @override
+  Future<DupaImportResult> importDupaExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    int? categoryId,
+    String? sheetName,
+    List<String>? selectedSheets,
+    Map<String, int>? sheetCategoryMap,
+  }) async {
+    final preview = await previewDupaExcel(
+      projectId,
+      fileName: fileName,
+      bytes: bytes,
+      categoryId: categoryId,
+      sheetName: sheetName,
+    );
+    var matCount = 0;
+    for (final item in preview.items) {
+      final cat = await saveCategory(
+        Category(
+          id: 0,
+          projectId: projectId,
+          name: item.name,
+          budget: item.budget,
+          sortOrder: _categories.length + 1,
+        ),
+      );
+      for (final m in item.materials) {
+        await savePlannedMaterial(
+          PlannedMaterial(
+            id: 0,
+            projectId: projectId,
+            categoryId: cat.id,
+            categoryName: cat.name,
+            name: m.name,
+            unit: m.unit,
+            plannedQty: m.plannedQty,
+            unitCost: m.unitCost,
+          ),
+        );
+        matCount++;
+      }
+    }
+    return DupaImportResult(
+      itemsImported: preview.items.length,
+      materialsImported: matCount,
+      totalBudget: preview.totalBudget,
+    );
+  }
+
+  @override
+  Future<Uint8List> downloadBarChartTemplate({
+    String variant = 'combined',
+  }) async => Uint8List(0);
 }

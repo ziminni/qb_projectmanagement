@@ -259,11 +259,22 @@ void main() {
     await goTo(tester, '/approvals');
     expect(find.textContaining('Laborer requests (1)'), findsWidgets);
 
-    await goTo(tester, '/projects/1/laborers');
-    await tester.tap(find.text('Approve'));
+    // Clicking the laborer request on /approvals opens the review modal in
+    // place instead of redirecting away to the project page.
+    await tester.ensureVisible(find.text('Juanito Cruz · QB-2026-014'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Juanito Cruz · QB-2026-014'));
+    await tester.pumpAndSettle();
+    expect(find.text('Laborer & site assignment details'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('approved and added'), findsOneWidget);
+    // Still on the Approvals page, with the laborer queue now cleared!
+    expect(find.text('Approvals'), findsWidgets);
+    expect(find.text('Laborer requests (0)'), findsOneWidget);
+
+    await goTo(tester, '/projects/1/laborers');
     expect(find.text('Juanito Cruz'), findsOneWidget);
     expect(find.text('No pending laborer requests.'), findsOneWidget);
   });
@@ -322,4 +333,77 @@ void main() {
     final added = workers.firstWhere((w) => w.fullName == 'Marco Santos');
     expect(added.dailyRate, 680);
   });
+
+  testWidgets(
+    'bulk laborer requests group into one approval row with multi-select modal',
+    (tester) async {
+      await pumpApp(tester, size: const Size(1400, 900));
+      final labor = getIt<LaborRepository>();
+      // Foreman (userId 3) requests 3 laborers on project 1 in bulk.
+      await labor.requestProjectWorker(
+        projectId: 1,
+        fullName: 'Berto Alonzo',
+        address: 'Sariaya',
+        phone: '09170000001',
+        userId: 3,
+      );
+      await labor.requestProjectWorker(
+        projectId: 1,
+        fullName: 'Cardo Dalisay',
+        address: 'Sariaya',
+        phone: '09170000002',
+        userId: 3,
+      );
+      await labor.requestProjectWorker(
+        projectId: 1,
+        fullName: 'Dante Gulapa',
+        address: 'Sariaya',
+        phone: '09170000003',
+        userId: 3,
+      );
+
+      await signInAs(tester, 'ramon@example.ph');
+      await goTo(tester, '/approvals');
+
+      // Grouped into ONE single row instead of 3 separate rows!
+      expect(find.text('Laborer requests (1)'), findsWidgets);
+      expect(find.text('3 laborers requested · QB-2026-014'), findsOneWidget);
+      expect(find.text('Approve all (3)'), findsOneWidget);
+
+      await tester.ensureVisible(
+        find.text('3 laborers requested · QB-2026-014'),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3 laborers requested · QB-2026-014'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('3 laborers requested'), findsOneWidget);
+      expect(find.text('Select all (3/3)'), findsOneWidget);
+
+      // Untick Dante Gulapa, approve the 2 selected, then reject the remaining 1.
+      await tester.tap(find.text('Dante Gulapa'));
+      await tester.pumpAndSettle();
+      expect(find.text('Approve selected (2)'), findsOneWidget);
+
+      await tester.tap(find.text('Approve selected (2)'));
+      await tester.pumpAndSettle();
+
+      // Modal stays open with the 1 remaining pending worker pre-selected.
+      expect(find.text('Reject selected (1)'), findsOneWidget);
+      await tester.tap(find.text('Reject selected (1)'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextFormField),
+        ),
+        'Crew already full',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Reject'));
+      await tester.pumpAndSettle();
+
+      // Modal closes automatically once all 3 are decided, keeping PM on Approvals.
+      expect(find.text('Laborer requests (0)'), findsOneWidget);
+    },
+  );
 }

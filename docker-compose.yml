@@ -29,7 +29,6 @@ services:
     restart: unless-stopped
     command: >
       sh -c "python manage.py migrate &&
-             python manage.py seed_demo --auto-pos-payer &&
              python manage.py runserver 0.0.0.0:8001"
     volumes:
       - ./django-backend:/app

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/audit_log.dart';
 import '../models/payment.dart';
 import '../models/payment_method.dart';
@@ -96,6 +98,23 @@ abstract interface class BillingRepository {
   Future<VariationOrder> saveVariationOrder(
     VariationOrder vo, {
     required int userId,
+  });
+
+  /// Parses a revised Bar Chart `.xlsx` (with sheet selection) and diffs it
+  /// against the project's current baseline items of work.
+  Future<Map<String, dynamic>> previewVoBarChart(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    String? sheetName,
+  });
+
+  /// Parses a DUPA `.xlsx` (with sheet selection) for a flagged VO item.
+  Future<Map<String, dynamic>> previewVoDupa({
+    required String fileName,
+    required Uint8List bytes,
+    String? itemNo,
+    String? sheetName,
   });
 
   /// Owner sends a proposed VO to the client.

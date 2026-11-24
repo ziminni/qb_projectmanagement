@@ -328,6 +328,24 @@ class MaterialRequestItem(models.Model):
         blank=True,
         related_name='covered_items',
     )
+    planned_material = models.ForeignKey(
+        'apps_projects.PlannedMaterial',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='request_items',
+        help_text='Linked DUPA Section C planned material row, when picked from plan.',
+    )
+    is_unplanned = models.BooleanField(
+        default=False,
+        help_text='True when the foreman explicitly requested a material outside the DUPA.',
+    )
+    over_plan_reason = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text='Justification when requesting an unplanned item or exceeding remaining DUPA qty.',
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

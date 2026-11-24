@@ -13,7 +13,6 @@ import '../../../core/utils/page_padding.dart';
 import '../../../data/models/variation_order.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_empty_state.dart';
-import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_progress_bar.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../dashboard/widgets/dashboard_stat_tile.dart';
@@ -37,20 +36,6 @@ class VariationOrdersPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
-            AppPageHeader(
-              title: 'Variation orders',
-              subtitle:
-                  'Scope changes, cost and schedule impact, and client approval status.',
-              actions: [
-                if (vm.projectsById.length > 1) _ProjectScopePicker(vm: vm),
-                if (vm.canCreate)
-                  FilledButton.icon(
-                    onPressed: () => context.go(AppRoutes.variationOrderNew),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Raise a VO'),
-                  ),
-              ],
-            ),
             if (vm.isLoading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
@@ -70,21 +55,45 @@ class VariationOrdersPage extends StatelessWidget {
               _VoDashboard(vm: vm, showFinance: showFinance),
               const SizedBox(height: AppSpacing.lg),
               Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
+                alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: AppSpacing.md,
+                runSpacing: AppSpacing.sm,
                 children: [
-                  ChoiceChip(
-                    label: Text('All (${vm.totalCount})'),
-                    selected: vm.statusFilter == null,
-                    onSelected: (_) => vm.setStatus(null),
+                  Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ChoiceChip(
+                        label: Text('All (${vm.totalCount})'),
+                        selected: vm.statusFilter == null,
+                        onSelected: (_) => vm.setStatus(null),
+                      ),
+                      for (final s in VariationOrderStatus.values)
+                        ChoiceChip(
+                          label: Text('${s.label} (${vm.countByStatus(s)})'),
+                          selected: vm.statusFilter == s,
+                          onSelected: (_) => vm.setStatus(s),
+                        ),
+                    ],
                   ),
-                  for (final s in VariationOrderStatus.values)
-                    ChoiceChip(
-                      label: Text('${s.label} (${vm.countByStatus(s)})'),
-                      selected: vm.statusFilter == s,
-                      onSelected: (_) => vm.setStatus(s),
-                    ),
+                  Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (vm.projectsById.length > 1)
+                        _ProjectScopePicker(vm: vm),
+                      if (vm.canCreate)
+                        FilledButton.icon(
+                          onPressed: () =>
+                              context.go(AppRoutes.variationOrderNew),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Raise a VO'),
+                        ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),

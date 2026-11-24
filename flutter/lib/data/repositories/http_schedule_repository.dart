@@ -1,6 +1,13 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../../core/network/api_client.dart';
 import '../models/category.dart';
 import '../models/json_utils.dart';
+import '../models/planned_material.dart';
+import '../models/project.dart';
 import '../models/todo.dart';
 import 'schedule_repository.dart';
 
@@ -34,6 +41,12 @@ class HttpScheduleRepository implements ScheduleRepository {
       'name': category.name.trim(),
       'budget': category.budget,
       'sort_order': category.sortOrder,
+      if (category.plannedWeeks != null) 'planned_weeks': category.plannedWeeks,
+      if (category.plannedDays != null) 'planned_days': category.plannedDays,
+      if (category.startDate != null)
+        'start_date': JsonUtils.fromDate(category.startDate!),
+      if (category.endDate != null)
+        'end_date': JsonUtils.fromDate(category.endDate!),
     };
     final data = await (category.id == 0
         ? _client.post('projects/${category.projectId}/categories/', body: body)
@@ -102,4 +115,156 @@ class HttpScheduleRepository implements ScheduleRepository {
       ),
     ),
   );
+
+  @override
+  Future<List<PlannedMaterial>> getPlannedMaterials(int projectId) async => [
+    for (final row in await _client.getRows(
+      'planned-materials/',
+      query: {'project': '$projectId'},
+    ))
+      PlannedMaterial.fromJson(row, costHidden: !_client.seesFinance),
+  ];
+
+  @override
+  Future<PlannedMaterial> savePlannedMaterial(PlannedMaterial item) async {
+    final body = {
+      'project_id': item.projectId,
+      'category_id': item.categoryId,
+      'name': item.name.trim(),
+      'unit': item.unit.trim(),
+      'planned_qty': item.plannedQty,
+      if (_client.seesFinance) 'unit_cost': item.unitCost,
+    };
+    final data = await (item.id == 0
+        ? _client.post('planned-materials/', body: body)
+        : _client.patch('planned-materials/${item.id}/', body: body));
+    return PlannedMaterial.fromJson(
+      jsonObject(data),
+      costHidden: !_client.seesFinance,
+    );
+  }
+
+  @override
+  Future<void> deletePlannedMaterial(int id) =>
+      _client.delete('planned-materials/$id/');
+
+  @override
+  Future<ItemsExcelPreview> previewBarChartForNewProject({
+    required String fileName,
+    required Uint8List bytes,
+    required DateTime startDate,
+    String? sheetName,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      'start_date': JsonUtils.fromDate(startDate),
+      if (sheetName != null && sheetName.isNotEmpty) 'sheet': sheetName,
+    });
+    final data = jsonObject(
+      await _client.post('projects/preview-items/', body: form),
+    );
+    return ItemsExcelPreview.fromJson(data);
+  }
+
+  @override
+  Future<ItemsExcelPreview> previewItemsExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    String? sheetName,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      'dry_run': 'true',
+      if (sheetName != null && sheetName.isNotEmpty) 'sheet': sheetName,
+    });
+    final data = jsonObject(
+      await _client.post('projects/$projectId/import-items/', body: form),
+    );
+    return ItemsExcelPreview.fromJson(data);
+  }
+
+  @override
+  Future<int> importItemsExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    String? sheetName,
+    bool replaceExisting = false,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      if (sheetName != null && sheetName.isNotEmpty) 'sheet': sheetName,
+      if (replaceExisting) 'replace': 'true',
+    });
+    final data = jsonObject(
+      await _client.post('projects/$projectId/import-items/', body: form),
+    );
+    return data['items_imported'] as int? ?? 0;
+  }
+
+  @override
+  Future<Project> startTimeline(int projectId, DateTime startDate) async {
+    final data = jsonObject(
+      await _client.post(
+        'projects/$projectId/start-timeline/',
+        body: {'start_date': JsonUtils.fromDate(startDate)},
+      ),
+    );
+    return Project.fromJson(data);
+  }
+
+  @override
+  Future<DupaImportPreview> previewDupaExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    int? categoryId,
+    String? sheetName,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      'dry_run': 'true',
+      if (categoryId != null) 'category_id': '$categoryId',
+      if (sheetName != null && sheetName.isNotEmpty) 'sheet': sheetName,
+    });
+    final data = jsonObject(
+      await _client.post(
+        'projects/$projectId/import-dupa/',
+        body: form,
+      ),
+    );
+    return DupaImportPreview.fromJson(data);
+  }
+
+  @override
+  Future<DupaImportResult> importDupaExcel(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    int? categoryId,
+    String? sheetName,
+    List<String>? selectedSheets,
+    Map<String, int>? sheetCategoryMap,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      if (categoryId != null) 'category_id': '$categoryId',
+      if (sheetName != null && sheetName.isNotEmpty) 'sheet': sheetName,
+      if (selectedSheets != null) 'sheets': jsonEncode(selectedSheets),
+      if (sheetCategoryMap != null && sheetCategoryMap.isNotEmpty)
+        'sheet_category_map': jsonEncode(sheetCategoryMap),
+    });
+    final data = jsonObject(
+      await _client.post(
+        'projects/$projectId/import-dupa/',
+        body: form,
+      ),
+    );
+    return DupaImportResult.fromJson(data);
+  }
+
+  @override
+  Future<Uint8List> downloadBarChartTemplate({String variant = 'combined'}) =>
+      _client.getBytes('projects/bar-chart-template/?variant=$variant');
 }

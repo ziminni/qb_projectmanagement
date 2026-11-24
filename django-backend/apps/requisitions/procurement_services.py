@@ -238,6 +238,9 @@ def _require_accepted(project, user, role_on_project, message):
 
 def _project_ongoing(project, what):
     """The mock's `requireOngoing` sentence (site reports use the same shape)."""
+    from ..projects import services as project_services
+
+    project_services.auto_start_project_if_due(project)
     if project.status != ProjectStatus.ONGOING:
         label = ProjectStatus(project.status).label
         _refuse(
@@ -259,18 +262,60 @@ def create_request(user, role, project, data):
     if needed_by < timezone.localdate():
         _refuse(rules.NEEDED_BY_PAST)
 
+    from ..projects.models import Category, PlannedMaterial
+
+    category = None
+    raw_cat_id = data.get('category_id')
+    if raw_cat_id not in (None, ''):
+        try:
+            cat_pk = int(str(raw_cat_id))
+        except (TypeError, ValueError):
+            _refuse('Choose a valid Item of Work.')
+        category = Category.objects.filter(pk=cat_pk, project=project).first()
+        if category is None:
+            _refuse('Selected Item of Work does not belong to this project.')
+
+    planned_by_id = {
+        pm.pk: pm
+        for pm in PlannedMaterial.objects.filter(project=project).select_related('category')
+    }
+
     lines = _json_list(data.get('items'))
     if not lines:
         _refuse(rules.ADD_AN_ITEM)
     items = []
     for row in lines:
-        description = _text(row.get('description'))
-        if not description:
-            _refuse(rules.ENTER_ITEM)
+        pm = None
+        raw_pm_id = row.get('planned_material_id')
+        if raw_pm_id not in (None, ''):
+            try:
+                pm_pk = int(str(raw_pm_id))
+            except (TypeError, ValueError):
+                _refuse('Invalid planned material selected.')
+            pm = planned_by_id.get(pm_pk)
+            if pm is None:
+                _refuse('Selected planned material does not belong to this project.')
+            if category is None and pm.category_id:
+                category = pm.category
+
+        if pm is not None:
+            description = pm.name
+            unit = pm.unit
+            is_unplanned = False
+        else:
+            description = _text(row.get('description'))
+            if not description:
+                _refuse(rules.ENTER_ITEM)
+            unit = _text(row.get('unit'))
+            is_unplanned = bool(row.get('is_unplanned', False))
+
         items.append({
             'description': description,
-            'unit': _text(row.get('unit')),
+            'unit': unit,
             'quantity': _quantity(row.get('quantity')),
+            'planned_material': pm,
+            'is_unplanned': is_unplanned,
+            'over_plan_reason': _text(row.get('over_plan_reason'))[:255],
         })
 
     # Every material the system thinks is on site must be counted first, and
@@ -322,6 +367,7 @@ def create_request(user, role, project, data):
     with transaction.atomic():
         material_request = MaterialRequest.objects.create(
             project=project,
+            category=category,
             requested_by=user,
             status=MaterialRequestStatus.PENDING,
             needed_by=needed_by,
@@ -334,6 +380,9 @@ def create_request(user, role, project, data):
                 description=row['description'],
                 unit=row['unit'],
                 quantity_requested=row['quantity'],
+                planned_material=row['planned_material'],
+                is_unplanned=row['is_unplanned'],
+                over_plan_reason=row['over_plan_reason'],
             )
             for row in items
         ])

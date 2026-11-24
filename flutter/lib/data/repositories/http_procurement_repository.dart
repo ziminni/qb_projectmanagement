@@ -157,14 +157,26 @@ class HttpProcurementRepository implements ProcurementRepository {
         'material-requests/',
         body: {
           'project_id': draft.projectId,
+          if (draft.categoryId != null) 'category_id': draft.categoryId,
           'needed_by': JsonUtils.fromDate(draft.neededBy),
           'items': [
-            for (final i in draft.items)
-              {
-                'description': i.description.trim(),
-                'unit': i.unit.trim(),
-                'quantity': i.quantity,
-              },
+            for (var idx = 0; idx < draft.items.length; idx++)
+              () {
+                final i = draft.items[idx];
+                final link = idx < draft.itemLinks.length
+                    ? draft.itemLinks[idx]
+                    : null;
+                return {
+                  'description': i.description.trim(),
+                  'unit': i.unit.trim(),
+                  'quantity': i.quantity,
+                  if (link?.plannedMaterialId != null)
+                    'planned_material_id': link!.plannedMaterialId,
+                  if (link?.isUnplanned == true) 'is_unplanned': true,
+                  if (link != null && link.overPlanReason.trim().isNotEmpty)
+                    'over_plan_reason': link.overPlanReason.trim(),
+                };
+              }(),
           ],
           'counts': [
             for (final c in draft.counts)

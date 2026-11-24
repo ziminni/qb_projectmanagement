@@ -11,28 +11,44 @@ class AppDateField extends StatelessWidget {
     required this.value,
     required this.hasError,
     required this.onTap,
+    this.enabled = true,
+    this.helperText,
   });
 
   final String label;
   final DateTime? value;
   final bool hasError;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool enabled;
+  final String? helperText;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
+          enabled: enabled,
+          filled: !enabled,
+          fillColor: !enabled ? AppColors.surfaceMuted : null,
+          helperText: helperText,
           prefixIcon: const Icon(Icons.event_outlined),
-          suffixIcon: const Icon(Icons.expand_more_rounded),
+          suffixIcon: enabled
+              ? const Icon(Icons.expand_more_rounded)
+              : const Icon(
+                  Icons.lock_outline_rounded,
+                  size: 16,
+                  color: AppColors.textDisabled,
+                ),
           errorText: hasError ? '' : null,
           errorStyle: const TextStyle(height: 0, fontSize: 0),
         ),
         child: Text(
-          value == null ? 'Choose' : Formatters.date(value!),
-          style: value == null
+          value == null
+              ? (enabled ? 'Choose' : 'Auto-filled')
+              : Formatters.date(value!),
+          style: (!enabled || value == null)
               ? const TextStyle(color: AppColors.textDisabled)
               : null,
         ),

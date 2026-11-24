@@ -113,7 +113,7 @@ class MaterialRequestDetailPage extends StatelessWidget {
                 children: [
                   if (r.categoryId != null)
                     AppInfoRow(
-                      label: 'Category',
+                      label: 'Item of work',
                       value: l.categoryName(r.categoryId),
                     ),
                   AppInfoRow(

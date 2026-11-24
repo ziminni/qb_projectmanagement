@@ -1,17 +1,19 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/utils/action_runner.dart';
-import '../../../data/models/category.dart';
+import '../../../data/models/json_utils.dart';
 import '../../../data/models/project.dart';
-import '../../../data/models/todo.dart';
 import '../../../data/models/variation_order.dart';
 import '../../../data/repositories/billing_repository.dart';
 import '../../../data/repositories/project_repository.dart';
-import '../../../data/repositories/schedule_repository.dart';
 import '../../../data/services/business_rule_exception.dart';
 import '../../../data/services/session_service.dart';
 
 /// Raise a VO (site engineer or PM) or edit a proposed one (PM).
+///
+/// Uploading a revised Bar Chart `.xlsx` auto-diffs every Item of Work and
+/// computes both schedule impact (days) and net cost impact (additives vs.
+/// deductives), with per-item DUPA (A–J) attachments for flagged items.
 class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
   VariationOrderFormViewModel({
     this.voId,
@@ -19,73 +21,39 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
     required SessionService session,
     required ProjectRepository projects,
     required BillingRepository billing,
-    required ScheduleRepository schedule,
   }) : _session = session,
        _projects = projects,
-       _billing = billing,
-       _schedule = schedule;
-
-  /// Sentinel dropdown value indicating the user wants to type a custom task.
-  static const int customTaskSentinel = -1;
+       _billing = billing;
 
   final int? voId;
   final int? initialProjectId;
   final SessionService _session;
   final ProjectRepository _projects;
   final BillingRepository _billing;
-  final ScheduleRepository _schedule;
 
   bool _loading = true;
-  bool _loadingWorkItems = false;
   String? _error;
   List<Project> _options = const [];
-  List<Category> _categories = const [];
-  List<Todo> _todos = const [];
   VariationOrder? _existing;
   int? _savedId;
   String? _savedVoNo;
 
   int? projectId;
-  int? categoryId;
-  int? todoSelection; // null = none, -1 = custom task, >0 = existing todo id
-  VariationOrderType type = VariationOrderType.additive;
-  DateTime? workStartDate;
-  DateTime? workEndDate;
+  VariationOrderType type = VariationOrderType.change;
+  Map<String, dynamic>? revisedSchedule;
   List<String> primaryAttachments = [];
   List<String> secondaryAttachments = [];
 
   bool get isLoading => _loading;
-  bool get isLoadingWorkItems => _loadingWorkItems;
   String? get error => _error;
   List<Project> get projectOptions => _options;
-  List<Category> get categories => _categories;
   VariationOrder? get existing => _existing;
   int? get savedId => _savedId;
   String? get savedVoNo => _savedVoNo;
 
-  bool get isCustomTask => todoSelection == customTaskSentinel;
-
-  List<Todo> get todosForSelectedCategory {
-    if (categoryId == null) return _todos;
-    return _todos.where((t) => t.categoryId == categoryId).toList();
-  }
-
-  Category? get selectedCategory {
-    if (categoryId == null) return null;
-    for (final c in _categories) {
-      if (c.id == categoryId) return c;
-    }
-    return null;
-  }
-
-  Todo? get selectedTodo {
-    if (todoSelection == null || todoSelection == customTaskSentinel) {
-      return null;
-    }
-    for (final t in _todos) {
-      if (t.id == todoSelection) return t;
-    }
-    return null;
+  bool get hasRevisedSchedule {
+    final items = revisedSchedule?['items'];
+    return items is List && items.isNotEmpty;
   }
 
   Future<void> load() async {
@@ -94,7 +62,9 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
       _options = (await _projects.getProjectsFor(
         _session.user!.id,
         role,
-      )).where((p) => p.status == ProjectStatus.ongoing).toList();
+      )).where((p) =>
+          p.status != ProjectStatus.completed &&
+          p.status != ProjectStatus.closed).toList();
       if (voId != null) {
         _existing = (await _billing.getVariationOrder(voId!))?.order;
         if (_existing == null) {
@@ -107,8 +77,7 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
         }
         projectId = _existing!.projectId;
         type = _existing!.type;
-        workStartDate = _existing!.workStartDate;
-        workEndDate = _existing!.workEndDate;
+        revisedSchedule = _existing!.revisedSchedule;
         primaryAttachments = List<String>.from(_existing!.primaryAttachments);
         secondaryAttachments = List<String>.from(
           _existing!.secondaryAttachments,
@@ -122,9 +91,6 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
             ? initialProjectId
             : _options.first.id;
       }
-      if (projectId != null) {
-        await _loadWorkItems(projectId!);
-      }
     } catch (e) {
       _error = 'Could not load the form. $e';
     } finally {
@@ -133,69 +99,10 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
     }
   }
 
-  Future<void> _loadWorkItems(int id) async {
-    _loadingWorkItems = true;
-    notifyListeners();
-    try {
-      final results = await Future.wait([
-        _schedule.getCategories(id),
-        _schedule.getTodos(id),
-      ]);
-      _categories = results[0] as List<Category>;
-      _todos = results[1] as List<Todo>;
-    } catch (_) {
-      _categories = const [];
-      _todos = const [];
-    } finally {
-      _loadingWorkItems = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> setProject(int? id) async {
+  void setProject(int? id) {
     if (projectId == id) return;
     projectId = id;
-    categoryId = null;
-    todoSelection = null;
-    notifyListeners();
-    if (id != null) {
-      await _loadWorkItems(id);
-    }
-  }
-
-  void setCategory(int? id) {
-    if (categoryId == id) return;
-    categoryId = id;
-    // Reset selected to-do if it no longer belongs to the chosen item of work.
-    if (todoSelection != null &&
-        todoSelection != customTaskSentinel &&
-        !todosForSelectedCategory.any((t) => t.id == todoSelection)) {
-      todoSelection = null;
-    }
-    notifyListeners();
-  }
-
-  void setTodoSelection(int? value) {
-    if (todoSelection == value) return;
-    todoSelection = value;
-    final todo = selectedTodo;
-    if (todo != null && workStartDate == null && workEndDate == null) {
-      workStartDate = todo.startDate;
-      workEndDate = todo.endDate;
-    }
-    notifyListeners();
-  }
-
-  void setWorkStartDate(DateTime? date) {
-    workStartDate = date;
-    if (date != null && workEndDate != null && workEndDate!.isBefore(date)) {
-      workEndDate = date;
-    }
-    notifyListeners();
-  }
-
-  void setWorkEndDate(DateTime? date) {
-    workEndDate = date;
+    revisedSchedule = null;
     notifyListeners();
   }
 
@@ -204,6 +111,11 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
     if (t != VariationOrderType.change) {
       secondaryAttachments = [];
     }
+    notifyListeners();
+  }
+
+  void setRevisedSchedule(Map<String, dynamic>? schedule) {
+    revisedSchedule = schedule;
     notifyListeners();
   }
 
@@ -241,29 +153,19 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
     notifyListeners();
   }
 
-  Future<String?> save({
-    required String description,
-    String? customTask,
-    required double amount,
-    required int daysImpact,
-  }) => runAction(() async {
+  Future<String?> save({required String description}) => runAction(() async {
     if (projectId == null) {
       throw const BusinessRuleException('Choose the project.');
     }
+    if (!hasRevisedSchedule) {
+      throw const BusinessRuleException(
+        'Upload the revised Bar Chart (.xlsx) before saving this variation order.',
+      );
+    }
 
-    final itemName = selectedCategory?.name.trim();
-    final taskName = isCustomTask
-        ? customTask?.trim()
-        : selectedTodo?.title.trim();
-    final headerParts = <String>[
-      if (itemName != null && itemName.isNotEmpty) itemName,
-      if (taskName != null && taskName.isNotEmpty) taskName,
-    ];
-    final cleanDesc = description.trim();
-    final prefix = headerParts.isEmpty ? '' : '[${headerParts.join(' · ')}]';
-    final fullDescription = prefix.isEmpty || cleanDesc.startsWith(prefix)
-        ? cleanDesc
-        : '$prefix $cleanDesc';
+    final derivedDays = (revisedSchedule?['days_impact'] as int?) ?? 0;
+    final derivedAmount =
+        JsonUtils.toDoubleOrNull(revisedSchedule?['net_cost_impact']) ?? 0;
 
     final base =
         _existing ??
@@ -278,22 +180,14 @@ class VariationOrderFormViewModel extends ChangeNotifier with ActionRunner {
           status: VariationOrderStatus.proposed,
           createdAt: DateTime.now(),
         );
-    if (workStartDate != null &&
-        workEndDate != null &&
-        workEndDate!.isBefore(workStartDate!)) {
-      throw const BusinessRuleException(
-        'End date must be on or after the start date.',
-      );
-    }
 
     final saved = await _billing.saveVariationOrder(
       base.copyWith(
         type: type,
-        description: fullDescription,
-        amount: amount,
-        daysImpact: daysImpact,
-        workStartDate: () => workStartDate,
-        workEndDate: () => workEndDate,
+        description: description.trim(),
+        amount: derivedAmount,
+        daysImpact: derivedDays,
+        revisedSchedule: () => revisedSchedule,
         primaryAttachments: List<String>.unmodifiable(primaryAttachments),
         secondaryAttachments: type == VariationOrderType.change
             ? List<String>.unmodifiable(secondaryAttachments)

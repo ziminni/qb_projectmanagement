@@ -82,14 +82,21 @@ class MaterialRequestItemSerializer(serializers.ModelSerializer):
         source='quantity_requested', max_digits=12, decimal_places=2,
         read_only=True,
     )
+    planned_qty = serializers.SerializerMethodField()
 
     class Meta:
         model = MaterialRequestItem
         fields = (
             'id', 'material_request_id', 'description', 'unit', 'quantity',
-            'purchase_order_id', 'created_at', 'updated_at',
+            'purchase_order_id', 'planned_material_id', 'planned_qty',
+            'is_unplanned', 'over_plan_reason', 'created_at', 'updated_at',
         )
         read_only_fields = fields
+
+    def get_planned_qty(self, obj):
+        if obj.planned_material_id and obj.planned_material is not None:
+            return str(obj.planned_material.planned_qty)
+        return None
 
 
 class SiteCountSerializer(serializers.ModelSerializer):

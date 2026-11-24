@@ -56,10 +56,11 @@ class ScheduleGanttPage extends StatelessWidget {
             ],
             const SizedBox(height: AppSpacing.md),
             AppGanttChart(
-              progress: vm.progress!,
-              projectStart: project.startDate,
+              progress: vm.activeGanttProgress,
+              projectStart: vm.effectiveProjectStart,
               projectEnd: vm.effectiveProjectEnd,
               variationOrders: vm.visibleVariationOrders,
+              relativeMode: vm.isGanttRelativeMode,
             ),
             const SizedBox(height: AppSpacing.lg),
           ],
@@ -74,11 +75,38 @@ class _ScheduleVersionBar extends StatelessWidget {
 
   final ScheduleViewModel vm;
 
+  Future<void> _pickStartDate(BuildContext context) async {
+    final initial = vm.project?.timelineStartDate ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      helpText: 'Select actual start date (Notice to Proceed)',
+      confirmText: 'Start timeline',
+    );
+    if (picked == null || !context.mounted) return;
+    final err = await vm.startTimeline(picked);
+    if (!context.mounted) return;
+    if (err == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Actual timeline created starting ${Formatters.date(picked)}.',
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final vos = vm.variationOrders;
+    final timelineStart = vm.project?.timelineStartDate;
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -106,19 +134,27 @@ class _ScheduleVersionBar extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 320),
+                constraints: const BoxConstraints(maxWidth: 340),
                 child: DropdownButtonHideUnderline(
-                  child: DropdownButton<int?>(
+                  child: DropdownButton<int>(
                     isDense: true,
                     isExpanded: true,
-                    value: vm.selectedVoIndex,
+                    value: vm.selectedVersionKey,
                     items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Original'),
+                      const DropdownMenuItem<int>(
+                        value: ScheduleViewModel.plannedVersionKey,
+                        child: Text('Planned (W1, W2, …)'),
                       ),
+                      if (timelineStart != null)
+                        DropdownMenuItem<int>(
+                          value: ScheduleViewModel.actualVersionKey,
+                          child: Text(
+                            'Actual timeline (${Formatters.date(timelineStart)})',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       for (var i = 0; i < vos.length; i++)
-                        DropdownMenuItem<int?>(
+                        DropdownMenuItem<int>(
                           value: i,
                           child: Text(
                             vm.voVersionLabel(i),
@@ -126,12 +162,27 @@ class _ScheduleVersionBar extends StatelessWidget {
                           ),
                         ),
                     ],
-                    onChanged: vm.selectVoVersion,
+                    onChanged: vm.selectScheduleVersion,
                   ),
                 ),
               ),
             ),
           ),
+          if (vm.canEdit) ...[
+            const SizedBox(width: AppSpacing.md),
+            if (timelineStart == null)
+              FilledButton.tonalIcon(
+                onPressed: vm.isBusy ? null : () => _pickStartDate(context),
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Start timeline from date'),
+              )
+            else
+              TextButton.icon(
+                onPressed: vm.isBusy ? null : () => _pickStartDate(context),
+                icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                label: const Text('Change start date'),
+              ),
+          ],
         ],
       ),
     );

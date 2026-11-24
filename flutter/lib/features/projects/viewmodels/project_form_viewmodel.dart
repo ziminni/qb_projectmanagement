@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/di/service_locator.dart';
@@ -6,6 +8,7 @@ import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
 import '../../../data/models/client.dart';
 import '../../../data/models/company_settings.dart';
+import '../../../data/models/planned_material.dart';
 import '../../../data/models/project.dart';
 import '../../../data/models/user.dart';
 import '../../../data/repositories/client_repository.dart';
@@ -50,6 +53,7 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
   CompanySettings? _settings;
   List<Client> _clientList = const [];
   List<User> _siteEngineers = const [];
+  String? _suggestedCode;
   int? _savedId;
 
   bool get isLoading => _loading;
@@ -59,6 +63,7 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
   CompanySettings? get settings => _settings;
   List<Client> get clients => _clientList;
   List<User> get siteEngineers => _siteEngineers;
+  String? get suggestedCode => _suggestedCode;
 
   String clientName(int? id) =>
       _clientList.where((c) => c.id == id).firstOrNull?.name ?? '—';
@@ -143,6 +148,9 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
         for (final u in await _users.getUsersWithRole(AppRole.siteEngineer))
           if (u.isActive) u,
       ];
+      if (isNew) {
+        _suggestedCode = await _generateNextCode();
+      }
       if (projectId != null) {
         _project = await _projects.getProject(projectId!);
         if (_project == null) {
@@ -164,6 +172,39 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
     }
   }
 
+  Future<String> _generateNextCode() async {
+    final year = DateTime.now().year;
+    final prefix = 'QB-$year-';
+    var maxSeq = 0;
+    try {
+      final existing = await _projects.getProjects();
+      final pattern = RegExp('^QB-$year-(\\d+)\$', caseSensitive: false);
+      for (final p in existing) {
+        final match = pattern.firstMatch(p.code.trim());
+        if (match != null) {
+          final n = int.tryParse(match.group(1)!) ?? 0;
+          if (n > maxSeq) maxSeq = n;
+        }
+      }
+    } catch (_) {
+      // Fall back to 001 if listing projects fails.
+    }
+    final next = (maxSeq + 1).toString().padLeft(3, '0');
+    return '$prefix$next';
+  }
+
+  Future<ItemsExcelPreview> previewBarChart({
+    required String fileName,
+    required Uint8List bytes,
+    required DateTime startDate,
+    String? sheetName,
+  }) => _schedule.previewBarChartForNewProject(
+    fileName: fileName,
+    bytes: bytes,
+    startDate: startDate,
+    sheetName: sheetName,
+  );
+
   Future<String?> save({
     required String code,
     required String name,
@@ -178,8 +219,12 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
     double? longitude,
     int? siteEngineerId,
     List<(String, double)> categories = const [],
+    String? barChartFileName,
+    Uint8List? barChartBytes,
+    String? barChartSheet,
   }) => runAction(() async {
-    if (isNew) {
+    final hasBarChart = barChartBytes != null && barChartFileName != null;
+    if (isNew && !hasBarChart) {
       final budgetError = validateCategories(contractAmount, categories);
       if (budgetError != null) throw BusinessRuleException(budgetError);
     }
@@ -227,18 +272,28 @@ class ProjectFormViewModel extends ChangeNotifier with ActionRunner {
       }
       await _projects.assign(saved.id, clientUser, AppRole.client);
       await _projects.assign(saved.id, siteEngineerId!, AppRole.siteEngineer);
-      for (final (i, (name, budget)) in categories.indexed) {
-        await _schedule.saveCategory(
-          Category(
-            id: 0,
-            projectId: saved.id,
-            name: name.trim(),
-            budget: budget > 0 ? budget : null,
-            sortOrder: i + 1,
-          ),
+      if (hasBarChart) {
+        await _schedule.importItemsExcel(
+          saved.id,
+          fileName: barChartFileName,
+          bytes: barChartBytes,
+          sheetName: barChartSheet,
         );
-        if (getIt.isRegistered<CategoryCatalogService>()) {
-          getIt<CategoryCatalogService>().register(name);
+        await _schedule.startTimeline(saved.id, startDate);
+      } else {
+        for (final (i, (name, budget)) in categories.indexed) {
+          await _schedule.saveCategory(
+            Category(
+              id: 0,
+              projectId: saved.id,
+              name: name.trim(),
+              budget: budget > 0 ? budget : null,
+              sortOrder: i + 1,
+            ),
+          );
+          if (getIt.isRegistered<CategoryCatalogService>()) {
+            getIt<CategoryCatalogService>().register(name);
+          }
         }
       }
     }

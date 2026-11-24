@@ -13,6 +13,7 @@ import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_vo_status_chip.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
 import '../../billing/widgets/vo_photo_attachments.dart';
+import '../../billing/widgets/vo_revised_schedule_section.dart';
 import '../viewmodels/client_variation_order_detail_viewmodel.dart';
 
 /// A variation order in the client portal, with Approve and Reject.
@@ -119,6 +120,19 @@ class ClientVariationOrderDetailPage extends StatelessWidget {
                 ],
               ),
             ),
+            if (v.hasRevisedSchedule) ...[
+              gap,
+              AppSectionCard(
+                title: 'Revised Bar Chart & DUPA (A–J)',
+                icon: Icons.table_chart_outlined,
+                child: VoRevisedScheduleSection(
+                  projectId: v.projectId,
+                  revisedSchedule: v.revisedSchedule,
+                  showCosts: true,
+                  editable: false,
+                ),
+              ),
+            ],
             if (v.hasAttachments) ...[
               gap,
               VoPhotoAttachmentsCard(vo: v),

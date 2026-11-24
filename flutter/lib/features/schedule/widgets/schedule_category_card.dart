@@ -22,6 +22,8 @@ class ScheduleCategoryCard extends StatefulWidget {
     this.onEdit,
     this.onDelete,
     this.onAddTodo,
+    this.onImportDupa,
+    this.onViewDupa,
     this.onSetDone,
     this.onVerify,
     this.onUnverify,
@@ -36,6 +38,8 @@ class ScheduleCategoryCard extends StatefulWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onAddTodo;
+  final VoidCallback? onImportDupa;
+  final VoidCallback? onViewDupa;
   final void Function(Todo todo, bool done)? onSetDone;
   final ValueChanged<Todo>? onVerify;
   final ValueChanged<Todo>? onUnverify;
@@ -129,14 +133,29 @@ class _ScheduleCategoryCardState extends State<ScheduleCategoryCard> {
                   AppProgressBar(value: item.progress, height: 8),
                   const SizedBox(height: AppSpacing.sm),
                   Text(counts.toString(), style: textTheme.bodySmall),
-                  if (widget.showCosts)
+                  if (widget.showCosts) ...[
                     Text(
                       item.category.hasBudget
-                          ? 'Budget ${Formatters.peso(item.category.budget!)} · '
+                          ? 'Planned cost ${Formatters.peso(item.category.budget!)} · '
                                 'weight ${Formatters.percent(item.weight)}'
-                          : 'No budget · weight ${Formatters.percent(item.weight)}',
+                          : 'No planned cost · weight ${Formatters.percent(item.weight)}',
                       style: textTheme.bodySmall,
                     ),
+                    if (item.category.hasCostBreakdown)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Labor ${Formatters.peso(item.category.laborBudget ?? 0)} · '
+                          'Equipment ${Formatters.peso(item.category.equipmentBudget ?? 0)} · '
+                          'Materials ${Formatters.peso(item.category.materialBudget ?? 0)}',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -169,16 +188,40 @@ class _ScheduleCategoryCardState extends State<ScheduleCategoryCard> {
                     ? null
                     : () => widget.onDeleteTodo!(todo),
               ),
-            if (widget.onAddTodo != null)
+            if (widget.onAddTodo != null ||
+                widget.onImportDupa != null ||
+                widget.onViewDupa != null)
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.sm),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: widget.enabled ? widget.onAddTodo : null,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add to-do'),
-                  ),
+                child: Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    if (widget.onAddTodo != null)
+                      TextButton.icon(
+                        onPressed: widget.enabled ? widget.onAddTodo : null,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add to-do'),
+                      ),
+                    if (widget.onImportDupa != null)
+                      TextButton.icon(
+                        onPressed: widget.enabled ? widget.onImportDupa : null,
+                        icon: const Icon(Icons.table_chart_outlined, size: 18),
+                        label: Text(
+                          item.category.hasCostBreakdown
+                              ? 'Update DUPA'
+                              : 'Import DUPA',
+                        ),
+                      ),
+                    if (widget.onViewDupa != null &&
+                        widget.showCosts &&
+                        item.category.hasDupaBreakdown)
+                      TextButton.icon(
+                        onPressed: widget.onViewDupa,
+                        icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                        label: const Text('View DUPA (A–J)'),
+                      ),
+                  ],
                 ),
               ),
           ],

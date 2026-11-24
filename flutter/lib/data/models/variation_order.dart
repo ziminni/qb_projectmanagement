@@ -47,6 +47,7 @@ class VariationOrder {
     required this.status,
     this.workStartDate,
     this.workEndDate,
+    this.revisedSchedule,
     this.primaryAttachments = const [],
     this.secondaryAttachments = const [],
     this.approvedByOwner,
@@ -65,6 +66,7 @@ class VariationOrder {
   final VariationOrderStatus status;
   final DateTime? workStartDate;
   final DateTime? workEndDate;
+  final Map<String, dynamic>? revisedSchedule;
 
   /// Files or photos attached to the variation order (images, PDFs, CAD, etc.):
   /// - [VariationOrderType.additive]: evidence of what is to be added.
@@ -84,6 +86,22 @@ class VariationOrder {
   bool get hasAttachments =>
       primaryAttachments.isNotEmpty || secondaryAttachments.isNotEmpty;
 
+  bool get hasRevisedSchedule {
+    final s = revisedSchedule;
+    if (s == null) return false;
+    final items = s['items'];
+    return items is List && items.isNotEmpty;
+  }
+
+  List<Map<String, dynamic>> get revisedItems {
+    final items = revisedSchedule?['items'];
+    if (items is! List) return const [];
+    return [
+      for (final raw in items)
+        if (raw is Map<String, dynamic>) raw,
+    ];
+  }
+
   VariationOrder copyWith({
     int? id,
     String? voNo,
@@ -94,6 +112,7 @@ class VariationOrder {
     VariationOrderStatus? status,
     DateTime? Function()? workStartDate,
     DateTime? Function()? workEndDate,
+    Map<String, dynamic>? Function()? revisedSchedule,
     List<String>? primaryAttachments,
     List<String>? secondaryAttachments,
     int? Function()? approvedByOwner,
@@ -109,6 +128,9 @@ class VariationOrder {
     status: status ?? this.status,
     workStartDate: workStartDate != null ? workStartDate() : this.workStartDate,
     workEndDate: workEndDate != null ? workEndDate() : this.workEndDate,
+    revisedSchedule: revisedSchedule != null
+        ? revisedSchedule()
+        : this.revisedSchedule,
     primaryAttachments: primaryAttachments ?? this.primaryAttachments,
     secondaryAttachments: secondaryAttachments ?? this.secondaryAttachments,
     approvedByOwner: approvedByOwner != null
@@ -145,6 +167,10 @@ class VariationOrder {
     status: VariationOrderStatus.fromJson(json['status']),
     workStartDate: JsonUtils.toDateOrNull(json['work_start_date']),
     workEndDate: JsonUtils.toDateOrNull(json['work_end_date']),
+    revisedSchedule: json['revised_schedule'] is Map<String, dynamic> &&
+            (json['revised_schedule'] as Map<String, dynamic>).isNotEmpty
+        ? json['revised_schedule'] as Map<String, dynamic>
+        : null,
     primaryAttachments: _parseAttachments(
       json['primary_attachments'],
       json['primary_photo_url'],
@@ -170,6 +196,7 @@ class VariationOrder {
     'status': status.toJson(),
     'work_start_date': JsonUtils.fromDateOrNull(workStartDate),
     'work_end_date': JsonUtils.fromDateOrNull(workEndDate),
+    if (revisedSchedule != null) 'revised_schedule': revisedSchedule,
     if (primaryAttachments.isNotEmpty)
       'primary_attachments': primaryAttachments,
     if (secondaryAttachments.isNotEmpty)

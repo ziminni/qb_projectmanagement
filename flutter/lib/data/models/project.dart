@@ -40,6 +40,7 @@ class Project {
     required this.downPaymentPct,
     required this.retentionPct,
     required this.startDate,
+    this.timelineStartDate,
     required this.targetEndDate,
     this.actualEndDate,
     required this.status,
@@ -60,6 +61,7 @@ class Project {
   final double downPaymentPct;
   final double retentionPct;
   final DateTime startDate;
+  final DateTime? timelineStartDate;
   final DateTime targetEndDate;
   final DateTime? actualEndDate;
   final ProjectStatus status;
@@ -80,6 +82,7 @@ class Project {
     downPaymentPct: JsonUtils.toDouble(json['down_payment_pct'] ?? 0),
     retentionPct: JsonUtils.toDouble(json['retention_pct'] ?? 0),
     startDate: JsonUtils.toDate(json['start_date']),
+    timelineStartDate: JsonUtils.toDateOrNull(json['timeline_start_date']),
     targetEndDate: JsonUtils.toDate(json['target_end_date']),
     actualEndDate: JsonUtils.toDateOrNull(json['actual_end_date']),
     status: ProjectStatus.fromJson(json['status']),
@@ -101,6 +104,7 @@ class Project {
     'down_payment_pct': downPaymentPct,
     'retention_pct': retentionPct,
     'start_date': JsonUtils.fromDate(startDate),
+    'timeline_start_date': JsonUtils.fromDateOrNull(timelineStartDate),
     'target_end_date': JsonUtils.fromDate(targetEndDate),
     'actual_end_date': JsonUtils.fromDateOrNull(actualEndDate),
     'status': status.toJson(),

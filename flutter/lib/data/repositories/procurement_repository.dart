@@ -29,6 +29,12 @@ class MaterialRequestDetail {
 
 typedef RequestLine = ({String description, String unit, double quantity});
 
+typedef RequestLineLink = ({
+  int? plannedMaterialId,
+  bool isUnplanned,
+  String overPlanReason,
+});
+
 typedef CountLine = ({
   int? materialId,
   String name,
@@ -40,14 +46,18 @@ typedef CountLine = ({
 class MaterialRequestDraft {
   const MaterialRequestDraft({
     required this.projectId,
+    this.categoryId,
     required this.neededBy,
     required this.items,
+    this.itemLinks = const [],
     required this.counts,
   });
 
   final int projectId;
+  final int? categoryId;
   final DateTime neededBy;
   final List<RequestLine> items;
+  final List<RequestLineLink> itemLinks;
 
   /// One count per material currently on site.
   final List<CountLine> counts;

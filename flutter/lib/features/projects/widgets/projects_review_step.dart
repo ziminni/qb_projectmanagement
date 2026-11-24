@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_radii.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../data/models/planned_material.dart';
 import '../../../shared/widgets/app_info_row.dart';
 import '../../../shared/widgets/app_location_map.dart';
 
@@ -26,6 +27,7 @@ class ProjectsReviewStep extends StatelessWidget {
     required this.downPaymentPct,
     required this.retentionPct,
     required this.categories,
+    this.barChartPreview,
     required this.onEdit,
   });
 
@@ -42,6 +44,7 @@ class ProjectsReviewStep extends StatelessWidget {
   final double downPaymentPct;
   final double retentionPct;
   final List<(String, double)> categories;
+  final ItemsExcelPreview? barChartPreview;
   final ValueChanged<int> onEdit;
 
   @override
@@ -117,7 +120,14 @@ class ProjectsReviewStep extends StatelessWidget {
           ),
           if (isNew) ...[
             const Divider(height: AppSpacing.xl),
-            if (categories.isEmpty)
+            if (barChartPreview != null && barChartPreview!.items.isNotEmpty)
+              AppInfoRow(
+                label: 'Bar Chart items',
+                value:
+                    '${barChartPreview!.items.length} items'
+                    '${barChartPreview!.sheet != null ? ' · Sheet ${barChartPreview!.sheet}' : ''}',
+              )
+            else if (categories.isEmpty)
               const AppInfoRow(label: 'Categories', value: 'None yet')
             else ...[
               for (final (n, a) in categories)

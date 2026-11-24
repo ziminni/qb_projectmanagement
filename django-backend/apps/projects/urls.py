@@ -15,6 +15,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryViewSet,
     ClientViewSet,
+    PlannedMaterialViewSet,
     ProjectAssignmentViewSet,
     ProjectRequestViewSet,
     ProjectViewSet,
@@ -32,6 +33,7 @@ router.register(
 )
 router.register(r'project-requests', ProjectRequestViewSet, basename='projectrequest')
 router.register(r'categories', CategoryViewSet, basename='category')
+router.register(r'planned-materials', PlannedMaterialViewSet, basename='plannedmaterial')
 router.register(r'todos', TodoViewSet, basename='todo')
 
 urlpatterns = [

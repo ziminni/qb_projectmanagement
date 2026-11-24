@@ -213,6 +213,7 @@ class MockProcurementRepository implements ProcurementRepository {
     final request = MaterialRequest(
       id: _next(_requests.map((r) => r.id)),
       projectId: draft.projectId,
+      categoryId: draft.categoryId,
       requestedBy: userId,
       neededBy: DateTime(
         draft.neededBy.year,
@@ -224,7 +225,9 @@ class MockProcurementRepository implements ProcurementRepository {
       updatedAt: now,
     );
     _requests.add(request);
-    for (final i in draft.items) {
+    for (var idx = 0; idx < draft.items.length; idx++) {
+      final i = draft.items[idx];
+      final link = idx < draft.itemLinks.length ? draft.itemLinks[idx] : null;
       _requestItems.add(
         MaterialRequestItem(
           id: _next(_requestItems.map((x) => x.id)),
@@ -232,6 +235,9 @@ class MockProcurementRepository implements ProcurementRepository {
           description: i.description.trim(),
           unit: i.unit.trim(),
           quantity: i.quantity,
+          plannedMaterialId: link?.plannedMaterialId,
+          isUnplanned: link?.isUnplanned ?? false,
+          overPlanReason: link?.overPlanReason ?? '',
           createdAt: now,
         ),
       );

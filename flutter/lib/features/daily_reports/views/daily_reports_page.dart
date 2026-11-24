@@ -8,7 +8,6 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/daily_report.dart';
 import '../../../routes/routes.dart';
-import '../../../shared/widgets/app_page_header.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../viewmodels/daily_reports_viewmodel.dart';
 import '../widgets/daily_reports_report_tile.dart';
@@ -35,48 +34,52 @@ class DailyReportsPage extends StatelessWidget {
         return ListView(
           padding: pagePadding(context),
           children: [
-            const AppPageHeader(
-              title: 'Daily reports',
-              subtitle: 'Site reports by date and status.',
-            ),
             Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
+              alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.sm,
               children: [
-                ChoiceChip(
-                  label: const Text('All'),
-                  selected: vm.statusFilter == null,
-                  onSelected: (_) => vm.setStatus(null),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('All'),
+                      selected: vm.statusFilter == null,
+                      onSelected: (_) => vm.setStatus(null),
+                    ),
+                    for (final s in DailyReportStatus.values)
+                      ChoiceChip(
+                        label: Text(s.label),
+                        selected: vm.statusFilter == s,
+                        onSelected: (_) => vm.setStatus(s),
+                      ),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final range = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(2024),
+                          lastDate: DateTime.now(),
+                        );
+                        if (range != null) vm.setRange(range.start, range.end);
+                      },
+                      icon: const Icon(Icons.date_range, size: 18),
+                      label: Text(
+                        vm.from == null
+                            ? 'Any date'
+                            : Formatters.dateRange(vm.from!, vm.to!),
+                      ),
+                    ),
+                    if (vm.from != null)
+                      IconButton(
+                        tooltip: 'Clear dates',
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => vm.setRange(null, null),
+                      ),
+                  ],
                 ),
-                for (final s in DailyReportStatus.values)
-                  ChoiceChip(
-                    label: Text(s.label),
-                    selected: vm.statusFilter == s,
-                    onSelected: (_) => vm.setStatus(s),
-                  ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final range = await showDateRangePicker(
-                      context: context,
-                      firstDate: DateTime(2024),
-                      lastDate: DateTime.now(),
-                    );
-                    if (range != null) vm.setRange(range.start, range.end);
-                  },
-                  icon: const Icon(Icons.date_range),
-                  label: Text(
-                    vm.from == null
-                        ? 'Any date'
-                        : Formatters.dateRange(vm.from!, vm.to!),
-                  ),
-                ),
-                if (vm.from != null)
-                  IconButton(
-                    tooltip: 'Clear dates',
-                    icon: const Icon(Icons.clear),
-                    onPressed: () => vm.setRange(null, null),
-                  ),
                 if (vm.canCreate)
                   FilledButton.icon(
                     onPressed: () => context.go(
@@ -84,7 +87,7 @@ class DailyReportsPage extends StatelessWidget {
                           ? AppRoutes.dailyReportNew
                           : '${AppRoutes.dailyReportNew}?projectId=$projectId',
                     ),
-                    icon: const Icon(Icons.add),
+                    icon: const Icon(Icons.add, size: 18),
                     label: const Text('New report'),
                   ),
               ],

@@ -3,12 +3,16 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
+import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/page_padding.dart';
 import '../../../data/models/category.dart';
 import '../../../data/models/todo.dart';
 import '../../../data/services/progress_calculator.dart';
 import '../../../shared/widgets/app_confirm_dialog.dart';
 import '../viewmodels/schedule_viewmodel.dart';
+import '../widgets/dupa_breakdown_dialog.dart';
+import '../widgets/dupa_import_dialog.dart';
+import '../widgets/items_import_dialog.dart';
 import '../widgets/schedule_budget_warning.dart';
 import '../widgets/schedule_category_card.dart';
 import '../widgets/schedule_category_form_dialog.dart';
@@ -94,6 +98,15 @@ class ScheduleCategoriesPage extends StatelessWidget {
                 ? () => _deleteCategory(context, vm, item.category)
                 : null,
             onAddTodo: vm.canEdit ? () => _addTodo(context, vm, item) : null,
+            onImportDupa: vm.canEdit
+                ? () => _importItemDupa(context, vm, item.category)
+                : null,
+            onViewDupa: vm.showCosts && item.category.hasDupaBreakdown
+                ? () => DupaBreakdownDialog.show(
+                    context,
+                    category: item.category,
+                  )
+                : null,
             onSetDone: vm.canMarkDone
                 ? (todo, done) => _report(context, vm.setDone(todo, done))
                 : null,
@@ -113,13 +126,21 @@ class ScheduleCategoriesPage extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
         ],
         if (vm.canEdit)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: enabled ? () => _addCategory(context, vm) : null,
-              icon: const Icon(Icons.add),
-              label: const Text('Add category'),
-            ),
+          Wrap(
+            spacing: AppSpacing.md,
+            runSpacing: AppSpacing.sm,
+            children: [
+              OutlinedButton.icon(
+                onPressed: enabled ? () => _addCategory(context, vm) : null,
+                icon: const Icon(Icons.add),
+                label: const Text('Add item of work'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: enabled ? () => _importItems(context, vm) : null,
+                icon: const Icon(Icons.upload_file_rounded, size: 18),
+                label: const Text('Import Excel'),
+              ),
+            ],
           ),
       ],
     );
@@ -134,6 +155,36 @@ class ScheduleCategoriesPage extends StatelessWidget {
     const SizedBox(height: AppSpacing.lg),
   ];
 
+  Future<void> _importItemDupa(
+    BuildContext context,
+    ScheduleViewModel vm,
+    Category category,
+  ) async {
+    final result = await DupaImportDialog.show(
+      context,
+      projectId: projectId,
+      categoryId: category.id,
+      categoryName: category.name,
+    );
+    if (result == null || !context.mounted) return;
+    showSuccessAlert(
+      context,
+      'Imported DUPA for ${category.name} '
+      '(${result.materialsImported} planned material${result.materialsImported == 1 ? '' : 's'}).',
+    );
+    await vm.load();
+  }
+
+  Future<void> _importItems(BuildContext context, ScheduleViewModel vm) async {
+    final count = await ItemsImportDialog.show(context, projectId: projectId);
+    if (count == null || !context.mounted) return;
+    showSuccessAlert(
+      context,
+      'Imported $count item${count == 1 ? '' : 's'} of work. View them on the Gantt chart.',
+    );
+    await vm.load();
+  }
+
   Future<void> _addCategory(BuildContext context, ScheduleViewModel vm) async {
     final result = await ScheduleCategoryFormDialog.show(
       context,
@@ -142,7 +193,12 @@ class ScheduleCategoriesPage extends StatelessWidget {
     if (result == null || !context.mounted) return;
     await _report(
       context,
-      vm.addCategory(name: result.name, budget: result.budget),
+      vm.addCategory(
+        name: result.name,
+        budget: result.budget,
+        plannedWeeks: result.plannedWeeks,
+        plannedDays: result.plannedDays,
+      ),
     );
   }
 
@@ -155,13 +211,21 @@ class ScheduleCategoriesPage extends StatelessWidget {
       context,
       initialName: category.name,
       initialBudget: category.budget,
+      initialWeeks: category.plannedWeeks,
+      initialDays: category.plannedDays,
       validateBudgetTotal: (budget) =>
           vm.validateBudgetTotal(budget, excludingCategoryId: category.id),
     );
     if (result == null || !context.mounted) return;
     await _report(
       context,
-      vm.updateCategory(category, name: result.name, budget: result.budget),
+      vm.updateCategory(
+        category,
+        name: result.name,
+        budget: result.budget,
+        plannedWeeks: result.plannedWeeks,
+        plannedDays: result.plannedDays,
+      ),
     );
   }
 
@@ -192,13 +256,17 @@ class ScheduleCategoriesPage extends StatelessWidget {
     CategoryProgress item,
   ) async {
     final project = vm.project!;
+    final firstDate = item.category.startDate ?? project.startDate;
+    final lastDate = item.category.endDate ?? project.targetEndDate;
     final result = await ScheduleTodoFormDialog.show(
       context,
       categoryName: item.category.name,
-      firstDate: project.startDate,
-      lastDate: project.targetEndDate,
-      validateDates: vm.validateTodoDates,
-      initialStart: item.endDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      validateDates: (s, e) =>
+          vm.validateTodoDates(s, e, category: item.category),
+      initialStart: firstDate,
+      initialEnd: lastDate,
     );
     if (result == null || !context.mounted) return;
     await _report(
@@ -219,12 +287,15 @@ class ScheduleCategoriesPage extends StatelessWidget {
     Todo todo,
   ) async {
     final project = vm.project!;
+    final firstDate = item.category.startDate ?? project.startDate;
+    final lastDate = item.category.endDate ?? project.targetEndDate;
     final result = await ScheduleTodoFormDialog.show(
       context,
       categoryName: item.category.name,
-      firstDate: project.startDate,
-      lastDate: project.targetEndDate,
-      validateDates: vm.validateTodoDates,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      validateDates: (s, e) =>
+          vm.validateTodoDates(s, e, category: item.category),
       initialTitle: todo.title,
       initialStart: todo.startDate,
       initialEnd: todo.endDate,

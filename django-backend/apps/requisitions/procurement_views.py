@@ -129,7 +129,8 @@ class MaterialRequestViewSet(ScopedViewSet):
         return Response({
             'request': MaterialRequestSerializer(material_request, context=context).data,
             'items': MaterialRequestItemSerializer(
-                material_request.items.all(), many=True,
+                material_request.items.select_related('planned_material').all(),
+                many=True,
             ).data,
             'counts': SiteCountSerializer(
                 material_request.counts.all(), many=True,

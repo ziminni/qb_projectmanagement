@@ -170,9 +170,11 @@ ProjectProgress computeProjectProgress({
         plannedProgress: categoryPlanned,
         weight: weight,
         status: _statusFor(verified, total),
-        startDate: total == 0 ? null : categoryTodos.first.startDate,
+        startDate: total == 0
+            ? category.startDate
+            : categoryTodos.first.startDate,
         endDate: total == 0
-            ? null
+            ? category.endDate
             : categoryTodos
                   .map((t) => t.endDate)
                   .reduce((a, b) => a.isAfter(b) ? a : b),

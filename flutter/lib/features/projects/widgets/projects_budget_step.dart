@@ -4,7 +4,9 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_radii.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/utils/input_parsers.dart';
+import '../../../data/models/planned_material.dart';
 import '../../../data/services/category_catalog_service.dart';
 import '../../../data/services/project_rules.dart';
 import 'projects_budget_summary.dart';
@@ -35,6 +37,7 @@ class ProjectsBudgetStep extends StatelessWidget {
     required this.retention,
     required this.contractLocked,
     required this.categories,
+    this.barChartPreview,
     required this.onAddCategory,
     required this.onRemoveCategory,
     required this.onChanged,
@@ -47,6 +50,7 @@ class ProjectsBudgetStep extends StatelessWidget {
 
   /// Null when editing: categories are then managed on the schedule tab.
   final List<ProjectsCategoryDraft>? categories;
+  final ItemsExcelPreview? barChartPreview;
   final ValueChanged<String> onAddCategory;
   final ValueChanged<int> onRemoveCategory;
   final VoidCallback onChanged;
@@ -121,7 +125,46 @@ class ProjectsBudgetStep extends StatelessWidget {
         const SizedBox(height: AppSpacing.xl),
         const Divider(),
         const SizedBox(height: AppSpacing.xl),
-        if (cats == null)
+        if (barChartPreview != null && barChartPreview!.items.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: const BoxDecoration(
+              color: AppColors.primaryContainer,
+              borderRadius: AppRadii.mdAll,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.table_chart_outlined,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${barChartPreview!.items.length} Items of Work ready from Bar Chart'
+                        '${barChartPreview!.sheet != null ? ' (${barChartPreview!.sheet})' : ''}',
+                        style: textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        barChartPreview!.totalBudget != null
+                            ? 'Total planned cost ${Formatters.peso(barChartPreview!.totalBudget!)} '
+                                  'was auto-filled into Contract amount above (editable). '
+                                  'All items and their Gantt bars will be created automatically.'
+                            : 'All items and their Gantt bars will be created automatically.',
+                        style: textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (cats == null)
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: const BoxDecoration(

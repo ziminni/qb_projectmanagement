@@ -21,6 +21,7 @@ import '../../../shared/widgets/app_vo_status_chip.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
 import '../viewmodels/variation_order_detail_viewmodel.dart';
 import '../widgets/vo_photo_attachments.dart';
+import '../widgets/vo_revised_schedule_section.dart';
 
 class VariationOrderDetailPage extends StatelessWidget {
   const VariationOrderDetailPage({super.key, required this.voId});
@@ -52,6 +53,19 @@ class VariationOrderDetailPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _ScopeSummaryCard(vo: v, showFinance: vm.role.seesFinance),
+            if (v.hasRevisedSchedule) ...[
+              const SizedBox(height: AppSpacing.lg),
+              AppSectionCard(
+                title: 'Revised Bar Chart & DUPA (A–J)',
+                icon: Icons.table_chart_outlined,
+                child: VoRevisedScheduleSection(
+                  projectId: v.projectId,
+                  revisedSchedule: v.revisedSchedule,
+                  showCosts: vm.role.seesFinance,
+                  editable: false,
+                ),
+              ),
+            ],
             if (v.hasAttachments) ...[
               const SizedBox(height: AppSpacing.lg),
               VoPhotoAttachmentsCard(vo: v),

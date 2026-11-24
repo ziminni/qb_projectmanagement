@@ -4,6 +4,9 @@ import '../../../data/repositories/procurement_repository.dart';
 class LineDraft {
   LineDraft({
     this.materialId,
+    this.plannedMaterialId,
+    this.isUnplanned = false,
+    this.overPlanReason = '',
     this.description = '',
     this.unit = '',
     this.quantity = 0,
@@ -12,6 +15,9 @@ class LineDraft {
   });
 
   int? materialId;
+  int? plannedMaterialId;
+  bool isUnplanned;
+  String overPlanReason;
   String description;
   String unit;
   double quantity;
@@ -26,6 +32,12 @@ class LineDraft {
 
   RequestLine toRequestLine() =>
       (description: description, unit: unit, quantity: quantity);
+
+  RequestLineLink toRequestLineLink() => (
+    plannedMaterialId: plannedMaterialId,
+    isUnplanned: isUnplanned,
+    overPlanReason: overPlanReason,
+  );
 
   OrderLine toOrderLine() => (
     materialId: materialId,

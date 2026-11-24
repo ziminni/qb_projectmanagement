@@ -13,6 +13,8 @@ import '../features/auth/views/choose_role_page.dart';
 import '../features/auth/views/module_settings_page.dart';
 import '../features/landing/views/landing_page.dart';
 import '../features/auth/views/profile_page.dart';
+import '../features/schedule/views/import_export_page.dart';
+import '../features/schedule/views/planned_materials_page.dart';
 import '../features/schedule/views/schedule_categories_page.dart';
 import '../features/schedule/views/schedule_gantt_page.dart';
 import '../features/schedule/views/schedule_projects_page.dart';
@@ -154,6 +156,7 @@ abstract final class AppRoutes {
   static const variationOrders = '/variation-orders';
   static const variationOrderNew = '/variation-orders/new';
   static String variationOrder(int id) => '$variationOrders/$id';
+  static const importExport = '/import-export';
   static const retention = '/retention';
   static const expenseReports = '/expense-reports';
 
@@ -191,6 +194,7 @@ final _projectTabPages = <ProjectTab, Widget Function(int projectId)>{
   ProjectTab.schedule: (id) => ScheduleCategoriesPage(projectId: id),
   ProjectTab.gantt: (id) => ScheduleGanttPage(projectId: id),
   ProjectTab.dailyReports: (id) => DailyReportsPage(projectId: id),
+  ProjectTab.plannedMaterials: (id) => PlannedMaterialsPage(projectId: id),
   ProjectTab.materials: (id) => ProjectMaterialsPage(projectId: id),
   ProjectTab.laborers: (id) => ProjectLaborersPage(projectId: id),
   ProjectTab.labor: (id) => ProjectLaborPage(projectId: id),
@@ -386,6 +390,7 @@ final _featureRoutes = <GoRoute>[
     (state) => BillingDetailPage(billingId: _id(state, 'billingId')),
   ),
   _route(AppRoutes.variationOrders, (_) => const VariationOrdersPage()),
+  _route(AppRoutes.importExport, (_) => const ImportExportPage()),
   _route(
     AppRoutes.variationOrderNew,
     (state) => VariationOrderFormPage(projectId: _queryId(state, 'projectId')),

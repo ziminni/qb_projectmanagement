@@ -4,6 +4,7 @@ import '../../../core/di/service_locator.dart';
 import '../../../core/utils/action_runner.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
+import '../../../data/models/json_utils.dart';
 import '../../../data/models/project.dart';
 import '../../../data/models/todo.dart';
 import '../../../data/models/variation_order.dart';
@@ -46,6 +47,9 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   final CompanyRepository _company;
   final BillingRepository? _billing;
 
+  static const int plannedVersionKey = -1;
+  static const int actualVersionKey = -2;
+
   bool _loading = true;
   String? _error;
   bool _assigned = false;
@@ -53,7 +57,7 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   List<Category> _categories = const [];
   List<Todo> _todos = const [];
   List<VariationOrder> _variationOrders = const [];
-  int? _selectedVoIndex;
+  int _selectedVersionKey = plannedVersionKey;
   ProjectProgress? _progress;
   final _userNames = <int, String>{};
   double _behindThreshold = 0.05;
@@ -68,22 +72,76 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   /// Non-rejected variation orders for this project, oldest first.
   List<VariationOrder> get variationOrders => _variationOrders;
 
-  /// Null means "Original"; 0..N-1 means cumulative up to Variation Order i+1.
-  int? get selectedVoIndex => _selectedVoIndex;
+  /// Active Gantt schedule version:
+  /// - [plannedVersionKey] (-1): relative `W1, W2, ...` planned bar chart
+  /// - [actualVersionKey] (-2): dated timeline starting from `project.timelineStartDate`
+  /// - `0..N-1`: cumulative up to Variation Order `i+1`
+  int get selectedVersionKey => _selectedVersionKey;
+
+  bool get isRelativePlannedView => _selectedVersionKey == plannedVersionKey;
+
+  bool get hasActualTimeline => _project?.timelineStartDate != null;
+
+  /// True when the Gantt should render relative `W1, W2, ...` headers:
+  /// always in `Planned` view, and also in VO views before an actual start
+  /// date has been set.
+  bool get isGanttRelativeMode =>
+      isRelativePlannedView || (!hasActualTimeline && selectedVariationOrder != null);
+
+  DateTime get effectiveProjectStart =>
+      _project!.timelineStartDate ?? _project!.startDate;
 
   VariationOrder? get selectedVariationOrder =>
-      _selectedVoIndex != null &&
-          _selectedVoIndex! >= 0 &&
-          _selectedVoIndex! < _variationOrders.length
-      ? _variationOrders[_selectedVoIndex!]
+      _selectedVersionKey >= 0 && _selectedVersionKey < _variationOrders.length
+      ? _variationOrders[_selectedVersionKey]
       : null;
 
-  /// Variation orders plotted on the Gantt chart for the active version tab.
+  /// Variation orders plotted as standalone VO bars (only for legacy VOs
+  /// without a full revised bar chart).
   List<VariationOrder> get visibleVariationOrders {
-    final idx = _selectedVoIndex;
-    if (idx == null || _variationOrders.isEmpty) return const [];
+    final idx = _selectedVersionKey;
+    if (idx < 0 || _variationOrders.isEmpty) return const [];
+    final selected = selectedVariationOrder;
+    if (selected != null && selected.hasRevisedSchedule) return const [];
     final end = (idx + 1).clamp(0, _variationOrders.length);
     return _variationOrders.sublist(0, end);
+  }
+
+  /// Project progress snapshot plotted on the Gantt chart: when a VO with a
+  /// revised Bar Chart is selected, plots that VO's full revised item timeline.
+  ProjectProgress get activeGanttProgress {
+    final vo = selectedVariationOrder;
+    if (vo == null || !vo.hasRevisedSchedule) return _progress!;
+    final baseDate = effectiveProjectStart;
+    final revisedCategories = <Category>[];
+    var order = 1;
+    for (final row in vo.revisedItems) {
+      if ('${row['status'] ?? ''}' == 'removed') continue;
+      final dayStart = (row['new_day_to_start'] as int?) ?? 1;
+      final dur = (row['new_days'] as int?) ?? 1;
+      final start = baseDate.add(Duration(days: dayStart - 1));
+      final end = start.add(Duration(days: dur - 1));
+      final catId = (row['baseline_category_id'] as int?) ?? -order;
+      revisedCategories.add(
+        Category(
+          id: catId,
+          projectId: projectId,
+          name: '${row['name'] ?? row['item_no'] ?? 'Item $order'}',
+          budget: JsonUtils.toDoubleOrNull(row['new_budget']),
+          plannedWeeks: row['planned_weeks'] as String?,
+          plannedDays: dur,
+          dayToStart: dayStart,
+          startDate: start,
+          endDate: end,
+          sortOrder: order++,
+        ),
+      );
+    }
+    return computeProjectProgress(
+      project: _project!,
+      categories: revisedCategories,
+      todos: _todos,
+    );
   }
 
   /// Total schedule day impact of the currently visible variation orders.
@@ -94,11 +152,17 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
   DateTime get effectiveProjectEnd =>
       _project!.targetEndDate.add(Duration(days: cumulativeVoDays));
 
-  void selectVoVersion(int? index) {
-    if (_selectedVoIndex == index) return;
-    _selectedVoIndex = index;
+  void selectScheduleVersion(int? key) {
+    if (key == null || _selectedVersionKey == key) return;
+    _selectedVersionKey = key;
     notifyListeners();
   }
+
+  Future<String?> startTimeline(DateTime startDate) => runAction(() async {
+    _project = await _schedule.startTimeline(projectId, startDate);
+    _selectedVersionKey = actualVersionKey;
+    await _refresh();
+  });
 
   String voVersionLabel(int index) {
     final vo = _variationOrders[index];
@@ -151,6 +215,9 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
         _error = 'You are not assigned to this project.';
         return;
       }
+      _selectedVersionKey = _project!.timelineStartDate != null
+          ? actualVersionKey
+          : plannedVersionKey;
       await _refresh();
       _behindThreshold =
           (await _company.getSettings()).behindScheduleThresholdPct / 100;
@@ -176,9 +243,11 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
                 .where((v) => v.status != VariationOrderStatus.rejected)
                 .toList()
               ..sort((a, b) => a.id.compareTo(b.id));
-        if (_selectedVoIndex != null &&
-            _selectedVoIndex! >= _variationOrders.length) {
-          _selectedVoIndex = null;
+        if (_selectedVersionKey >= 0 &&
+            _selectedVersionKey >= _variationOrders.length) {
+          _selectedVersionKey = hasActualTimeline
+              ? actualVersionKey
+              : plannedVersionKey;
         }
       } catch (_) {
         _variationOrders = const [];
@@ -204,12 +273,16 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
     );
   }
 
-  String? validateTodoDates(DateTime? start, DateTime? end) =>
-      ScheduleRules.validateTodoDates(
-        start: start,
-        end: end,
-        project: _project!,
-      );
+  String? validateTodoDates(
+    DateTime? start,
+    DateTime? end, {
+    Category? category,
+  }) => ScheduleRules.validateTodoDates(
+    start: start,
+    end: end,
+    project: _project!,
+    category: category,
+  );
 
   String? canDeleteCategory(Category category) =>
       ScheduleRules.canDeleteCategory(
@@ -218,9 +291,15 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
 
   // Actions. Each returns an error message, or null on success.
 
-  Future<String?> addCategory({required String name, double? budget}) {
+  Future<String?> addCategory({
+    required String name,
+    double? budget,
+    String? plannedWeeks,
+    int? plannedDays,
+  }) {
     final nextOrder =
         _categories.fold(0, (m, c) => c.sortOrder > m ? c.sortOrder : m) + 1;
+    final (startDate, endDate) = _datesForWeeksDays(plannedWeeks, plannedDays);
     return _run(() async {
       final saved = await _schedule.saveCategory(
         Category(
@@ -228,6 +307,10 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
           projectId: projectId,
           name: name,
           budget: budget,
+          plannedWeeks: plannedWeeks,
+          plannedDays: plannedDays,
+          startDate: startDate,
+          endDate: endDate,
           sortOrder: nextOrder,
         ),
       );
@@ -242,15 +325,53 @@ class ScheduleViewModel extends ChangeNotifier with ActionRunner {
     Category category, {
     required String name,
     double? budget,
-  }) => _run(() async {
-    final saved = await _schedule.saveCategory(
-      category.copyWith(name: name, budget: () => budget),
-    );
-    if (getIt.isRegistered<CategoryCatalogService>()) {
-      getIt<CategoryCatalogService>().register(name);
+    String? plannedWeeks,
+    int? plannedDays,
+  }) {
+    final (startDate, endDate) = _datesForWeeksDays(plannedWeeks, plannedDays);
+    return _run(() async {
+      final saved = await _schedule.saveCategory(
+        category.copyWith(
+          name: name,
+          budget: () => budget,
+          plannedWeeks: () => plannedWeeks,
+          plannedDays: () => plannedDays,
+          startDate: () => startDate ?? category.startDate,
+          endDate: () => endDate ?? category.endDate,
+        ),
+      );
+      if (getIt.isRegistered<CategoryCatalogService>()) {
+        getIt<CategoryCatalogService>().register(name);
+      }
+      return saved;
+    });
+  }
+
+  (DateTime?, DateTime?) _datesForWeeksDays(String? weeks, int? days) {
+    final base = _project?.startDate;
+    if (base == null) return (null, null);
+    final hasWeeks = weeks != null && weeks.trim().isNotEmpty;
+    if (!hasWeeks && days == null) return (null, null);
+    final matches = RegExp(r'\d+')
+        .allMatches(weeks ?? '')
+        .map((m) => int.parse(m.group(0)!))
+        .where((n) => n >= 1)
+        .toList();
+    final startWeek = matches.isNotEmpty ? matches.first : 1;
+    final endWeek = matches.length >= 2 && matches[1] >= startWeek
+        ? matches[1]
+        : null;
+    final start = base.add(Duration(days: (startWeek - 1) * 7));
+    final DateTime end;
+    if (days != null && days > 0) {
+      end = start.add(Duration(days: days - 1));
+    } else if (endWeek != null) {
+      end = base.add(Duration(days: endWeek * 7 - 1));
+    } else {
+      end = start.add(const Duration(days: 6));
     }
-    return saved;
-  });
+    return (start, end);
+  }
 
   Future<String?> deleteCategory(Category category) =>
       _run(() => _schedule.deleteCategory(category.id));

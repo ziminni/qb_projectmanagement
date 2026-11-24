@@ -1,4 +1,6 @@
 import '../../routes/routes.dart';
+import 'dart:typed_data';
+
 import '../models/app_role.dart';
 import '../models/payment.dart';
 import '../models/payment_method.dart';
@@ -372,10 +374,12 @@ class MockBillingRepository implements BillingRepository {
     BillingRules.enforce(BillingRules.validateVoDescription(vo.description));
     // Site engineers describe the change; costs are confidential, so the
     // owner prices it before sending it to the client.
-    if (isPm) {
+    if (isPm && !vo.hasRevisedSchedule) {
       BillingRules.enforce(BillingRules.validateVoAmount(vo.type, vo.amount));
     }
-    final amount = isPm ? BillingRules.signedAmount(vo.type, vo.amount) : 0.0;
+    final amount = vo.hasRevisedSchedule
+        ? vo.amount
+        : (isPm ? BillingRules.signedAmount(vo.type, vo.amount) : 0.0);
     BillingRules.enforce(
       BillingRules.validateContractAfterVo(
         contractAmount: project.contractAmount,
@@ -423,6 +427,73 @@ class MockBillingRepository implements BillingRepository {
     _vos[i] = updated;
     return updated;
   }
+
+  @override
+  Future<Map<String, dynamic>> previewVoBarChart(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    String? sheetName,
+  }) async => {
+    'sheet': sheetName ?? 'REVISED +23cd',
+    'sheets': ['REVISED', 'REVISED +23cd'],
+    'format': 'bar_chart',
+    'baseline_days': 120,
+    'revised_days': 143,
+    'days_impact': 23,
+    'total_additives': '0.00',
+    'total_deductives': '0.00',
+    'net_cost_impact': '0.00',
+    'changed_count': 1,
+    'items': [
+      {
+        'item_no': '1046(1)a1',
+        'name': '1046(1)a1 — Masonry Works',
+        'status': 'schedule_changed',
+        'old_budget': '62223.03',
+        'new_budget': '62223.03',
+        'cost_delta': '0.00',
+        'old_day_to_start': 96,
+        'new_day_to_start': 119,
+        'old_days': 5,
+        'new_days': 5,
+        'planned_weeks': 'Week 17-18',
+        'dupa_breakdown': null,
+        'dupa_materials': const <Map<String, dynamic>>[],
+      },
+    ],
+  };
+
+  @override
+  Future<Map<String, dynamic>> previewVoDupa({
+    required String fileName,
+    required Uint8List bytes,
+    String? itemNo,
+    String? sheetName,
+  }) async => {
+    'sheet': sheetName ?? (itemNo ?? 'B.7(2)'),
+    'sheets': [sheetName ?? (itemNo ?? 'B.7(2)')],
+    'item': {
+      'sheet': sheetName ?? (itemNo ?? 'B.7(2)'),
+      'item_no': itemNo ?? 'B.7(2)',
+      'name': '${itemNo ?? 'B.7(2)'} — Revised DUPA',
+      'budget': '100913.40',
+      'labor_budget': '60000.00',
+      'equipment_budget': '0.00',
+      'material_budget': '20090.00',
+      'dupa_breakdown': {
+        'sub_total_a': '60000.00',
+        'sub_total_b': '0.00',
+        'sub_total_c': '20090.00',
+        'direct_cost': '80090.00',
+        'total_adjusted_cost': '100913.40',
+        'labor': const <Map<String, dynamic>>[],
+        'equipment': const <Map<String, dynamic>>[],
+        'materials': const <Map<String, dynamic>>[],
+      },
+      'materials': const <Map<String, dynamic>>[],
+    },
+  };
 
   @override
   Future<VariationOrder> submitVariationOrder(

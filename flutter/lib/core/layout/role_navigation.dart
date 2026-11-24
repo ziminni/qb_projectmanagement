@@ -84,6 +84,12 @@ abstract final class RoleNavigation {
         group: 'Projects',
       ),
       RoleDestination(
+        'Import & export',
+        Icons.import_export_rounded,
+        AppRoutes.importExport,
+        group: 'Projects',
+      ),
+      RoleDestination(
         'Purchasing',
         Icons.shopping_cart_outlined,
         AppRoutes.requestQueue,

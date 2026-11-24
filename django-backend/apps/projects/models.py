@@ -181,6 +181,11 @@ class Project(models.Model):
         help_text='Retention withheld from progress billings (%).',
     )
     start_date = models.DateField(null=True, blank=True)
+    timeline_start_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Chosen actual start date (Notice to Proceed) that maps the relative W1/W2 plan onto real calendar dates.',
+    )
     target_end_date = models.DateField(null=True, blank=True)
     actual_end_date = models.DateField(null=True, blank=True)
     status = models.CharField(
@@ -300,6 +305,12 @@ class Category(models.Model):
         on_delete=models.CASCADE,
         related_name='categories',
     )
+    item_no = models.CharField(
+        max_length=32,
+        blank=True,
+        default='',
+        help_text='Optional DPWH/BOQ item number, e.g. B.7(2) or 803(1)a.',
+    )
     name = models.CharField(max_length=255)
     budget = models.DecimalField(
         max_digits=14,
@@ -308,6 +319,61 @@ class Category(models.Model):
         blank=True,
         validators=[MinValueValidator(Decimal('0.00'))],
         help_text='Planned spend; finance-only, and drives the progress weight.',
+    )
+    labor_budget = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text='Optional DUPA Section A planned labor cost.',
+    )
+    equipment_budget = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text='Optional DUPA Section B planned equipment cost.',
+    )
+    material_budget = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text='Optional DUPA Section C planned material cost.',
+    )
+    dupa_breakdown = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='Full DPWH DUPA Sections A-J breakdown (Labor, Equipment, Materials, Direct Cost, OCM, Profit, VAT, Adjusted Cost).',
+    )
+    planned_weeks = models.CharField(
+        max_length=32,
+        blank=True,
+        default='',
+        help_text='Starting week or week range, e.g. "Week 1" or "2-3".',
+    )
+    planned_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='Duration of this item of work in calendar days.',
+    )
+    day_to_start = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='1-based starting day offset in the planned bar chart (Day 1 = W1).',
+    )
+    start_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Planned start date of this item of work (drives the Gantt bar before to-dos exist).',
+    )
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Planned end date of this item of work.',
     )
     sort_order = models.PositiveIntegerField(default=DEFAULT_SEQUENCE)
 
@@ -321,6 +387,56 @@ class Category(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.project_id})'
+
+
+class PlannedMaterial(models.Model):
+    """A planned Bill-of-Materials row under a project's Item of Work (DUPA Section C)."""
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='planned_materials',
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name='planned_materials',
+        null=True,
+        blank=True,
+    )
+    material_item = models.ForeignKey(
+        'apps_master_data.MaterialItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='planned_usages',
+    )
+    name = models.CharField(max_length=255)
+    unit = models.CharField(max_length=32, default='pcs')
+    planned_qty = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    unit_cost = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+    )
+    sort_order = models.PositiveIntegerField(default=DEFAULT_SEQUENCE)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('category__sort_order', 'sort_order', 'id')
+        verbose_name = 'Planned Material'
+        verbose_name_plural = 'Planned Materials'
+        indexes = [models.Index(fields=['project', 'category'])]
+
+    def __str__(self):
+        return f'{self.name} ({self.planned_qty} {self.unit})'
 
 
 class Todo(models.Model):

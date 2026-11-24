@@ -23,9 +23,10 @@ import '../widgets/procurement_order_confirm_dialog.dart';
 /// The "Own hardware store" tab: the owner matches each requested item to a
 /// store product (at the store's price), and says where to deliver.
 class OwnStoreOrderForm extends StatefulWidget {
-  const OwnStoreOrderForm({super.key, required this.requestId});
+  const OwnStoreOrderForm({super.key, required this.requestId, this.onSaved});
 
   final int requestId;
+  final VoidCallback? onSaved;
 
   @override
   State<OwnStoreOrderForm> createState() => _OwnStoreOrderFormState();
@@ -63,8 +64,14 @@ class _OwnStoreOrderFormState extends State<OwnStoreOrderForm> {
           ? 'Ordered from own store. Every requested item is covered.'
           : 'Ordered from own store. Add another order for the rest if needed.',
     );
-    // Back to the request, where the rest can go to the other source.
-    if (ok && mounted) context.go(AppRoutes.materialRequest(widget.requestId));
+    // Back to the request (or modal caller), where the rest can go to the other source.
+    if (ok && mounted) {
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      } else {
+        context.go(AppRoutes.materialRequest(widget.requestId));
+      }
+    }
   }
 
   @override

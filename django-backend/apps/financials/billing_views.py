@@ -399,6 +399,8 @@ class VariationOrderViewSet(viewsets.GenericViewSet,
         }
         if 'amount' in request.data:
             data['amount'] = request.data['amount']
+        if 'revised_schedule' in request.data:
+            data['revised_schedule'] = request.data['revised_schedule']
         if 'primary_attachments' in request.data:
             data['primary_attachments'] = request.data['primary_attachments']
         if 'secondary_attachments' in request.data:
@@ -411,6 +413,111 @@ class VariationOrderViewSet(viewsets.GenericViewSet,
             priced_by_owner=self.priced_by_owner(project), vo=order,
         )
         return Response(wire.VariationOrderSerializer(order).data)
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='preview-bar-chart',
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def preview_bar_chart(self, request):
+        """Parse a revised Bar Chart `.xlsx` (with sheet selector) and diff it against the project."""
+        from ..projects import dupa_importer
+
+        role = self.role()
+        if role not in (Role.OWNER, Role.SITE_ENGINEER):
+            raise NotAllowed(rules.SE_OR_OWNER_PROPOSES)
+        project = scoping.project_or_404(
+            request.user, role, project_id_from(request.data, 'project_id'),
+        )
+        upload = request.FILES.get('file')
+        if upload is None:
+            raise RuleRefused('Upload a revised Bar Chart Excel (.xlsx) file.')
+        sheet_name = (
+            request.query_params.get('sheet') or request.data.get('sheet') or ''
+        ).strip() or None
+        base_date = project.timeline_start_date or project.start_date
+        try:
+            parsed = dupa_importer.parse_items_schedule_workbook(
+                upload.read(), base_date, sheet_name=sheet_name,
+            )
+        except ValueError as exc:
+            raise RuleRefused(str(exc)) from exc
+        if not parsed['items']:
+            raise RuleRefused('No Items of Work rows were found on that sheet.')
+        return Response(billing_services.diff_bar_chart_against_project(project, parsed))
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='preview-dupa',
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def preview_dupa(self, request):
+        """Parse a DUPA `.xlsx` (with sheet selector) for one flagged VO item."""
+        from ..projects import dupa_importer
+
+        role = self.role()
+        if role != Role.OWNER:
+            raise NotAllowed(rules.OWNER_PRICING)
+        upload = request.FILES.get('file')
+        if upload is None:
+            raise RuleRefused('Upload a DUPA Excel (.xlsx) file.')
+        sheet_name = (
+            request.query_params.get('sheet') or request.data.get('sheet') or ''
+        ).strip() or None
+        item_no_hint = (
+            request.query_params.get('item_no') or request.data.get('item_no') or ''
+        ).strip()
+        try:
+            parsed = dupa_importer.parse_dupa_xlsx(upload.read())
+        except ValueError as exc:
+            raise RuleRefused(str(exc)) from exc
+        if not parsed:
+            raise RuleRefused('No DUPA sheets were found in that workbook.')
+
+        def _norm(v):
+            return ''.join((v or '').lower().split())
+
+        chosen = None
+        if sheet_name:
+            for item in parsed:
+                if item['sheet'] == sheet_name:
+                    chosen = item
+                    break
+        if chosen is None and item_no_hint:
+            want = _norm(item_no_hint)
+            for item in parsed:
+                if _norm(item['item_no']) == want:
+                    chosen = item
+                    break
+        if chosen is None:
+            chosen = parsed[0]
+
+        return Response({
+            'sheet': chosen['sheet'],
+            'sheets': [p['sheet'] for p in parsed],
+            'item': {
+                'sheet': chosen['sheet'],
+                'item_no': chosen['item_no'],
+                'name': chosen['name'],
+                'budget': str(chosen['budget']) if chosen['budget'] is not None else None,
+                'labor_budget': str(chosen['labor_budget']) if chosen['labor_budget'] is not None else None,
+                'equipment_budget': str(chosen['equipment_budget']) if chosen['equipment_budget'] is not None else None,
+                'material_budget': str(chosen['material_budget']) if chosen['material_budget'] is not None else None,
+                'dupa_breakdown': chosen['dupa_breakdown'],
+                'materials': [
+                    {
+                        'name': m['name'],
+                        'unit': m['unit'],
+                        'planned_qty': str(m['planned_qty']),
+                        'unit_cost': str(m['unit_cost']),
+                        'amount': str((m['planned_qty'] * m['unit_cost']).quantize(Decimal('0.01'))),
+                    }
+                    for m in chosen['materials']
+                ],
+            },
+        })
 
     # -- photo uploads (stored in private MEDIA_ROOT/vo_photos) ---------------
 

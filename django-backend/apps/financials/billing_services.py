@@ -269,40 +269,234 @@ def release_retention(user, project, amount, released_on, method, reference_no='
 # --- Variation orders --------------------------------------------------------
 
 
+def _norm_key(val):
+    return ''.join((val or '').lower().split())
+
+
+def _to_dec(val):
+    if val is None or val == '':
+        return Decimal('0.00')
+    try:
+        return Decimal(str(val)).quantize(Decimal('0.01'))
+    except Exception:
+        return Decimal('0.00')
+
+
+def diff_bar_chart_against_project(project, parsed_result):
+    """Compare a parsed revised bar chart against `project.categories`."""
+    from datetime import timedelta
+
+    base_date = project.timeline_start_date or project.start_date
+    existing = list(project.categories.all().order_by('sort_order', 'id'))
+    by_item_no = {}
+    by_name = {}
+    baseline_days = 0
+
+    for cat in existing:
+        if cat.item_no:
+            by_item_no[_norm_key(cat.item_no)] = cat
+        by_name[_norm_key(cat.name)] = cat
+        d_start = cat.day_to_start
+        if d_start is None and cat.start_date and base_date:
+            d_start = max(1, (cat.start_date - base_date).days + 1)
+        dur = cat.planned_days
+        if dur is None and cat.start_date and cat.end_date:
+            dur = max(1, (cat.end_date - cat.start_date).days + 1)
+        if d_start and dur:
+            baseline_days = max(baseline_days, d_start + dur - 1)
+
+    matched_ids = set()
+    diff_items = []
+    revised_days = 0
+    total_additives = Decimal('0.00')
+    total_deductives = Decimal('0.00')
+
+    for item in parsed_result['items']:
+        item_no = (item.get('item_no') or '').strip()
+        name = (item.get('name') or '').strip()
+        new_budget = _to_dec(item.get('budget')) if item.get('budget') is not None else None
+        new_start = item.get('day_to_start') or 1
+        new_days = item.get('planned_days') or 1
+        revised_days = max(revised_days, new_start + new_days - 1)
+
+        matched = None
+        if item_no and _norm_key(item_no) in by_item_no:
+            matched = by_item_no[_norm_key(item_no)]
+        elif name and _norm_key(name) in by_name:
+            matched = by_name[_norm_key(name)]
+
+        start_dt = item.get('start_date')
+        end_dt = item.get('end_date')
+        if start_dt is None and base_date:
+            start_dt = base_date + timedelta(days=new_start - 1)
+            end_dt = start_dt + timedelta(days=new_days - 1)
+
+        if matched is None:
+            cost_delta = new_budget or Decimal('0.00')
+            if cost_delta > 0:
+                total_additives += cost_delta
+            diff_items.append({
+                'item_no': item_no,
+                'name': name,
+                'status': 'added',
+                'baseline_category_id': None,
+                'old_budget': None,
+                'new_budget': str(new_budget) if new_budget is not None else None,
+                'cost_delta': str(cost_delta),
+                'old_day_to_start': None,
+                'new_day_to_start': new_start,
+                'old_days': None,
+                'new_days': new_days,
+                'planned_weeks': item.get('planned_weeks') or '',
+                'start_date': start_dt.isoformat() if start_dt else None,
+                'end_date': end_dt.isoformat() if end_dt else None,
+                'dupa_breakdown': None,
+                'dupa_materials': [],
+            })
+            continue
+
+        matched_ids.add(matched.pk)
+        old_budget = _to_dec(matched.budget) if matched.budget is not None else Decimal('0.00')
+        eff_new_budget = new_budget if new_budget is not None else old_budget
+        cost_delta = (eff_new_budget - old_budget).quantize(Decimal('0.01'))
+        if cost_delta > 0:
+            total_additives += cost_delta
+        elif cost_delta < 0:
+            total_deductives += abs(cost_delta)
+
+        old_start = matched.day_to_start
+        if old_start is None and matched.start_date and base_date:
+            old_start = max(1, (matched.start_date - base_date).days + 1)
+        old_days = matched.planned_days
+        if old_days is None and matched.start_date and matched.end_date:
+            old_days = max(1, (matched.end_date - matched.start_date).days + 1)
+
+        cost_changed = abs(cost_delta) >= Decimal('0.01')
+        sched_changed = (old_start != new_start) or (old_days != new_days)
+        if cost_changed and sched_changed:
+            change_status = 'cost_and_schedule_changed'
+        elif cost_changed:
+            change_status = 'cost_changed'
+        elif sched_changed:
+            change_status = 'schedule_changed'
+        else:
+            change_status = 'unchanged'
+
+        diff_items.append({
+            'item_no': item_no or matched.item_no,
+            'name': name or matched.name,
+            'status': change_status,
+            'baseline_category_id': matched.pk,
+            'old_budget': str(old_budget),
+            'new_budget': str(eff_new_budget),
+            'cost_delta': str(cost_delta),
+            'old_day_to_start': old_start,
+            'new_day_to_start': new_start,
+            'old_days': old_days,
+            'new_days': new_days,
+            'planned_weeks': item.get('planned_weeks') or matched.planned_weeks,
+            'start_date': start_dt.isoformat() if start_dt else None,
+            'end_date': end_dt.isoformat() if end_dt else None,
+            'dupa_breakdown': None,
+            'dupa_materials': [],
+        })
+
+    # Any existing category not in the revised bar chart → removed
+    for cat in existing:
+        if cat.pk in matched_ids:
+            continue
+        old_budget = _to_dec(cat.budget) if cat.budget is not None else Decimal('0.00')
+        if old_budget > 0:
+            total_deductives += old_budget
+        diff_items.append({
+            'item_no': cat.item_no,
+            'name': cat.name,
+            'status': 'removed',
+            'baseline_category_id': cat.pk,
+            'old_budget': str(old_budget),
+            'new_budget': '0.00',
+            'cost_delta': str(-old_budget),
+            'old_day_to_start': cat.day_to_start,
+            'new_day_to_start': None,
+            'old_days': cat.planned_days,
+            'new_days': None,
+            'planned_weeks': cat.planned_weeks,
+            'start_date': None,
+            'end_date': None,
+            'dupa_breakdown': None,
+            'dupa_materials': [],
+        })
+
+    days_impact = (revised_days - baseline_days) if baseline_days > 0 else 0
+    net_cost_impact = (total_additives - total_deductives).quantize(Decimal('0.01'))
+
+    return {
+        'sheet': parsed_result['sheet'],
+        'sheets': parsed_result['sheets'],
+        'format': parsed_result['format'],
+        'baseline_days': baseline_days,
+        'revised_days': revised_days,
+        'days_impact': days_impact,
+        'total_additives': str(total_additives),
+        'total_deductives': str(total_deductives),
+        'net_cost_impact': str(net_cost_impact),
+        'changed_count': sum(1 for i in diff_items if i['status'] != 'unchanged'),
+        'items': diff_items,
+    }
+
+
 def save_vo(user, project, payload, priced_by_owner, vo=None):
     """Create (`vo is None`) or edit a **proposed** variation order.
 
     A site engineer proposes the change and never prices it: the amount is
     stored as `0.00` for a new VO, and an existing amount is left untouched.
+    When `revised_schedule` (from a revised Bar Chart + DUPA diff) is attached,
+    `amount` and `days_impact` are derived automatically from the diff.
     """
     description = str(payload.get('description') or '').strip()
     _require(rules.validate_vo_description(description))
     vo_type = payload.get('type') or (vo.type if vo else None)
-    days_impact = payload.get('days_impact', vo.days_impact if vo else 0)
-    repriced = priced_by_owner and 'amount' in payload
+    revised_schedule = payload.get('revised_schedule')
+    has_revised = isinstance(revised_schedule, dict) and bool(revised_schedule.get('items'))
+
+    if has_revised:
+        days_impact = int(revised_schedule.get('days_impact') or 0)
+        derived_net = _to_dec(revised_schedule.get('net_cost_impact'))
+    else:
+        days_impact = payload.get('days_impact', vo.days_impact if vo else 0)
+        derived_net = None
+
+    repriced = priced_by_owner and ('amount' in payload or has_revised)
 
     with transaction.atomic():
         project = _locked_project(project)
         total_billed = billing_math.previous_gross(project)
 
         if vo is None:
-            amount = (
-                rules.signed_amount(vo_type, payload['amount'])
-                if priced_by_owner else Decimal('0.00')
-            )
+            if has_revised:
+                amount = derived_net
+            else:
+                amount = (
+                    rules.signed_amount(vo_type, payload['amount'])
+                    if priced_by_owner else Decimal('0.00')
+                )
         else:
             vo = VariationOrder.objects.select_for_update().get(pk=vo.pk)
             if vo.status != VariationOrderStatus.PROPOSED:
                 _refuse(rules.VO_EDIT_PROPOSED)
-            amount = (
-                rules.signed_amount(vo_type, payload['amount'])
-                if repriced else vo.amount
-            )
+            if has_revised:
+                amount = derived_net
+            else:
+                amount = (
+                    rules.signed_amount(vo_type, payload['amount'])
+                    if repriced else vo.amount
+                )
 
-        if vo is None and priced_by_owner:
-            _require(rules.validate_vo_amount(vo_type, payload.get('amount')))
-        if repriced:
-            _require(rules.validate_vo_amount(vo_type, payload['amount']))
+        if not has_revised:
+            if vo is None and priced_by_owner:
+                _require(rules.validate_vo_amount(vo_type, payload.get('amount')))
+            if repriced:
+                _require(rules.validate_vo_amount(vo_type, payload['amount']))
         _require(rules.validate_contract_after_vo(
             project.contract_amount, amount, total_billed,
         ))
@@ -328,6 +522,7 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
                 days_impact=days_impact,
                 work_start_date=work_start_date,
                 work_end_date=work_end_date,
+                revised_schedule=revised_schedule if has_revised else {},
                 primary_attachments=primary_attachments,
                 secondary_attachments=secondary_attachments,
                 status=VariationOrderStatus.PROPOSED,
@@ -344,6 +539,8 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
             vo.description = description
             vo.amount = amount
             vo.days_impact = days_impact
+            if 'revised_schedule' in payload:
+                vo.revised_schedule = revised_schedule if isinstance(revised_schedule, dict) else {}
             if 'work_start_date' in payload:
                 vo.work_start_date = work_start_date
             if 'work_end_date' in payload:
@@ -354,7 +551,7 @@ def save_vo(user, project, payload, priced_by_owner, vo=None):
                 vo.secondary_attachments = secondary_attachments
             vo.save(update_fields=[
                 'type', 'description', 'amount', 'days_impact',
-                'work_start_date', 'work_end_date',
+                'work_start_date', 'work_end_date', 'revised_schedule',
                 'primary_attachments', 'secondary_attachments', 'updated_at',
             ])
             user_services.record(user, 'vo_updated', 'variation_order', vo.pk)
@@ -370,7 +567,8 @@ def submit_vo(user, vo):
         vo = _locked_vo(vo)
         if vo.status != VariationOrderStatus.PROPOSED:
             _refuse(rules.VO_SUBMIT_PROPOSED)
-        if rules.validate_vo_amount(vo.type, abs(vo.amount)) is not None:
+        has_revised = isinstance(vo.revised_schedule, dict) and bool(vo.revised_schedule.get('items'))
+        if not has_revised and rules.validate_vo_amount(vo.type, abs(vo.amount)) is not None:
             _refuse(rules.VO_PRICE_REQUIRED)
         vo.status = VariationOrderStatus.PENDING_CLIENT
         vo.approved_by_owner = user
@@ -397,14 +595,132 @@ def owner_reject_vo(user, vo, reason):
     return vo
 
 
-def client_approve_vo(user, vo):
-    """Record client approval on a variation order without mutating the project.
+def _apply_revised_schedule(project, vo):
+    """Apply flagged revised bar-chart + DUPA changes onto the project's items of work.
 
-    The **project** row is locked first, then the VO row — the same order as
-    `save_vo`, so a concurrent owner edit cannot deadlock against this approval.
-    Variation orders are kept self-contained as scope-change logs, so the
-    project's contract amount and target end date remain unchanged.
+    Unchanged items stay completely untouched (preserving all existing to-dos).
     """
+    from datetime import date, timedelta
+    from ..master_data.models import MaterialItem
+    from ..projects.models import Category, PlannedMaterial
+
+    sched = vo.revised_schedule if isinstance(vo.revised_schedule, dict) else {}
+    items = sched.get('items') or []
+    if not items:
+        return
+
+    base_date = project.timeline_start_date or project.start_date
+    master_by_name = {
+        m.name.strip().lower(): m for m in MaterialItem.objects.all()
+    }
+    next_sort = (project.categories.count() or 0) + 1
+
+    def _parse_iso(val):
+        if not val:
+            return None
+        try:
+            return date.fromisoformat(str(val)[:10])
+        except ValueError:
+            return None
+
+    for row in items:
+        status = row.get('status') or 'unchanged'
+        if status == 'unchanged':
+            continue
+
+        cat_id = row.get('baseline_category_id')
+        cat = Category.objects.filter(pk=cat_id, project=project).first() if cat_id else None
+
+        if status == 'removed':
+            if cat is None:
+                continue
+            if cat.todos.filter(is_verified=True).exists():
+                cat.budget = Decimal('0.00')
+                cat.save(update_fields=['budget', 'updated_at'])
+            else:
+                cat.delete()
+            continue
+
+        new_start = row.get('new_day_to_start')
+        new_days = row.get('new_days')
+        start_dt = _parse_iso(row.get('start_date'))
+        end_dt = _parse_iso(row.get('end_date'))
+        if start_dt is None and base_date and new_start and new_days:
+            start_dt = base_date + timedelta(days=int(new_start) - 1)
+            end_dt = start_dt + timedelta(days=int(new_days) - 1)
+
+        new_budget = _to_dec(row.get('new_budget')) if row.get('new_budget') is not None else None
+        dupa = row.get('dupa_breakdown') if isinstance(row.get('dupa_breakdown'), dict) else None
+        dupa_mats = row.get('dupa_materials') if isinstance(row.get('dupa_materials'), list) else []
+
+        if status == 'added' or cat is None:
+            cat = Category.objects.create(
+                project=project,
+                item_no=(row.get('item_no') or '')[:32],
+                name=(row.get('name') or row.get('item_no') or 'Added item')[:255],
+                budget=new_budget,
+                labor_budget=_to_dec(dupa.get('sub_total_a')) if dupa and dupa.get('sub_total_a') is not None else None,
+                equipment_budget=_to_dec(dupa.get('sub_total_b')) if dupa and dupa.get('sub_total_b') is not None else None,
+                material_budget=_to_dec(dupa.get('sub_total_c')) if dupa and dupa.get('sub_total_c') is not None else None,
+                dupa_breakdown=dupa,
+                planned_weeks=(row.get('planned_weeks') or '')[:32],
+                planned_days=int(new_days) if new_days else None,
+                day_to_start=int(new_start) if new_start else None,
+                start_date=start_dt,
+                end_date=end_dt,
+                sort_order=next_sort,
+            )
+            next_sort += 1
+        else:
+            update_fields = ['updated_at']
+            if new_budget is not None:
+                cat.budget = new_budget
+                update_fields.append('budget')
+            if new_start is not None:
+                cat.day_to_start = int(new_start)
+                update_fields.append('day_to_start')
+            if new_days is not None:
+                cat.planned_days = int(new_days)
+                update_fields.append('planned_days')
+            if row.get('planned_weeks'):
+                cat.planned_weeks = str(row['planned_weeks'])[:32]
+                update_fields.append('planned_weeks')
+            if start_dt is not None:
+                cat.start_date = start_dt
+                update_fields.append('start_date')
+            if end_dt is not None:
+                cat.end_date = end_dt
+                update_fields.append('end_date')
+            if dupa is not None:
+                cat.dupa_breakdown = dupa
+                cat.labor_budget = _to_dec(dupa.get('sub_total_a')) if dupa.get('sub_total_a') is not None else cat.labor_budget
+                cat.equipment_budget = _to_dec(dupa.get('sub_total_b')) if dupa.get('sub_total_b') is not None else cat.equipment_budget
+                cat.material_budget = _to_dec(dupa.get('sub_total_c')) if dupa.get('sub_total_c') is not None else cat.material_budget
+                update_fields.extend(['dupa_breakdown', 'labor_budget', 'equipment_budget', 'material_budget'])
+            cat.save(update_fields=list(dict.fromkeys(update_fields)))
+
+        if dupa is not None:
+            PlannedMaterial.objects.filter(project=project, category=cat).delete()
+            mats_source = dupa_mats or (dupa.get('materials') or [])
+            for m_idx, mat in enumerate(mats_source, start=1):
+                m_name = str(mat.get('name') or '').strip()
+                if not m_name:
+                    continue
+                master = master_by_name.get(m_name.lower())
+                PlannedMaterial.objects.create(
+                    project=project,
+                    category=cat,
+                    material_item=master,
+                    name=m_name[:255],
+                    unit=str(mat.get('unit') or 'pcs')[:32],
+                    planned_qty=_to_dec(mat.get('planned_qty') or mat.get('qty')),
+                    unit_cost=_to_dec(mat.get('unit_cost')),
+                    sort_order=m_idx,
+                )
+
+
+def client_approve_vo(user, vo):
+    """Record client approval on a variation order and apply any revised bar chart/DUPA."""
     with transaction.atomic():
         project = Project.objects.select_for_update().get(pk=vo.project_id)
         vo = _locked_vo(vo)
@@ -418,6 +734,7 @@ def client_approve_vo(user, vo):
         vo.status = VariationOrderStatus.APPROVED
         vo.approved_by_client = user
         vo.save(update_fields=['status', 'approved_by_client', 'updated_at'])
+        _apply_revised_schedule(project, vo)
 
         user_services.record(user, 'vo_client_approved', 'variation_order', vo.pk)
         _tell(

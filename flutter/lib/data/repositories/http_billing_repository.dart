@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -331,6 +333,7 @@ class HttpBillingRepository implements BillingRepository {
       'days_impact': vo.daysImpact,
       'work_start_date': JsonUtils.fromDateOrNull(vo.workStartDate),
       'work_end_date': JsonUtils.fromDateOrNull(vo.workEndDate),
+      if (vo.revisedSchedule != null) 'revised_schedule': vo.revisedSchedule,
       if (_client.seesFinance) 'amount': vo.amount,
       'primary_attachments': primary,
       'secondary_attachments': secondary,
@@ -344,6 +347,40 @@ class HttpBillingRepository implements BillingRepository {
       secondary: List<String>.unmodifiable(secondary),
     );
     return _mergeAttachments(saved);
+  }
+
+  @override
+  Future<Map<String, dynamic>> previewVoBarChart(
+    int projectId, {
+    required String fileName,
+    required Uint8List bytes,
+    String? sheetName,
+  }) async {
+    final form = FormData.fromMap({
+      'project_id': '$projectId',
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      if (sheetName != null && sheetName.isNotEmpty) 'sheet': sheetName,
+    });
+    return jsonObject(
+      await _client.post('variation-orders/preview-bar-chart/', body: form),
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> previewVoDupa({
+    required String fileName,
+    required Uint8List bytes,
+    String? itemNo,
+    String? sheetName,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      if (itemNo != null && itemNo.isNotEmpty) 'item_no': itemNo,
+      if (sheetName != null && sheetName.isNotEmpty) 'sheet': sheetName,
+    });
+    return jsonObject(
+      await _client.post('variation-orders/preview-dupa/', body: form),
+    );
   }
 
   @override

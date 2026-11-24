@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -6,9 +8,11 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/layout/project_tabs.dart';
+import '../../../core/platform/desktop_files.dart';
 import '../../../core/utils/app_messages.dart';
 import '../../../core/utils/input_parsers.dart';
 import '../../../core/utils/page_padding.dart';
+import '../../../data/models/planned_material.dart';
 import '../../../data/services/project_rules.dart';
 import '../../../routes/routes.dart';
 import '../../../shared/widgets/app_action_bar.dart';
@@ -71,6 +75,12 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
   int? _siteEngineerId;
   LatLng? _pin;
   String? _dateError;
+  String? _barChartFileName;
+  Uint8List? _barChartBytes;
+  ItemsExcelPreview? _barChartPreview;
+  String? _barChartSheet;
+  bool _barChartLoading = false;
+  String? _barChartError;
 
   late final _vm = ProjectFormViewModel(
     projectId: widget.projectId,
@@ -101,9 +111,16 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
           _end = p.targetEndDate;
           _clientId = p.clientId;
           if (p.hasPin) _pin = LatLng(p.latitude!, p.longitude!);
-        } else if (s != null) {
-          _downPayment.text = InputParsers.amountText(s.defaultDownPaymentPct);
-          _retention.text = InputParsers.amountText(s.defaultRetentionPct);
+        } else {
+          if (_code.text.isEmpty && _vm.suggestedCode != null) {
+            _code.text = _vm.suggestedCode!;
+          }
+          if (s != null) {
+            _downPayment.text = InputParsers.amountText(
+              s.defaultDownPaymentPct,
+            );
+            _retention.text = InputParsers.amountText(s.defaultRetentionPct);
+          }
         }
       });
     });
@@ -144,6 +161,107 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
       }
       _dateError = null;
     });
+    if (start && _barChartBytes != null && _barChartFileName != null) {
+      await _loadBarChartPreview(
+        fileName: _barChartFileName!,
+        bytes: _barChartBytes!,
+        startDate: picked,
+        sheetName: _barChartSheet,
+      );
+    }
+  }
+
+  Future<void> _pickBarChart() async {
+    final start = _start;
+    if (start == null) return;
+    setState(() {
+      _barChartError = null;
+      _barChartLoading = true;
+    });
+    try {
+      final picked = await pickSpreadsheetFile();
+      if (picked == null) {
+        if (mounted) setState(() => _barChartLoading = false);
+        return;
+      }
+      await _loadBarChartPreview(
+        fileName: picked.name,
+        bytes: picked.bytes,
+        startDate: start,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _barChartError = '$e';
+        _barChartLoading = false;
+      });
+    }
+  }
+
+  Future<void> _switchBarChartSheet(String sheet) async {
+    if (_start == null ||
+        _barChartBytes == null ||
+        _barChartFileName == null ||
+        sheet == _barChartSheet) {
+      return;
+    }
+    await _loadBarChartPreview(
+      fileName: _barChartFileName!,
+      bytes: _barChartBytes!,
+      startDate: _start!,
+      sheetName: sheet,
+    );
+  }
+
+  Future<void> _loadBarChartPreview({
+    required String fileName,
+    required Uint8List bytes,
+    required DateTime startDate,
+    String? sheetName,
+  }) async {
+    setState(() {
+      _barChartError = null;
+      _barChartLoading = true;
+    });
+    try {
+      final preview = await _vm.previewBarChart(
+        fileName: fileName,
+        bytes: bytes,
+        startDate: startDate,
+        sheetName: sheetName,
+      );
+      if (!mounted) return;
+      setState(() {
+        _barChartFileName = fileName;
+        _barChartBytes = bytes;
+        _barChartPreview = preview;
+        _barChartSheet = preview.sheet;
+        _barChartLoading = false;
+        if (preview.targetEndDate != null) {
+          _end = preview.targetEndDate;
+          _dateError = null;
+        }
+        if (preview.totalBudget != null && preview.totalBudget! > 0) {
+          _contract.text = InputParsers.amountText(preview.totalBudget!);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _barChartError = '$e';
+        _barChartLoading = false;
+      });
+    }
+  }
+
+  void _clearBarChart() {
+    setState(() {
+      _barChartFileName = null;
+      _barChartBytes = null;
+      _barChartPreview = null;
+      _barChartSheet = null;
+      _barChartError = null;
+    });
   }
 
   List<(String, double)> get _categoryValues => [
@@ -159,7 +277,7 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
       setState(() => _dateError = dateError);
       ok = ok && dateError == null;
     }
-    if (ok && _step == 2 && _vm.isNew) {
+    if (ok && _step == 2 && _vm.isNew && _barChartPreview == null) {
       final error = _vm.validateCategories(
         InputParsers.amount(_contract.text) ?? 0,
         _categoryValues,
@@ -193,7 +311,12 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
         startDate: _start!,
         targetEndDate: _end!,
         siteEngineerId: _siteEngineerId,
-        categories: _vm.isNew ? _categoryValues : const [],
+        categories: _vm.isNew && _barChartPreview == null
+            ? _categoryValues
+            : const [],
+        barChartFileName: _barChartFileName,
+        barChartBytes: _barChartBytes,
+        barChartSheet: _barChartSheet,
       ),
       success: _vm.isNew
           ? 'Project created and sent to the client.'
@@ -221,6 +344,14 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
       dateError: _dateError,
       onPickStart: () => _pick(true),
       onPickEnd: () => _pick(false),
+      barChartFileName: _barChartFileName,
+      barChartPreview: _barChartPreview,
+      barChartSheet: _barChartSheet,
+      barChartLoading: _barChartLoading,
+      barChartError: _barChartError,
+      onPickBarChart: vm.isNew ? _pickBarChart : null,
+      onSwitchBarChartSheet: _switchBarChartSheet,
+      onClearBarChart: _clearBarChart,
     ),
     1 => ProjectsLocationStep(
       location: _location,
@@ -234,6 +365,7 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
       retention: _retention,
       contractLocked: vm.contractLocked,
       categories: vm.isNew ? _categories : null,
+      barChartPreview: _barChartPreview,
       onAddCategory: (name) =>
           setState(() => _categories.add(ProjectsCategoryDraft(name))),
       onRemoveCategory: (i) =>
@@ -254,6 +386,7 @@ class _ProjectFormPageState extends State<ProjectFormPage> {
       downPaymentPct: InputParsers.amount(_downPayment.text) ?? 0,
       retentionPct: InputParsers.amount(_retention.text) ?? 0,
       categories: _categoryValues,
+      barChartPreview: _barChartPreview,
       onEdit: (i) => setState(() => _step = i),
     ),
   };

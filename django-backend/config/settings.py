@@ -295,7 +295,7 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_THROTTLE_RATES': {
         'anon': os.environ.get('THROTTLE_ANON', '60/min'),
-        'user': os.environ.get('THROTTLE_USER', '1000/hour'),
+        'user': os.environ.get('THROTTLE_USER', '10000/hour'),
         'login': os.environ.get('THROTTLE_LOGIN', '10/min'),
         'login_email': os.environ.get('THROTTLE_LOGIN_EMAIL', '5/min'),
         'password_reset': os.environ.get('THROTTLE_PASSWORD_RESET', '5/min'),
