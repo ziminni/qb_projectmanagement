@@ -82,9 +82,10 @@ services:
     container_name: cpms_cloudflared
     restart: unless-stopped
     profiles: ["tunnel"]
+    network_mode: "service:backend"
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-    command: tunnel --no-autoupdate --edge-ip-version 4 --protocol http2 ${CLOUDFLARED_TUNNEL_ARGS:---url http://backend:8001}
+    command: tunnel --no-autoupdate --edge-ip-version 4 --protocol http2 ${CLOUDFLARED_TUNNEL_ARGS:---url http://127.0.0.1:8001}
     depends_on:
       - backend
 
