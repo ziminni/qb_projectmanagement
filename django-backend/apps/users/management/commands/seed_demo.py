@@ -3,6 +3,7 @@
     python manage.py seed_demo                      # needs DEBUG=on
     python manage.py seed_demo --i-know-this-is-demo # deliberate demo database
     python manage.py seed_demo --reset               # remove seed rows, then seed
+    python manage.py seed_demo --users-only          # sign-ins without sample business data
 
 The rows are the ones in `apps/users/demo_data.py`, which mirrors
 `flutter/lib/data/repositories/mock_*.dart`.
@@ -85,6 +86,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            '--users-only',
+            action='store_true',
+            help='Seed the login dropdown accounts without loading any sample business data.',
+        )
+        parser.add_argument(
             '--reset',
             action='store_true',
             help='Delete the rows this command created before seeding again.',
@@ -124,6 +130,18 @@ class Command(BaseCommand):
                 'Refusing to seed demo data: DEBUG is off, so this looks like a real '
                 f'database. Re-run with {REQUIRED_FLAG} if it really is a demo one.'
             )
+
+        if options['users_only']:
+            if options['reset'] or options['auto_pos_payer'] or options['pos_payer_id'] is not None:
+                raise CommandError('--users-only cannot be combined with --reset or POS payer options.')
+            with transaction.atomic():
+                company = Company.objects.order_by('pk').first()
+                if company is None:
+                    company = Company.objects.create(name='BuildPro Construction Corporation')
+                CompanySettings.objects.get_or_create(company=company)
+                users = self._seed_users(company)
+            self.stdout.write(self.style.SUCCESS(f'Seeded {len(users)} login accounts only.'))
+            return
 
         pos_payer_id = options['pos_payer_id']
         if pos_payer_id is None and options.get('auto_pos_payer'):

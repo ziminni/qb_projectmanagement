@@ -31,6 +31,7 @@ from ..company.models import Company, CompanySettings
 from ..labor.models import Attendance, Worker
 from ..master_data.models import EquipmentItem, MaterialItem, Supplier, Trade
 from ..projects.models import Category, Project, ProjectAssignment, Todo
+from .management.commands.seed_demo import Command as SeedDemoCommand
 from .models import Role, User
 
 DEMO_PASSWORD = 'password123'  # noqa: S105 - the documented demo password
@@ -102,6 +103,22 @@ class SeedDemoCommandTests(TestCase):
         seed(SEED_FLAG)
 
         self.assertEqual(User.objects.count(), len(DEMO_EMAILS))
+
+    def test_users_only_keeps_all_login_accounts_without_business_data(self):
+        before = row_counts()
+        for _ in range(2):
+            with mock.patch.object(
+                SeedDemoCommand, '_discover_pos_payer_id',
+                side_effect=AssertionError('users-only must not contact POS'),
+            ):
+                seed(SEED_FLAG, '--users-only')
+        self.assertCountEqual(User.objects.values_list('email', flat=True), DEMO_EMAILS)
+        self.assertTrue(all(user.check_password(DEMO_PASSWORD) for user in User.objects.all()))
+        self.assertEqual(User.objects.get(email='elena@example.ph').roles,
+                         [Role.OWNER, Role.SITE_ENGINEER])
+        self.assertEqual(CompanySettings.objects.count(), 1)
+        self.assertEqual(Company.objects.get().tin, '')
+        self.assertEqual(row_counts(), {**before, 'users': 6, 'user_roles': 7, 'companies': 1})
 
     def test_a_second_run_creates_no_duplicates(self):
         seed(SEED_FLAG)
