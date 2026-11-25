@@ -13,9 +13,7 @@ import '../../../data/models/app_role.dart';
 import '../../../data/models/category.dart';
 import '../../../data/models/equipment.dart';
 import '../../../data/models/equipment_borrow.dart';
-import '../../../data/models/worker.dart';
 import '../../../data/repositories/equipment_repository.dart';
-import '../../../data/repositories/labor_repository.dart';
 import '../../../data/repositories/master_data_repository.dart';
 import '../../../data/repositories/schedule_repository.dart';
 import '../../../data/services/business_rule_exception.dart';
@@ -49,7 +47,7 @@ class _DupaEquipmentRow {
 }
 
 /// Project "Equipment" tab (DUPA Section B + Queen Builders borrowed equipment
-/// & external rentals, with laborer borrower accountability and return tracking).
+/// & external rentals, with PM approval and return condition tracking).
 class ProjectEquipmentPage extends StatefulWidget {
   const ProjectEquipmentPage({super.key, required this.projectId});
 
@@ -63,7 +61,6 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
   final _equipmentRepo = getIt<EquipmentRepository>();
   final _masterDataRepo = getIt<MasterDataRepository>();
   final _scheduleRepo = getIt<ScheduleRepository>();
-  final _laborRepo = getIt<LaborRepository>();
   final _session = getIt<SessionService>();
 
   bool _loading = true;
@@ -73,7 +70,6 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
   List<EquipmentBorrow> _borrows = const [];
   List<Equipment> _catalog = const [];
   List<Category> _categories = const [];
-  List<Worker> _workers = const [];
   EquipmentBorrowStatus? _statusFilter;
   EquipmentBorrowSource? _sourceFilter;
 
@@ -100,14 +96,12 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
         _equipmentRepo.getBorrows(projectId: widget.projectId),
         _masterDataRepo.getEquipment(),
         _scheduleRepo.getCategories(widget.projectId),
-        _laborRepo.getWorkers(activeOnly: true),
       ]);
       if (!mounted) return;
       setState(() {
         _borrows = results[0] as List<EquipmentBorrow>;
         _catalog = results[1] as List<Equipment>;
         _categories = results[2] as List<Category>;
-        _workers = results[3] as List<Worker>;
       });
     } catch (e) {
       if (!mounted) return;
@@ -172,7 +166,6 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
       projectId: widget.projectId,
       catalog: _catalog,
       categories: _categories,
-      workers: _workers,
       isPm: _isPm,
       showFinance: _showFinance,
       prefillName: prefillName,
@@ -292,12 +285,10 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
     final activeBorrows = _borrows
         .where((b) => b.status == EquipmentBorrowStatus.borrowed)
         .toList();
-    final activeUnits = activeBorrows.fold<int>(0, (s, b) => s + b.quantity);
-    final ownedUnits = activeBorrows
+    final ownedActive = activeBorrows
         .where((b) => b.source == EquipmentBorrowSource.owned)
-        .fold<int>(0, (s, b) => s + b.quantity);
-    final rentedUnits = activeUnits - ownedUnits;
-    final withLaborer = activeBorrows.where((b) => b.hasBorrower).length;
+        .length;
+    final rentedActive = activeBorrows.length - ownedActive;
     final pendingCount = _borrows
         .where((b) => b.status == EquipmentBorrowStatus.pending)
         .length;
@@ -307,10 +298,10 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
     final kpiTiles = [
       DashboardStatTile(
         label: 'On site (borrowed)',
-        value: '$activeUnits',
-        detail: activeUnits == 0
+        value: '${activeBorrows.length}',
+        detail: activeBorrows.isEmpty
             ? 'No active equipment on site'
-            : '$ownedUnits QB owned · $rentedUnits rented',
+            : '$ownedActive QB owned · $rentedActive rented',
         icon: Icons.handyman_outlined,
         color: AppColors.brandGold,
         onTap: () => setState(() {
@@ -318,14 +309,6 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
               ? null
               : EquipmentBorrowStatus.borrowed;
         }),
-      ),
-      DashboardStatTile(
-        label: 'Borrowed by laborers',
-        value: '$withLaborer',
-        detail: withLaborer == 0
-            ? 'None assigned to individual crew'
-            : 'Tracked under laborer custody',
-        icon: Icons.engineering_outlined,
       ),
       DashboardStatTile(
         label: 'Pending approval',
@@ -356,11 +339,7 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
-            final cols = constraints.maxWidth >= 980
-                ? 4
-                : constraints.maxWidth >= 560
-                ? 2
-                : 1;
+            final cols = constraints.maxWidth >= 820 ? 3 : 1;
             final w =
                 (constraints.maxWidth - AppSpacing.md * (cols - 1)) / cols;
             return Wrap(
@@ -450,7 +429,9 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
                 onPressed: _busy ? null : () => _openBorrowDialog(),
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: Text(
-                  _isPm ? 'Deploy / rent equipment' : 'Borrow / request equipment',
+                  _isPm
+                      ? 'Deploy / rent equipment'
+                      : 'Borrow / request equipment',
                 ),
               ),
           ],
@@ -461,7 +442,7 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
         AppSectionCard(
           title: 'Borrowed & rented equipment (${visible.length})',
           subtitle:
-              'Queen Builders tools/machinery borrowed by laborers and external site rentals',
+              'Queen Builders equipment deployed on site and external site rentals',
           icon: Icons.construction_outlined,
           padding: EdgeInsets.zero,
           child: visible.isEmpty
@@ -511,7 +492,7 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
               subtitle: Text(
                 _showFinance && _dupaEquipmentBudget > 0
                     ? 'Planned equipment per Item of Work · Total budget ${Formatters.peso(_dupaEquipmentBudget)}'
-                    : 'Planned equipment units and hours from imported DUPA sheets',
+                    : 'Planned equipment hours from imported DUPA sheets',
               ),
               children: [
                 const Divider(height: 1),
@@ -525,8 +506,6 @@ class _ProjectEquipmentPageState extends State<ProjectEquipmentPage> {
                     subtitle: Text(
                       [
                         d.categoryName,
-                        if (d.units > 0)
-                          '${InputParsers.amountText(d.units)} unit(s)',
                         if (d.hours > 0)
                           '${InputParsers.amountText(d.hours)} hr(s)',
                         if (_showFinance && d.amount != null && d.amount! > 0)
@@ -619,11 +598,6 @@ class _EquipmentBorrowRow extends StatelessWidget {
     };
 
     final meta = <String>[
-      if (borrow.hasBorrower)
-        'Borrowed by: ${borrow.borrowerName}'
-            '${borrow.borrowerTrade != null ? ' (${borrow.borrowerTrade})' : ''}'
-      else
-        'Assigned to site crew',
       if (borrow.categoryName != null && borrow.categoryName!.isNotEmpty)
         borrow.categoryName!,
       if (!isOwned && borrow.rentalSupplier.isNotEmpty)
@@ -670,7 +644,7 @@ class _EquipmentBorrowRow extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
-                      '${borrow.equipmentName} × ${borrow.quantity}',
+                      borrow.equipmentName,
                       style: TextStyle(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w700,
@@ -786,7 +760,6 @@ class _BorrowEquipmentDialog extends StatefulWidget {
     required this.projectId,
     required this.catalog,
     required this.categories,
-    required this.workers,
     required this.isPm,
     required this.showFinance,
     this.prefillName,
@@ -796,7 +769,6 @@ class _BorrowEquipmentDialog extends StatefulWidget {
   final int projectId;
   final List<Equipment> catalog;
   final List<Category> categories;
-  final List<Worker> workers;
   final bool isPm;
   final bool showFinance;
   final String? prefillName;
@@ -807,7 +779,6 @@ class _BorrowEquipmentDialog extends StatefulWidget {
     required int projectId,
     required List<Equipment> catalog,
     required List<Category> categories,
-    required List<Worker> workers,
     required bool isPm,
     required bool showFinance,
     String? prefillName,
@@ -818,7 +789,6 @@ class _BorrowEquipmentDialog extends StatefulWidget {
       projectId: projectId,
       catalog: catalog,
       categories: categories,
-      workers: workers,
       isPm: isPm,
       showFinance: showFinance,
       prefillName: prefillName,
@@ -836,13 +806,11 @@ class _BorrowEquipmentDialogState extends State<_BorrowEquipmentDialog> {
   int? _selectedEquipmentId;
   bool _useCustomOwnedName = false;
   late final TextEditingController _nameCtrl;
-  final _qtyCtrl = TextEditingController(text: '1');
   final _supplierCtrl = TextEditingController();
   final _rateCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   String _rateUnit = 'day';
   int? _categoryId;
-  int? _borrowerWorkerId;
   DateTime _neededDate = DateTime.now();
   DateTime? _expectedReturnDate = DateTime.now().add(const Duration(days: 7));
 
@@ -892,7 +860,6 @@ class _BorrowEquipmentDialogState extends State<_BorrowEquipmentDialog> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _qtyCtrl.dispose();
     _supplierCtrl.dispose();
     _rateCtrl.dispose();
     _notesCtrl.dispose();
@@ -913,10 +880,6 @@ class _BorrowEquipmentDialogState extends State<_BorrowEquipmentDialog> {
             picked != null)
         ? picked.name
         : _nameCtrl.text.trim();
-    final qty = int.tryParse(_qtyCtrl.text.trim()) ?? 1;
-    final worker = _borrowerWorkerId == null
-        ? null
-        : widget.workers.where((w) => w.id == _borrowerWorkerId).firstOrNull;
 
     Navigator.of(context).pop(
       EquipmentBorrowDraft(
@@ -925,9 +888,6 @@ class _BorrowEquipmentDialogState extends State<_BorrowEquipmentDialog> {
         equipmentItemId: picked?.id,
         source: _source,
         equipmentName: name,
-        quantity: qty,
-        borrowerWorkerId: worker?.id,
-        borrowerName: worker?.fullName ?? '',
         rentalSupplier: _source == EquipmentBorrowSource.rented
             ? _supplierCtrl.text.trim()
             : '',
@@ -948,12 +908,14 @@ class _BorrowEquipmentDialogState extends State<_BorrowEquipmentDialog> {
     final isOwned = _source == EquipmentBorrowSource.owned;
     return AlertDialog(
       title: Text(
-        widget.isPm ? 'Deploy or rent equipment' : 'Borrow or request equipment',
+        widget.isPm
+            ? 'Deploy or rent equipment'
+            : 'Borrow or request equipment',
       ),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 540),
+        constraints: const BoxConstraints(maxWidth: 520),
         child: SizedBox(
-          width: 540,
+          width: 520,
           child: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -982,7 +944,9 @@ class _BorrowEquipmentDialogState extends State<_BorrowEquipmentDialog> {
                   ),
                   const SizedBox(height: AppSpacing.md),
 
-                  if (isOwned && _ownedCatalog.isNotEmpty && !_useCustomOwnedName) ...[
+                  if (isOwned &&
+                      _ownedCatalog.isNotEmpty &&
+                      !_useCustomOwnedName) ...[
                     DropdownButtonFormField<int?>(
                       key: ValueKey('owned-eq-$_selectedEquipmentId'),
                       initialValue: _selectedEquipmentId,
@@ -1065,53 +1029,6 @@ class _BorrowEquipmentDialogState extends State<_BorrowEquipmentDialog> {
                       ),
                     ],
                   ],
-
-                  const SizedBox(height: AppSpacing.md),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _qtyCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Quantity *',
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (v) {
-                            final n = int.tryParse((v ?? '').trim());
-                            if (n == null || n < 1) return 'At least 1.';
-                            return null;
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        flex: 2,
-                        child: DropdownButtonFormField<int?>(
-                          initialValue: _borrowerWorkerId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Borrowed by laborer',
-                          ),
-                          items: [
-                            const DropdownMenuItem<int?>(
-                              value: null,
-                              child: Text('General site crew'),
-                            ),
-                            for (final w in widget.workers)
-                              DropdownMenuItem<int?>(
-                                value: w.id,
-                                child: Text(
-                                  '${w.fullName} · ${w.trade}',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _borrowerWorkerId = v),
-                        ),
-                      ),
-                    ],
-                  ),
 
                   if (!isOwned) ...[
                     const SizedBox(height: AppSpacing.md),
@@ -1362,7 +1279,7 @@ class _ReturnEquipmentDialogState extends State<_ReturnEquipmentDialog> {
                       : 'Return notes (optional)',
                   hintText: needsExplanation
                       ? 'Describe the issue or maintenance needed'
-                      : 'e.g. Cleaned and returned by borrower',
+                      : 'e.g. Cleaned and returned to yard',
                 ),
                 validator: (v) =>
                     needsExplanation && (v == null || v.trim().isEmpty)

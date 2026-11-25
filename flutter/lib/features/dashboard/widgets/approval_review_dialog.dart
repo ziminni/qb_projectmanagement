@@ -2125,7 +2125,7 @@ class _EquipmentRequestReviewPaneState
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
-                    '${req.equipmentName} × ${req.quantity}',
+                    req.equipmentName,
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   _statusChip(req.status),
@@ -2133,7 +2133,7 @@ class _EquipmentRequestReviewPaneState
               ),
               const SizedBox(height: AppSpacing.lg),
               AppSectionCard(
-                title: 'Equipment & borrower details',
+                title: 'Equipment request details',
                 icon: Icons.handyman_outlined,
                 child: Column(
                   children: [
@@ -2148,12 +2148,6 @@ class _EquipmentRequestReviewPaneState
                         label: 'Rental lessor',
                         value: req.rentalSupplier,
                       ),
-                    AppInfoRow(
-                      label: 'Borrowed by',
-                      value: req.hasBorrower
-                          ? '${req.borrowerName}${req.borrowerTrade != null ? ' (${req.borrowerTrade})' : ''}'
-                          : 'General site crew',
-                    ),
                     if (req.categoryName != null &&
                         req.categoryName!.isNotEmpty)
                       AppInfoRow(
@@ -2183,7 +2177,7 @@ class _EquipmentRequestReviewPaneState
         ),
         _ModalFooterBar(
           hint: isPending
-              ? 'Approving marks this equipment as active on site under the borrower.'
+              ? 'Approving marks this equipment as active on site.'
               : 'Decision recorded for this equipment request.',
           actions: [
             if (isPending) ...[
@@ -2318,7 +2312,7 @@ class _EquipmentRequestReviewPaneState
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '${req.equipmentName} × ${req.quantity}',
+                                          req.equipmentName,
                                           style: const TextStyle(
                                             fontWeight: FontWeight.w600,
                                             fontSize: 14,
@@ -2327,10 +2321,9 @@ class _EquipmentRequestReviewPaneState
                                         Text(
                                           [
                                             req.source.label,
-                                            if (req.hasBorrower)
-                                              'Borrower: ${req.borrowerName}'
-                                            else
-                                              'Site crew',
+                                            if (req.categoryName != null &&
+                                                req.categoryName!.isNotEmpty)
+                                              req.categoryName!,
                                             'Needed ${Formatters.date(req.neededDate)}',
                                           ].join(' · '),
                                           style: TextStyle(

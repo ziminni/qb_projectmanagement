@@ -54,9 +54,10 @@ class EquipmentRequestApprovalSource implements ApprovalSource {
         items.add(
           ApprovalItem(
             kind: ApprovalKind.equipmentRequest,
-            title: '${r.equipmentName} × ${r.quantity} · $code',
+            title: '${r.equipmentName} · $code',
             subtitle: [
-              if (r.hasBorrower) 'Borrower: ${r.borrowerName}',
+              if (r.categoryName != null && r.categoryName!.isNotEmpty)
+                r.categoryName!,
               if (r.requestedByName != null)
                 'Requested by ${r.requestedByName}',
             ].join(' · '),
@@ -76,10 +77,7 @@ class EquipmentRequestApprovalSource implements ApprovalSource {
         continue;
       }
 
-      final preview = group
-          .take(3)
-          .map((r) => '${r.equipmentName} ×${r.quantity}')
-          .join(', ');
+      final preview = group.take(3).map((r) => r.equipmentName).join(', ');
       final extra = group.length - 3;
       final summary = extra > 0 ? '$preview +$extra more' : preview;
 

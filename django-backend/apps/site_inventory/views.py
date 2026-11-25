@@ -285,7 +285,7 @@ class ProjectEquipmentBorrowViewSet(
                 project,
                 RoleOnProject.OWNER,
                 'equipment_request',
-                f'{request.user.full_name} requested {row.quantity}x {row.equipment_name} for {project.code}.',
+                f'{request.user.full_name} requested {row.equipment_name} for {project.code}.',
                 f'/projects/{project.pk}/equipment',
             )
 
@@ -331,7 +331,7 @@ class ProjectEquipmentBorrowViewSet(
             row.project,
             RoleOnProject.SITE_ENGINEER,
             'equipment_request',
-            f'{row.equipment_name} (x{row.quantity}) was approved for {row.project.code}.',
+            f'{row.equipment_name} was approved for {row.project.code}.',
             f'/projects/{row.project_id}/equipment',
         )
         return Response(self.get_serializer(row).data)

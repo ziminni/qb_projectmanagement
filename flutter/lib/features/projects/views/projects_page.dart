@@ -84,10 +84,7 @@ class ProjectsPage extends StatelessWidget {
               else
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final columns =
-                        items.length >= 2 && constraints.maxWidth >= 860
-                        ? 2
-                        : 1;
+                    final columns = constraints.maxWidth >= 860 ? 2 : 1;
                     final width =
                         (constraints.maxWidth - AppSpacing.lg * (columns - 1)) /
                         columns;
