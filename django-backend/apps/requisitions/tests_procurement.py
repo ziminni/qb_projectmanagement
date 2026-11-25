@@ -364,7 +364,9 @@ class MaterialRequestCreateTests(ProcurementCase):
 
     def test_request_needs_an_ongoing_project(self):
         self.project.status = ProjectStatus.ACCEPTED
-        self.project.save(update_fields=['status'])
+        # A due start date would auto-start the project.
+        self.project.start_date = timezone.localdate() + timedelta(days=1)
+        self.project.save(update_fields=['status', 'start_date'])
         self.act_as(self.engineer, Role.SITE_ENGINEER)
 
         response = self.client.post(
