@@ -67,6 +67,7 @@ import '../features/projects/views/project_form_page.dart';
 import '../features/projects/views/project_overview_page.dart';
 import '../features/projects/views/projects_page.dart';
 import '../features/user_management/views/admin_overview_page.dart';
+import '../features/user_management/views/equipment_master_list_page.dart';
 import '../features/user_management/views/audit_log_page.dart';
 import '../features/user_management/views/settings_page.dart';
 import '../features/user_management/views/system_backups_page.dart';
@@ -105,6 +106,7 @@ abstract final class AppRoutes {
   static const adminSecurity = '/admin/security';
   static const adminBackups = '/admin/backups';
   static const adminHealth = '/admin/health';
+  static const adminEquipment = '/admin/equipment';
 
   /// Old links (e.g. in saved notifications) and where they now live.
   static const legacy = {
@@ -278,6 +280,7 @@ final _featureRoutes = <GoRoute>[
   _route(AppRoutes.adminSecurity, (_) => const SystemSecurityPage()),
   _route(AppRoutes.adminBackups, (_) => const SystemBackupsPage()),
   _route(AppRoutes.adminHealth, (_) => const SystemHealthPage()),
+  _route(AppRoutes.adminEquipment, (_) => const EquipmentMasterListPage()),
   // client_portal
   _route(AppRoutes.clientProjects, (_) => const ClientProjectsPage()),
   _route(AppRoutes.clientProgress, (_) => const ClientProgressPage()),

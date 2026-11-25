@@ -34,6 +34,12 @@ abstract final class RoleNavigation {
         group: 'People',
       ),
       RoleDestination(
+        'Equipment list',
+        Icons.construction_outlined,
+        AppRoutes.adminEquipment,
+        group: 'Master lists',
+      ),
+      RoleDestination(
         'Audit log',
         Icons.history,
         AppRoutes.adminAuditLog,
