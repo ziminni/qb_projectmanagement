@@ -11,6 +11,7 @@ import '../../../shared/widgets/app_billing_status_chip.dart';
 import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_history_list.dart';
 import '../../../shared/widgets/app_payment_dialog.dart';
+import '../../../shared/widgets/app_pdf_button.dart';
 import '../../../shared/widgets/app_section_card.dart';
 import '../../../shared/widgets/app_workflow_steps.dart';
 import '../viewmodels/billing_detail_viewmodel.dart';
@@ -107,6 +108,7 @@ class BillingDetailPage extends StatelessWidget {
                     icon: const Icon(Icons.payments_outlined),
                     label: const Text('Record payment'),
                   ),
+                AppPdfButton(build: vm.pdfReport, label: 'Export billing'),
               ],
             ),
             gap,

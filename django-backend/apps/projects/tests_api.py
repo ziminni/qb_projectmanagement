@@ -32,6 +32,7 @@ PROJECT_KEYS = {
     'id', 'code', 'name', 'location', 'latitude', 'longitude', 'client_id',
     'contract_amount', 'down_payment_pct', 'retention_pct', 'start_date',
     'target_end_date', 'actual_end_date', 'status', 'created_at', 'updated_at',
+    'timeline_start_date',
 }
 FINANCE_KEYS = {'contract_amount', 'down_payment_pct', 'retention_pct'}
 
@@ -732,7 +733,8 @@ class RespondTests(ProjectApiCase):
 
         self.project.refresh_from_db()
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(self.project.status, ProjectStatus.ACCEPTED)
+        # The start date is already due, so acceptance starts the project.
+        self.assertEqual(self.project.status, ProjectStatus.ONGOING)
 
     def test_client_change_request_moves_the_project_back(self):
         response = self.respond(
@@ -1009,7 +1011,10 @@ class CategoryTests(ProjectApiCase):
         self.assertEqual(
             set(created.data),
             {'id', 'project_id', 'name', 'budget', 'weight', 'sort_order',
-             'created_at', 'updated_at'},
+             'created_at', 'updated_at', 'item_no', 'planned_weeks',
+             'planned_days', 'day_to_start', 'start_date', 'end_date',
+             'labor_budget', 'equipment_budget', 'material_budget',
+             'dupa_breakdown'},
         )
         self.assertEqual(
             [row['name'] for row in listing.data],

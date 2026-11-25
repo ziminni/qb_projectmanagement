@@ -47,7 +47,7 @@ class LoginTests(ApiTestCase):
         self.assertEqual(
             set(response.data['user']),
             {'id', 'company_id', 'full_name', 'email', 'phone', 'is_active',
-             'created_at', 'updated_at'},
+             'created_at', 'updated_at', 'must_change_password'},
         )
         self.assertEqual(response.data['user']['email'], 'maria@example.com')
         self.assertNotIn('password', response.data['user'])
@@ -352,7 +352,8 @@ class UserAdminApiTests(ApiTestCase):
 
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(
-            set(response.data), {'user', 'roles', 'temporary_password'},
+            set(response.data), {'user', 'roles', 'temporary_password',
+                                 'email_sent', 'email_error'},
         )
         self.assertEqual(response.data['user']['email'], 'ana.reyes@example.com')
         self.assertEqual(response.data['roles'], ['site_engineer'])

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../../core/utils/action_runner.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/client.dart';
 import '../../../data/models/company.dart';
@@ -13,6 +14,7 @@ import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/billing_rules.dart';
 import '../../../data/services/session_service.dart';
+import '../../../shared/pdf/pdf_report.dart';
 import '../../../shared/widgets/app_payment_dialog.dart';
 
 /// One progress billing: PM submits or withdraws, the owner approves or
@@ -128,4 +130,58 @@ class BillingDetailViewModel extends ChangeNotifier with ActionRunner {
       userId: _me,
     ),
   );
+
+  PdfReport pdfReport() {
+    final d = _detail!;
+    final b = d.billing;
+    final p = _project!;
+    return PdfReport(
+      title: 'Progress Billing #${b.billingNo}',
+      fileName: '${p.code}-billing-${b.billingNo}',
+      subtitle: '${p.code} · ${p.name}',
+      info: [
+        ('Client', _client?.name ?? ''),
+        ('Period end', Formatters.date(b.periodEnd)),
+        ('Accomplishment', '${(b.pctAccomplished * 100).toStringAsFixed(2)}%'),
+        ('Status', b.status.label),
+      ],
+      tables: [
+        PdfTable(
+          title: 'Billing statement',
+          headers: const ['Item', 'Amount'],
+          numeric: const {1},
+          rows: [
+            ['Gross earned to date', Formatters.peso(b.grossEarned)],
+            ['Less previous billings', Formatters.peso(b.lessPrevious)],
+            ['This period', Formatters.peso(b.thisPeriod)],
+            [
+              'Less down payment recoupment',
+              Formatters.peso(b.lessDpRecoupment),
+            ],
+            ['Less retention', Formatters.peso(b.lessRetention)],
+          ],
+          totals: ['Net due', Formatters.peso(b.netDue)],
+        ),
+        PdfTable(
+          title: 'Payments',
+          headers: const ['Date', 'Method', 'Reference', 'Amount'],
+          numeric: const {3},
+          rows: [
+            for (final x in d.payments)
+              [
+                Formatters.date(x.paidOn),
+                x.method.label,
+                x.referenceNo ?? '',
+                Formatters.peso(x.amount),
+              ],
+          ],
+          totals: ['Balance', '', '', Formatters.peso(d.balance)],
+        ),
+      ],
+      signatures: const [
+        'Prepared by (Project Manager)',
+        'Approved by (Client)',
+      ],
+    );
+  }
 }
